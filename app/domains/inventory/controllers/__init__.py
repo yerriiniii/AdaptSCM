@@ -1,0 +1,2 @@
+"""Controllers for inventory domain."""
+

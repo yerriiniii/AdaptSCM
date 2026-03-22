@@ -1,0 +1,417 @@
+import io
+import re
+from datetime import date, datetime
+
+import pandas as pd
+from fastapi import HTTPException, UploadFile
+
+
+REQUIRED_COLUMNS = {
+    "itemno",
+    "quantity",
+}
+
+COLUMN_ALIASES = {
+    "warehouse": {
+        "warehouse",
+        "warehous",
+        "창고",
+        "창고+정상재고",
+        "창고정상재고",
+        "warehouse+normalstock",
+    },
+    "itemno": {
+        "itemno",
+        "item_no",
+        "상품넘버",
+        "아이템넘버",
+        "품목코드",
+        "item",
+        "상품코드",
+        "productcode",
+    },
+    "category": {"category", "카테고리"},
+    "level": {"level"},
+    "quantity": {"quantity", "재고", "수량", "재고수량", "정상재고", "normalstock"},
+    "description": {"description", "상품명", "품명"},
+    "supplier": {"supplier", "공급처", "vendor"},
+    "limit": {"limit", "유통기한"},
+    "expdt": {"expdt", "사용기한", "exp_date"},
+    "date": {"date", "일자", "날짜"},
+}
+
+COUNTRY_PATTERNS = {
+    "KR": ["kr", "korea", "korean", "한국"],
+    "TW": ["tw", "taiwan", "대만", "taipei"],
+    "JP": ["jp", "japan", "일본", "tokyo"],
+    "US": ["us", "usa", "america", "미국"],
+}
+
+
+def _normalize_key(value: str) -> str:
+    return (
+        str(value)
+        .strip()
+        .lower()
+        .replace(" ", "")
+        .replace("_", "")
+        .replace("-", "")
+        .replace("(", "")
+        .replace(")", "")
+    )
+
+
+def _standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    normalized = {_normalize_key(col): col for col in df.columns}
+    rename_map: dict[str, str] = {}
+    for canonical, aliases in COLUMN_ALIASES.items():
+        candidates = {_normalize_key(canonical)} | {_normalize_key(x) for x in aliases}
+        for candidate in candidates:
+            if candidate in normalized:
+                rename_map[normalized[candidate]] = canonical
+                break
+    return df.rename(columns=rename_map)
+
+
+def _parse_date_from_filename(filename: str) -> date | None:
+    name = filename.lower()
+    patterns = [
+        r"(20\d{2})[-_\.]?([01]\d)[-_\.]?([0-3]\d)",
+        r"([01]?\d)[-_\.]([0-3]?\d)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, name)
+        if not match:
+            continue
+        groups = match.groups()
+        try:
+            if len(groups) == 3:
+                y, m, d = map(int, groups)
+                return datetime(y, m, d).date()
+            m, d = map(int, groups)
+            return datetime(datetime.today().year, m, d).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _detect_country(warehouse_value: str, filename: str) -> str:
+    base = f"{warehouse_value} {filename}".lower()
+    for code, patterns in COUNTRY_PATTERNS.items():
+        if any(pattern in base for pattern in patterns):
+            return code
+    return "KR"
+
+
+def _normalize_country_code(raw: str) -> str | None:
+    code = str(raw or "").strip().upper()
+    if not code:
+        return None
+    if not re.match(r"^[A-Z]{2,4}$", code):
+        return None
+    return code
+
+
+def _normalize_item_code(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    raw = re.sub(r"\.0$", "", raw)
+    # 엑셀 숫자형으로 읽힌 상품코드는 선행 0이 사라질 수 있어 5자리까지 보정
+    if re.fullmatch(r"\d+", raw):
+        return raw.zfill(5) if len(raw) <= 5 else raw
+    return raw.upper()
+
+
+def _read_inventory_file(upload_file: UploadFile) -> pd.DataFrame:
+    raw = upload_file.file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail=f"{upload_file.filename}: 파일이 비어 있습니다.")
+
+    try:
+        if upload_file.filename.lower().endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(raw))
+        else:
+            df = pd.read_excel(io.BytesIO(raw), sheet_name=0)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400, detail=f"{upload_file.filename}: 파일 파싱 실패 ({exc})"
+        ) from exc
+
+    df = _standardize_columns(df)
+    missing = sorted(list(REQUIRED_COLUMNS.difference(set(df.columns))))
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{upload_file.filename}: 필수 컬럼 누락 {missing}. "
+                "필요 컬럼: itemno(또는 상품코드), quantity(또는 정상재고)"
+            ),
+        )
+    if "description" not in df.columns:
+        # 한국 재고 파일은 상품명이 없는 경우가 있어 창고/상품코드로 대체한다.
+        if "warehouse" in df.columns and df["warehouse"].notna().any():
+            df["description"] = df["warehouse"]
+        else:
+            df["description"] = df["itemno"]
+    if "supplier" not in df.columns:
+        df["supplier"] = ""
+    if "category" not in df.columns:
+        if "warehouse" in df.columns and df["warehouse"].notna().any():
+            df["category"] = df["warehouse"]
+        else:
+            df["category"] = "미분류"
+    df["itemno"] = df["itemno"].apply(_normalize_item_code)
+    df["description"] = df["description"].fillna("").astype(str).str.strip()
+    df["supplier"] = df["supplier"].fillna("").astype(str).str.strip()
+    df["category"] = (
+        df["category"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .replace("", "미분류")
+    )
+    return df
+
+
+def _parse_date_series(series: pd.Series) -> pd.Series:
+    raw = series.copy()
+
+    normalized = (
+        raw.astype(str)
+        .str.strip()
+        .str.replace(r"\.0$", "", regex=True)
+    )
+
+    # 1) 20260301 같은 8자리 숫자는 YYYYMMDD 우선 해석
+    digits_only = normalized.str.replace(r"[^0-9]", "", regex=True)
+    ymd_mask = digits_only.str.match(r"^\d{8}$", na=False)
+    parsed = pd.to_datetime(digits_only.where(ymd_mask), format="%Y%m%d", errors="coerce")
+
+    # 2) 나머지 값은 일반 파싱
+    fallback = pd.to_datetime(normalized.where(~ymd_mask), errors="coerce")
+    parsed = parsed.where(~parsed.isna(), fallback)
+
+    return parsed.dt.date
+
+
+def aggregate_inventory_files(
+    files: list[UploadFile],
+    keyword: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    date_range: str | None = None,
+    level_filter: str | None = "1",
+    file_dates: list[str] | None = None,
+    file_countries: list[str] | None = None,
+) -> tuple[list[dict], list[str]]:
+    if not files:
+        raise HTTPException(status_code=400, detail="재고 파일을 최소 1개 이상 업로드해주세요.")
+
+    daily_frames: list[pd.DataFrame] = []
+    for idx, upload_file in enumerate(files):
+        df = _read_inventory_file(upload_file)
+
+        override_country = None
+        if file_countries and idx < len(file_countries):
+            override_country = _normalize_country_code(file_countries[idx])
+            if file_countries[idx] and override_country is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{upload_file.filename}: 국가 코드는 영문 2~4자리여야 합니다.",
+                )
+
+        if override_country is not None:
+            df["country"] = override_country
+        else:
+            warehouse_col = df["warehouse"] if "warehouse" in df.columns else ""
+            if isinstance(warehouse_col, str):
+                df["country"] = _detect_country(warehouse_col, upload_file.filename)
+            else:
+                df["country"] = warehouse_col.fillna("").astype(str).apply(
+                    lambda wh: _detect_country(wh, upload_file.filename)
+                )
+
+        override_date = None
+        if file_dates and idx < len(file_dates):
+            raw_override = str(file_dates[idx] or "").strip()
+            if raw_override:
+                parsed_override = pd.to_datetime(raw_override, errors="coerce")
+                if pd.isna(parsed_override):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{upload_file.filename}: 설정 탭의 날짜 형식이 올바르지 않습니다.",
+                    )
+                override_date = parsed_override.date()
+
+        if override_date is not None:
+            df["date"] = override_date
+        elif "date" in df.columns:
+            df["date"] = _parse_date_series(df["date"])
+            if df["date"].isna().all():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{upload_file.filename}: date/일자 컬럼 파싱 실패",
+                )
+        else:
+            inferred_date = _parse_date_from_filename(upload_file.filename)
+            # 한국 재고는 현재고 스냅샷이므로 일자 컬럼/파일명 날짜가 없어도 허용
+            if inferred_date is None and (df["country"] == "KR").all():
+                inferred_date = datetime.today().date()
+            if inferred_date is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{upload_file.filename}: 날짜를 추론하지 못했습니다. "
+                        "파일명에 2026-03-01 또는 20260301 형식을 포함하거나 date/일자 컬럼을 추가해주세요."
+                    ),
+                )
+            df["date"] = inferred_date
+
+        if "level" not in df.columns:
+            df["level"] = "1"
+        df["level"] = (
+            df["level"]
+            .fillna("")
+            .astype(str)
+            .str.extract(r"(\d+)", expand=False)
+            .fillna("1")
+            .str.lstrip("0")
+            .replace("", "0")
+        )
+
+        df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0)
+        grouped = (
+            df.groupby(["date", "itemno", "level", "country"], as_index=False)
+            .agg(
+                quantity=("quantity", "sum"),
+                description=("description", "first"),
+                supplier=("supplier", "first"),
+                category=("category", "first"),
+            )
+            .sort_values(["date", "country", "itemno", "level"])
+        )
+        daily_frames.append(grouped)
+
+    merged = pd.concat(daily_frames, ignore_index=True)
+    merged["date"] = pd.to_datetime(merged["date"])
+    merged = (
+        merged.groupby(["date", "itemno", "level", "country"], as_index=False)
+        .agg(
+            quantity=("quantity", "sum"),
+            description=("description", "first"),
+            supplier=("supplier", "first"),
+            category=("category", "first"),
+        )
+        .sort_values(["country", "itemno", "level", "date"])
+    )
+
+    max_date = merged["date"].max()
+    if date_range == "7d":
+        merged = merged[merged["date"] >= (max_date - pd.Timedelta(days=6))]
+    elif date_range == "30d":
+        merged = merged[merged["date"] >= (max_date - pd.Timedelta(days=29))]
+
+    if start_date:
+        start_dt = pd.to_datetime(start_date, errors="coerce")
+        if pd.isna(start_dt):
+            raise HTTPException(status_code=400, detail="start_date 형식이 올바르지 않습니다.")
+        merged = merged[merged["date"] >= start_dt]
+    if end_date:
+        end_dt = pd.to_datetime(end_date, errors="coerce")
+        if pd.isna(end_dt):
+            raise HTTPException(status_code=400, detail="end_date 형식이 올바르지 않습니다.")
+        merged = merged[merged["date"] <= end_dt]
+
+    if keyword:
+        needle = str(keyword).strip().lower()
+        merged = merged[
+            merged["itemno"].astype(str).str.lower().str.contains(needle, na=False)
+            | merged["description"].astype(str).str.lower().str.contains(needle, na=False)
+        ]
+
+    if level_filter and level_filter.lower() != "all":
+        level_key = str(level_filter).strip()
+        level_key = level_key.lstrip("0") or "0"
+        merged = merged[merged["level"] == level_key]
+
+    if merged.empty:
+        return [], []
+
+    merged["date_key"] = merged["date"].dt.strftime("%Y-%m-%d")
+    pivot = merged.pivot_table(
+        index=["itemno", "description", "supplier", "category", "level", "country"],
+        columns="date_key",
+        values="quantity",
+        aggfunc="sum",
+        fill_value=0,
+    ).reset_index()
+
+    date_cols = sorted(
+        [
+            col
+            for col in pivot.columns
+            if col not in {"itemno", "description", "supplier", "category", "level", "country"}
+        ]
+    )
+    rows = pivot.to_dict(orient="records")
+    return rows, date_cols
+
+
+def inspect_inventory_files(
+    files: list[UploadFile],
+    file_countries: list[str] | None = None,
+) -> list[dict]:
+    if not files:
+        raise HTTPException(status_code=400, detail="재고 파일을 최소 1개 이상 업로드해주세요.")
+
+    results: list[dict] = []
+    for idx, upload_file in enumerate(files):
+        df = _read_inventory_file(upload_file)
+
+        inferred_date = ""
+        if "date" in df.columns:
+            parsed_date = _parse_date_series(df["date"])
+            valid = parsed_date.dropna()
+            if not valid.empty:
+                # 단일 일자 파일이 일반적이므로 최빈값을 대표 일자로 사용
+                inferred_date = (
+                    pd.Series(valid.astype(str))
+                    .value_counts()
+                    .index[0]
+                )
+        else:
+            d = _parse_date_from_filename(upload_file.filename)
+            if d is not None:
+                inferred_date = d.isoformat()
+
+        override_country = None
+        if file_countries and idx < len(file_countries):
+            override_country = _normalize_country_code(file_countries[idx])
+            if file_countries[idx] and override_country is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{upload_file.filename}: 국가 코드는 영문 2~4자리여야 합니다.",
+                )
+
+        if override_country is not None:
+            country = override_country
+        else:
+            warehouse_col = df["warehouse"] if "warehouse" in df.columns else ""
+            if isinstance(warehouse_col, str):
+                country = _detect_country(warehouse_col, upload_file.filename)
+            else:
+                country = _detect_country(
+                    str(warehouse_col.fillna("").astype(str).iloc[0]) if len(df) else "",
+                    upload_file.filename,
+                )
+
+        results.append(
+            {
+                "filename": upload_file.filename,
+                "date": inferred_date,
+                "country": country,
+            }
+        )
+    return results
+
