@@ -211,6 +211,7 @@ def aggregate_inventory_files(
     daily_frames: list[pd.DataFrame] = []
     for idx, upload_file in enumerate(files):
         df = _read_inventory_file(upload_file)
+        filename_date = _parse_date_from_filename(upload_file.filename)
 
         override_country = None
         if file_countries and idx < len(file_countries):
@@ -244,8 +245,13 @@ def aggregate_inventory_files(
                     )
                 override_date = parsed_override.date()
 
+        is_kr_file = (df["country"] == "KR").all()
+
         if override_date is not None:
             df["date"] = override_date
+        elif is_kr_file and filename_date is not None:
+            # 한국 현재고는 파일명 기준일이 스냅샷 기준일이다.
+            df["date"] = filename_date
         elif "date" in df.columns:
             df["date"] = _parse_date_series(df["date"])
             if df["date"].isna().all():
@@ -254,9 +260,9 @@ def aggregate_inventory_files(
                     detail=f"{upload_file.filename}: date/일자 컬럼 파싱 실패",
                 )
         else:
-            inferred_date = _parse_date_from_filename(upload_file.filename)
+            inferred_date = filename_date
             # 한국 재고는 현재고 스냅샷이므로 일자 컬럼/파일명 날짜가 없어도 허용
-            if inferred_date is None and (df["country"] == "KR").all():
+            if inferred_date is None and is_kr_file:
                 inferred_date = datetime.today().date()
             if inferred_date is None:
                 raise HTTPException(
@@ -368,22 +374,7 @@ def inspect_inventory_files(
     results: list[dict] = []
     for idx, upload_file in enumerate(files):
         df = _read_inventory_file(upload_file)
-
-        inferred_date = ""
-        if "date" in df.columns:
-            parsed_date = _parse_date_series(df["date"])
-            valid = parsed_date.dropna()
-            if not valid.empty:
-                # 단일 일자 파일이 일반적이므로 최빈값을 대표 일자로 사용
-                inferred_date = (
-                    pd.Series(valid.astype(str))
-                    .value_counts()
-                    .index[0]
-                )
-        else:
-            d = _parse_date_from_filename(upload_file.filename)
-            if d is not None:
-                inferred_date = d.isoformat()
+        filename_date = _parse_date_from_filename(upload_file.filename)
 
         override_country = None
         if file_countries and idx < len(file_countries):
@@ -405,6 +396,23 @@ def inspect_inventory_files(
                     str(warehouse_col.fillna("").astype(str).iloc[0]) if len(df) else "",
                     upload_file.filename,
                 )
+
+        inferred_date = ""
+        is_kr_file = country == "KR"
+        if is_kr_file and filename_date is not None:
+            inferred_date = filename_date.isoformat()
+        elif "date" in df.columns:
+            parsed_date = _parse_date_series(df["date"])
+            valid = parsed_date.dropna()
+            if not valid.empty:
+                # 단일 일자 파일이 일반적이므로 최빈값을 대표 일자로 사용
+                inferred_date = (
+                    pd.Series(valid.astype(str))
+                    .value_counts()
+                    .index[0]
+                )
+        elif filename_date is not None:
+            inferred_date = filename_date.isoformat()
 
         results.append(
             {

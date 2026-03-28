@@ -13,6 +13,24 @@ function toFixed(value, digits = 2) {
   return parsed.toFixed(digits);
 }
 
+function toSigned(value, digits = 0) {
+  if (value === null || value === undefined) return "-";
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) return String(value);
+  const fixed = parsed.toFixed(digits);
+  if (parsed > 0) return `+${fixed}`;
+  return fixed;
+}
+
+function toPercent(value, digits = 1) {
+  if (value === null || value === undefined) return "-";
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) return "-";
+  const fixed = parsed.toFixed(digits);
+  if (parsed > 0) return `+${fixed}%`;
+  return `${fixed}%`;
+}
+
 function detectCountry(name = "") {
   const n = name.toLowerCase();
   if (n.includes("tw") || n.includes("taiwan") || n.includes("대만")) return "TW";
@@ -52,6 +70,59 @@ function countryLabel(code = "KR") {
   return code;
 }
 
+function getLatestDateKey(dateKeys = []) {
+  if (!dateKeys.length) return "";
+  return [...dateKeys].sort().at(-1) || "";
+}
+
+function buildTrendData(row, dateColumns = []) {
+  if (!row || !dateColumns.length) return null;
+
+  const series = dateColumns.map((dateKey, idx) => {
+    const qty = Number(row[dateKey] || 0);
+    const prevQty = idx > 0 ? Number(row[dateColumns[idx - 1]] || 0) : null;
+    const delta = prevQty === null ? null : qty - prevQty;
+    const deltaRate = prevQty === null || prevQty === 0 ? null : ((qty - prevQty) / prevQty) * 100;
+    return { dateKey, qty, prevQty, delta, deltaRate };
+  });
+
+  const latestPoint = series.at(-1) || null;
+  const maxQty = Math.max(...series.map((point) => point.qty), 0);
+  const minQty = Math.min(...series.map((point) => point.qty), 0);
+  const range = Math.max(maxQty - minQty, 1);
+  const chartWidth = 560;
+  const chartHeight = 220;
+  const paddingX = 30;
+  const paddingY = 20;
+  const innerWidth = chartWidth - paddingX * 2;
+  const innerHeight = chartHeight - paddingY * 2;
+  const points = series.map((point, idx) => {
+    const x =
+      series.length === 1
+        ? chartWidth / 2
+        : paddingX + (idx / Math.max(series.length - 1, 1)) * innerWidth;
+    const y = paddingY + ((maxQty - point.qty) / range) * innerHeight;
+    return { ...point, x, y };
+  });
+  const xLabelStep = Math.max(1, Math.ceil(series.length / 8));
+  const showPointValueLabels = series.length <= 12;
+
+  return {
+    series,
+    latestPoint,
+    latestQty: latestPoint?.qty ?? 0,
+    latestDelta: latestPoint?.delta ?? null,
+    latestDeltaRate: latestPoint?.deltaRate ?? null,
+    highestQty: maxQty,
+    lowestQty: minQty,
+    points,
+    chartWidth,
+    chartHeight,
+    xLabelStep,
+    showPointValueLabels,
+  };
+}
+
 export default function App() {
   const [fileEntries, setFileEntries] = useState([]);
   const [rawInventoryRows, setRawInventoryRows] = useState([]);
@@ -72,6 +143,10 @@ export default function App() {
   const [uploadInputKey, setUploadInputKey] = useState(0);
   const [countryTabMode, setCountryTabMode] = useState("KR");
   const [selectedOverseasCountry, setSelectedOverseasCountry] = useState(OVERSEAS_UPLOAD_COUNTRIES[0]);
+  const [selectedKrTrendRowKey, setSelectedKrTrendRowKey] = useState("");
+  const [selectedOverseasTrendRowKey, setSelectedOverseasTrendRowKey] = useState("");
+  const [compareSelectedDate, setCompareSelectedDate] = useState("");
+  const [showCautionModal, setShowCautionModal] = useState(false);
   const [topScrollWidth, setTopScrollWidth] = useState(0);
   const topScrollRef = useRef(null);
   const tableScrollRef = useRef(null);
@@ -91,6 +166,7 @@ export default function App() {
   function getScopeKey(mode = countryTabMode, overseasCode = selectedOverseasCountry) {
     if (mode === "KR") return "KR";
     if (mode === "OVERSEAS") return `OVERSEAS:${overseasCode || OVERSEAS_UPLOAD_COUNTRIES[0]}`;
+    if (mode === "COMPARE") return "__COMPARE__";
     return "__NONE__";
   }
 
@@ -100,6 +176,7 @@ export default function App() {
   );
   const isKRScope = countryTabMode === "KR";
   const isOverseasScope = countryTabMode === "OVERSEAS";
+  const isCompareScope = countryTabMode === "COMPARE";
 
   const scopedFileEntries = useMemo(
     () => fileEntries.filter((entry) => matchesCountryScope(entry.country)),
@@ -241,17 +318,26 @@ export default function App() {
   }, [fileEntries]);
 
   const krCompareMap = useMemo(() => {
-    if (!rawInventoryRows.length || !rawInventoryDates.length) return new Map();
+    const krRows = (scopeResultCache.KR?.rows || []).filter((row) => String(row.country || "KR") === "KR");
+    const krDates = scopeResultCache.KR?.dates || [];
+    if (!krRows.length || !krDates.length) return new Map();
+    const utcTodayKey = new Date().toISOString().slice(0, 10);
+    const hasKrCurrentSnapshot = krDates.includes(utcTodayKey);
+    if (!hasKrCurrentSnapshot) return new Map();
     const map = new Map();
-    for (const row of rawInventoryRows) {
-      if (String(row.country || "KR") !== "KR") continue;
+    for (const row of krRows) {
       const baseCode = extractBaseProductCode(row.itemno);
       const key = `${baseCode}`;
-      const qty = rawInventoryDates.reduce((sum, dt) => sum + Number(row[dt] || 0), 0);
+      const qty = Number(row[utcTodayKey] || 0);
       map.set(key, Number(map.get(key) || 0) + qty);
     }
     return map;
-  }, [rawInventoryRows, rawInventoryDates]);
+  }, [scopeResultCache]);
+
+  const hasTodayKrSnapshot = useMemo(() => {
+    const utcTodayKey = new Date().toISOString().slice(0, 10);
+    return (scopeResultCache.KR?.dates || []).includes(utcTodayKey);
+  }, [scopeResultCache]);
 
   const krNameMap = useMemo(() => {
     const map = new Map();
@@ -266,39 +352,146 @@ export default function App() {
   }, [rawInventoryRows]);
 
   const totalInventory = useMemo(() => {
-    return filteredRows.reduce((acc, row) => {
-      const rowSum = filteredDateColumns.reduce((sum, dt) => sum + Number(row[dt] || 0), 0);
-      return acc + rowSum;
-    }, 0);
+    const latestDate = getLatestDateKey(filteredDateColumns);
+    if (!latestDate) return 0;
+    return filteredRows.reduce((acc, row) => acc + Number(row[latestDate] || 0), 0);
   }, [filteredRows, filteredDateColumns]);
 
   const krDisplayRows = useMemo(() => {
     if (!isKRScope) return [];
-    return filteredRows.map((row) => {
-      const qty = filteredDateColumns.reduce((sum, dt) => sum + Number(row[dt] || 0), 0);
-      return {
-        ...row,
-        supplier: String(row.supplier || "").trim() || "-",
-        warehouseStock: String(row.category || "").trim() || "-",
-        currentQty: qty,
-      };
-    });
-  }, [isKRScope, filteredRows, filteredDateColumns]);
+    return filteredRows.map((row, idx) => ({
+      ...row,
+      supplier: String(row.supplier || "").trim() || "-",
+      warehouseStock: String(row.category || "").trim() || "-",
+      trendRowKey: `${row.country}-${row.itemno}-${row.level}-${row.category}-${row.supplier}-${idx}`,
+    }));
+  }, [isKRScope, filteredRows]);
+
+  const overseasDisplayRows = useMemo(() => {
+    if (!isOverseasScope) return [];
+    return filteredRows.map((row, idx) => ({
+      ...row,
+      trendRowKey: `${row.country}-${row.itemno}-${row.level}-${row.category}-${idx}`,
+    }));
+  }, [isOverseasScope, filteredRows]);
 
   const hasTableData = useMemo(() => {
-    if (isKRScope) return krDisplayRows.length > 0;
+    if (isKRScope) return krDisplayRows.length > 0 && filteredDateColumns.length > 0;
     return filteredRows.length > 0 && filteredDateColumns.length > 0;
   }, [isKRScope, krDisplayRows, filteredRows, filteredDateColumns]);
 
-  const periodLabel = useMemo(() => {
-    if (isKRScope) return "현 재고";
-    const dates = scopedFileEntries
-      .map((entry) => String(entry.date || ""))
-      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
-      .sort();
-    if (!dates.length) return "-";
-    return dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} ~ ${dates[dates.length - 1]}`;
-  }, [scopedFileEntries, isKRScope]);
+  const latestScopeDateLabel = useMemo(() => getLatestDateKey(filteredDateColumns) || "-", [filteredDateColumns]);
+
+  const compareAvailableDates = useMemo(() => {
+    const allDates = new Set(scopeResultCache.KR?.dates || []);
+    for (const code of OVERSEAS_UPLOAD_COUNTRIES) {
+      for (const dateKey of scopeResultCache[`OVERSEAS:${code}`]?.dates || []) {
+        allDates.add(dateKey);
+      }
+    }
+    return Array.from(allDates).sort();
+  }, [scopeResultCache]);
+
+  const compareLatestDateLabel = useMemo(
+    () => getLatestDateKey(compareAvailableDates) || "-",
+    [compareAvailableDates]
+  );
+
+  useEffect(() => {
+    if (!compareAvailableDates.length) {
+      if (compareSelectedDate) setCompareSelectedDate("");
+      return;
+    }
+    if (!compareSelectedDate) {
+      setCompareSelectedDate(getLatestDateKey(compareAvailableDates));
+    }
+  }, [compareAvailableDates, compareSelectedDate]);
+
+  const compareCountryData = useMemo(() => {
+    const allCodes = new Set();
+    const krNameLookup = new Map();
+    const byCountry = {};
+
+    const collectCountry = (countryCode) => {
+      const scopeKey = countryCode === "KR" ? "KR" : `OVERSEAS:${countryCode}`;
+      const cached = scopeResultCache[scopeKey];
+      const rows = (cached?.rows || []).filter((row) => String(row.country || "KR") === countryCode);
+      const dates = cached?.dates || [];
+      const hasDate = Boolean(compareSelectedDate) && dates.includes(compareSelectedDate);
+      const qtyMap = new Map();
+
+      for (const row of rows) {
+        const code = extractBaseProductCode(row.itemno);
+        if (!code) continue;
+        allCodes.add(code);
+        if (countryCode === "KR") {
+          const name = String(row.description || "").trim();
+          if (!krNameLookup.has(code) && name) krNameLookup.set(code, name);
+        }
+        if (!hasDate) continue;
+        qtyMap.set(code, Number(qtyMap.get(code) || 0) + Number(row[compareSelectedDate] || 0));
+      }
+
+      byCountry[countryCode] = { hasDate, qtyMap };
+    };
+
+    collectCountry("KR");
+    OVERSEAS_UPLOAD_COUNTRIES.forEach(collectCountry);
+
+    return {
+      allCodes: Array.from(allCodes).sort(),
+      krNameLookup,
+      byCountry,
+    };
+  }, [scopeResultCache, compareSelectedDate]);
+
+  const compareMissingCountries = useMemo(() => {
+    const missing = [];
+    if (!compareSelectedDate) return missing;
+    if (!compareCountryData.byCountry.KR?.hasDate) missing.push("한국");
+    for (const code of OVERSEAS_UPLOAD_COUNTRIES) {
+      if (!compareCountryData.byCountry[code]?.hasDate) missing.push(countryLabel(code));
+    }
+    return missing;
+  }, [compareCountryData, compareSelectedDate]);
+
+  const compareKrLatestTotal = useMemo(() => {
+    const latestKrDate = getLatestDateKey(scopeResultCache.KR?.dates || []);
+    if (!latestKrDate) return 0;
+    return (scopeResultCache.KR?.rows || [])
+      .filter((row) => String(row.country || "KR") === "KR")
+      .reduce((sum, row) => sum + Number(row[latestKrDate] || 0), 0);
+  }, [scopeResultCache]);
+
+  const compareRows = useMemo(() => {
+    if (!compareSelectedDate || !compareCountryData.allCodes.length) return [];
+    return compareCountryData.allCodes.map((code) => {
+      const row = {
+        상품코드: code,
+        한국상품명: compareCountryData.krNameLookup.get(code) || "",
+        "한국 현 재고": compareCountryData.byCountry.KR?.hasDate
+          ? Number(compareCountryData.byCountry.KR.qtyMap.get(code) || 0)
+          : null,
+      };
+      for (const countryCode of OVERSEAS_UPLOAD_COUNTRIES) {
+        row[countryLabel(countryCode)] = compareCountryData.byCountry[countryCode]?.hasDate
+          ? Number(compareCountryData.byCountry[countryCode].qtyMap.get(code) || 0)
+          : null;
+      }
+      return row;
+    });
+  }, [compareCountryData, compareSelectedDate]);
+
+  const filteredCompareRows = useMemo(() => {
+    if (!isCompareScope) return [];
+    const needle = inventoryKeyword.trim().toLowerCase();
+    if (!needle) return compareRows;
+    return compareRows.filter((row) => {
+      const code = String(row["상품코드"] || "").toLowerCase();
+      const krName = String(row["한국상품명"] || "").toLowerCase();
+      return code.includes(needle) || krName.includes(needle);
+    });
+  }, [compareRows, inventoryKeyword, isCompareScope]);
   const tableMinWidth = useMemo(() => {
     const base = 460;
     const dateCols = filteredDateColumns.length * 88;
@@ -323,7 +516,16 @@ export default function App() {
     }
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [hasTableData, tableMinWidth, filteredRows.length, filteredDateColumns.length, isKRScope, isOverseasScope]);
+  }, [
+    hasTableData,
+    tableMinWidth,
+    filteredRows.length,
+    filteredDateColumns.length,
+    filteredCompareRows.length,
+    isKRScope,
+    isOverseasScope,
+    isCompareScope,
+  ]);
 
   function syncScroll(source) {
     if (syncingScrollRef.current) return;
@@ -354,7 +556,7 @@ export default function App() {
   }
 
   async function aggregateInventory() {
-    if (countryTabMode === "SETTINGS") return;
+    if (countryTabMode === "SETTINGS" || countryTabMode === "COMPARE") return;
     const scopeKey = getScopeKey(countryTabMode, selectedOverseasCountry);
     if (scopeKey === "__NONE__") return;
     setInventoryRequested(true);
@@ -415,15 +617,39 @@ export default function App() {
   }
 
   function exportCurrentView() {
+    if (isCompareScope) {
+      if (!filteredCompareRows.length) return;
+      const rows = filteredCompareRows.map((row) => {
+        const out = {
+          상품코드: row["상품코드"],
+          한국상품명: row["한국상품명"] || "",
+          한국: row["한국 현 재고"] === null ? "-" : Number(row["한국 현 재고"] || 0),
+        };
+        for (const code of OVERSEAS_UPLOAD_COUNTRIES) {
+          const key = countryLabel(code);
+          out[key] = row[key] === null ? "-" : Number(row[key] || 0);
+        }
+        return out;
+      });
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "재고비교");
+      XLSX.writeFile(wb, "inventory_compare_view.xlsx");
+      return;
+    }
     if (isKRScope) {
       if (!krDisplayRows.length) return;
-      const rows = krDisplayRows.map((row) => ({
-        공급처: row.supplier,
-        상품코드: row.itemno,
-        상품명: row.description || "",
-        "창고+정상 재고": row.warehouseStock,
-        정상재고: Number(row.currentQty || 0),
-      }));
+      const rows = krDisplayRows.map((row) => {
+        const out = {
+          공급처: row.supplier,
+          상품코드: row.itemno,
+          상품명: row.description || "",
+        };
+        for (const dt of filteredDateColumns) {
+          out[dt] = Number(row[dt] || 0);
+        }
+        return out;
+      });
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "한국재고");
@@ -438,9 +664,10 @@ export default function App() {
         한국상품명: krNameMap.get(extractBaseProductCode(row.itemno)) || "",
       };
       if (showKrCompare) {
-        out["한국 현 재고"] = Number(krCompareMap.get(`${extractBaseProductCode(row.itemno)}`) || 0);
+        out["한국"] = krCompareMap.size
+          ? Number(krCompareMap.get(`${extractBaseProductCode(row.itemno)}`) || 0)
+          : "-";
       }
-      out["카테고리"] = row.category || "";
       for (const dt of filteredDateColumns) {
         out[dt] = Number(row[dt] || 0);
       }
@@ -469,7 +696,7 @@ export default function App() {
   }
 
   function onClickUpload() {
-    if (countryTabMode === "SETTINGS") return;
+    if (countryTabMode === "SETTINGS" || countryTabMode === "COMPARE") return;
     openFileInput();
   }
 
@@ -483,24 +710,66 @@ export default function App() {
     setScopeErrorCache({});
   }
 
+  const selectedKrTrendRow = useMemo(() => {
+    if (!selectedKrTrendRowKey) return null;
+    return krDisplayRows.find((row) => row.trendRowKey === selectedKrTrendRowKey) || null;
+  }, [krDisplayRows, selectedKrTrendRowKey]);
+
+  const selectedOverseasTrendRow = useMemo(() => {
+    if (!selectedOverseasTrendRowKey) return null;
+    return overseasDisplayRows.find((row) => row.trendRowKey === selectedOverseasTrendRowKey) || null;
+  }, [overseasDisplayRows, selectedOverseasTrendRowKey]);
+
+  const activeTrendRow = selectedKrTrendRow || selectedOverseasTrendRow;
+  const activeTrendData = useMemo(
+    () => buildTrendData(activeTrendRow, filteredDateColumns),
+    [activeTrendRow, filteredDateColumns]
+  );
+
+  useEffect(() => {
+    if (!activeTrendRow) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setSelectedKrTrendRowKey("");
+        setSelectedOverseasTrendRowKey("");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeTrendRow]);
+
   return (
     <div className={`pageSplit ${countryTabMode === "OVERSEAS" ? "split-overseas" : "split-default"}`}>
     <div className="dashboard">
       <div className="headerArea">
         <section className="hero">
-          <h1 className="heroTitle">재고 분석 대시보드</h1>
+          <div className="heroHead">
+            <h1 className="heroTitle">재고 분석 대시보드</h1>
+            <button
+              type="button"
+              className="cautionBtn"
+              onClick={() => setShowCautionModal(true)}
+            >
+              주의사항
+            </button>
+          </div>
           <div className="heroActions">
             <button
               className="primary"
               onClick={onClickUpload}
-              disabled={countryTabMode === "SETTINGS"}
+              disabled={countryTabMode === "SETTINGS" || countryTabMode === "COMPARE"}
             >
               파일 업로드
             </button>
             <button
               className="primary"
               onClick={aggregateInventory}
-              disabled={countryTabMode === "SETTINGS" || inventoryLoading || inventoryFiles.length === 0}
+              disabled={
+                countryTabMode === "SETTINGS" ||
+                countryTabMode === "COMPARE" ||
+                inventoryLoading ||
+                inventoryFiles.length === 0
+              }
             >
               {inventoryLoading ? "통합 중..." : "재고 통합 실행"}
             </button>
@@ -518,19 +787,43 @@ export default function App() {
               const run = async () => {
                 const files = Array.from(e.target.files || []);
                 if (!files.length) return;
+                const existingNames = new Set(fileEntries.map((entry) => String(entry.name || "")));
+                const incomingCounts = files.reduce((acc, file) => {
+                  acc[file.name] = (acc[file.name] || 0) + 1;
+                  return acc;
+                }, {});
+                const duplicateNames = [
+                  ...new Set(
+                    files
+                      .map((file) => file.name)
+                      .filter((name) => existingNames.has(name) || incomingCounts[name] > 1)
+                  ),
+                ];
+                const uploadableFiles = files.filter(
+                  (file, index) =>
+                    !existingNames.has(file.name) &&
+                    files.findIndex((candidate) => candidate.name === file.name) === index
+                );
+                if (duplicateNames.length) {
+                  window.alert(`${duplicateNames.join(", ")}\n같은 파일이 두개입니다.`);
+                }
+                if (!uploadableFiles.length) {
+                  setUploadInputKey((k) => k + 1);
+                  return;
+                }
                 const override =
                   countryTabMode === "OVERSEAS"
                     ? String(selectedOverseasCountry || OVERSEAS_UPLOAD_COUNTRIES[0]).trim().toUpperCase()
                     : "KR";
                 let metadata = [];
                 try {
-                  metadata = await fetchFileMetadata(files, override);
+                  metadata = await fetchFileMetadata(uploadableFiles, override);
                 } catch {
                   metadata = [];
                 }
                 setFileEntries((prev) => [
                   ...prev,
-                  ...files.map((file, idx) => {
+                  ...uploadableFiles.map((file, idx) => {
                     const meta = metadata[idx] || {};
                     return {
                       id: `${Date.now()}-${idx}-${file.name}`,
@@ -568,6 +861,12 @@ export default function App() {
               해외 재고
             </button>
             <button
+              className={`tab ${countryTabMode === "COMPARE" ? "active" : ""}`}
+              onClick={() => setCountryTabMode("COMPARE")}
+            >
+              재고 비교
+            </button>
+            <button
               className={`tab ${countryTabMode === "SETTINGS" ? "active" : ""}`}
               onClick={() => setCountryTabMode("SETTINGS")}
             >
@@ -590,12 +889,16 @@ export default function App() {
           ))}
         </div>
       )}
-      {countryTabMode !== "SETTINGS" && (
+      {countryTabMode !== "SETTINGS" && !isCompareScope && (
         <>
       <section className="kpiRow">
         <div className="kpiCard">
           <div className="kpiLabel">업로드된 파일</div>
           <div className="kpiValue">{inventoryFiles.length}개</div>
+        </div>
+        <div className="kpiCard">
+          <div className="kpiLabel">최신 기준일</div>
+          <div className="kpiValue">{latestScopeDateLabel}</div>
         </div>
         <div className="kpiCard">
           <div className="kpiLabel">분석 상품 수</div>
@@ -605,13 +908,10 @@ export default function App() {
           <div className="kpiLabel">총 재고</div>
           <div className="kpiValue">{toFixed(totalInventory, 0)}</div>
         </div>
-        <div className="kpiCard">
-          <div className="kpiLabel">데이터 기간</div>
-          <div className="kpiValue">{periodLabel}</div>
-        </div>
       </section>
 
       <section className="tableCard">
+        {isKRScope && <div className="krOnlyNotice">정상 재고만 파악합니다.</div>}
         <div className="filterBar">
           <div className="searchWrap">
             <span className="searchIcon" aria-hidden="true">
@@ -625,70 +925,76 @@ export default function App() {
               placeholder="상품코드 또는 상품명 검색..."
             />
           </div>
-          {!isKRScope && (
-            <>
+          <>
+            {!isKRScope && (
               <select value={inventoryLevelFilter} onChange={(e) => setInventoryLevelFilter(e.target.value)}>
                 <option value="1">레벨 1</option>
                 <option value="5">레벨 5</option>
                 <option value="all">전체 레벨</option>
               </select>
-              <div className="datePresetBox">
-                <button
-                  className={inventoryDateRange === "all" ? "preset active" : "preset"}
-                  onClick={() => setDatePreset("all")}
-                >
-                  전체
-                </button>
-                <button
-                  className={inventoryDateRange === "7d" ? "preset active" : "preset"}
-                  onClick={() => setDatePreset("7d")}
-                >
-                  최근 7일
-                </button>
-                <button
-                  className={inventoryDateRange === "30d" ? "preset active" : "preset"}
-                  onClick={() => setDatePreset("30d")}
-                >
-                  최근 30일
-                </button>
-                <button
-                  className={inventoryDateRange === "3m" ? "preset active" : "preset"}
-                  onClick={() => setDatePreset("3m")}
-                >
-                  최근 3개월
-                </button>
-                <button
-                  className={inventoryDateRange === "custom" ? "preset active" : "preset"}
-                  onClick={() => setDatePreset("custom")}
-                >
-                  직접 설정
-                </button>
-              </div>
-              {inventoryDateRange === "custom" && (
-                <>
-                  <input
-                    type="date"
-                    value={inventoryStartDate}
-                    onChange={(e) => setInventoryStartDate(e.target.value)}
-                  />
-                  <input
-                    type="date"
-                    value={inventoryEndDate}
-                    onChange={(e) => setInventoryEndDate(e.target.value)}
-                  />
-                </>
-              )}
-              {isOverseasScope && (
-                <button
-                  type="button"
-                  className={`ghost compareToggle ${showKrCompare ? "on" : ""}`}
-                  onClick={() => setShowKrCompare((v) => !v)}
-                >
-                  한국 현 재고 비교 {showKrCompare ? "ON" : "OFF"}
-                </button>
-              )}
-            </>
-          )}
+            )}
+            <div className="datePresetBox">
+              <button
+                className={inventoryDateRange === "all" ? "preset active" : "preset"}
+                onClick={() => setDatePreset("all")}
+              >
+                전체
+              </button>
+              <button
+                className={inventoryDateRange === "7d" ? "preset active" : "preset"}
+                onClick={() => setDatePreset("7d")}
+              >
+                최근 7일
+              </button>
+              <button
+                className={inventoryDateRange === "30d" ? "preset active" : "preset"}
+                onClick={() => setDatePreset("30d")}
+              >
+                최근 30일
+              </button>
+              <button
+                className={inventoryDateRange === "3m" ? "preset active" : "preset"}
+                onClick={() => setDatePreset("3m")}
+              >
+                최근 3개월
+              </button>
+              <button
+                className={inventoryDateRange === "custom" ? "preset active" : "preset"}
+                onClick={() => setDatePreset("custom")}
+              >
+                직접 설정
+              </button>
+            </div>
+            {inventoryDateRange === "custom" && (
+              <>
+                <input
+                  type="date"
+                  value={inventoryStartDate}
+                  onChange={(e) => setInventoryStartDate(e.target.value)}
+                />
+                <input
+                  type="date"
+                  value={inventoryEndDate}
+                  onChange={(e) => setInventoryEndDate(e.target.value)}
+                />
+              </>
+            )}
+            {isOverseasScope && (
+              <button
+                type="button"
+                className={`ghost compareToggle ${showKrCompare ? "on" : ""}`}
+                onClick={() => {
+                  if (!showKrCompare && !hasTodayKrSnapshot) {
+                    window.alert("오늘 일자 데이터가 존재하지 않아 한국 현 재고 비교를 할 수 없습니다.");
+                    return;
+                  }
+                  setShowKrCompare((v) => !v);
+                }}
+              >
+                한국 현 재고 비교 {showKrCompare ? "ON" : "OFF"}
+              </button>
+            )}
+          </>
           <button
             className="ghost resetBtn"
             onClick={() => {
@@ -707,32 +1013,30 @@ export default function App() {
 
         {hasTableData && (
           <>
-            {!isKRScope && (
-              <div
-                ref={topScrollRef}
-                className="tableTopScroll"
-                onScroll={() => syncScroll("top")}
-              >
-                <div style={{ width: topScrollWidth || tableMinWidth }} />
-              </div>
-            )}
+            <div
+              ref={topScrollRef}
+              className="tableTopScroll"
+              onScroll={() => syncScroll("top")}
+            >
+              <div style={{ width: topScrollWidth || tableMinWidth }} />
+            </div>
             <div
               ref={tableScrollRef}
               className="tableWrap"
               onScroll={() => syncScroll("table")}
             >
-            <table style={{ minWidth: isKRScope ? 860 : tableMinWidth }}>
+            <table style={{ minWidth: isKRScope ? Math.max(980, 420 + filteredDateColumns.length * 88) : tableMinWidth }}>
               <thead>
                 <tr>
                   {isKRScope && <th>공급처</th>}
                   <th>상품코드</th>
                   <th>상품명</th>
                   {isOverseasScope && <th>한국상품명</th>}
+                  {(isKRScope || isOverseasScope) && <th className="trendActionCol"></th>}
                   {isOverseasScope && showKrCompare && <th className="krCompareCol">한국 현 재고</th>}
-                  <th>{isKRScope ? "창고+정상 재고" : "카테고리"}</th>
-                  {isKRScope ? (
-                    <th>정상재고</th>
-                  ) : (
+                  {isKRScope
+                    ? filteredDateColumns.map((dt) => <th key={dt}>{renderDateHeader(dt)}</th>)
+                    : (
                     filteredDateColumns.map((dt) => (
                       <th key={dt}>{renderDateHeader(dt)}</th>
                     ))
@@ -740,28 +1044,45 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {(isKRScope ? krDisplayRows : filteredRows).map((row, idx) => (
-                  <tr key={`${row.country}-${row.itemno}-${row.level}-${row.category}-${idx}`}>
+                {(isKRScope ? krDisplayRows : isOverseasScope ? overseasDisplayRows : filteredRows).map((row, idx) => (
+                  <tr key={row.trendRowKey || `${row.country}-${row.itemno}-${row.level}-${row.category}-${idx}`}>
                     {isKRScope && <td>{row.supplier}</td>}
                     <td>{isOverseasScope ? extractBaseProductCode(row.itemno) : row.itemno}</td>
                     <td>{row.description || "(상품명 없음)"}</td>
                     {isOverseasScope && (
                       <td>{krNameMap.get(extractBaseProductCode(row.itemno)) || "-"}</td>
                     )}
-                    {isOverseasScope && showKrCompare && (
-                      <td className="krCompareCol">
-                        {toFixed(
-                          krCompareMap.get(
-                            `${extractBaseProductCode(row.itemno)}`
-                          ) || 0,
-                          0
-                        )}
+                    {(isKRScope || isOverseasScope) && (
+                      <td className="trendActionCell">
+                        <button
+                          type="button"
+                          className="ghost compareToggle on trendActionBtn"
+                          onClick={() => {
+                            if (isKRScope) setSelectedKrTrendRowKey(row.trendRowKey);
+                            if (isOverseasScope) setSelectedOverseasTrendRowKey(row.trendRowKey);
+                          }}
+                        >
+                          재고 변화 추이
+                        </button>
                       </td>
                     )}
-                    <td>{isKRScope ? row.warehouseStock : row.category}</td>
-                    {isKRScope ? (
-                      <td>{toFixed(row.currentQty, 0)}</td>
-                    ) : (
+                    {isOverseasScope && showKrCompare && (
+                      <td className="krCompareCol">
+                        {krCompareMap.size
+                          ? toFixed(
+                              krCompareMap.get(
+                                `${extractBaseProductCode(row.itemno)}`
+                              ) || 0,
+                              0
+                            )
+                          : "-"}
+                      </td>
+                    )}
+                    {isKRScope
+                      ? filteredDateColumns.map((dt) => (
+                          <td key={`${row.itemno}-${dt}`}>{toFixed(row[dt], 0)}</td>
+                        ))
+                      : (
                       filteredDateColumns.map((dt) => (
                         <td key={`${row.itemno}-${dt}`}>{toFixed(row[dt], 0)}</td>
                       ))
@@ -789,6 +1110,322 @@ export default function App() {
           )}
       </section>
       </>
+      )}
+
+      {isCompareScope && (
+        <>
+          <section className="kpiRow">
+            <div className="kpiCard">
+              <div className="kpiLabel">비교 가능 국가</div>
+              <div className="kpiValue">{OVERSEAS_UPLOAD_COUNTRIES.length}개</div>
+            </div>
+            <div className="kpiCard">
+              <div className="kpiLabel">최신 기준일</div>
+              <div className="kpiValue">{compareLatestDateLabel}</div>
+            </div>
+            <div className="kpiCard">
+              <div className="kpiLabel">비교 상품 수</div>
+              <div className="kpiValue">{filteredCompareRows.length}개</div>
+            </div>
+            <div className="kpiCard">
+              <div className="kpiLabel">한국 총 재고</div>
+              <div className="kpiValue">{toFixed(compareKrLatestTotal, 0)}</div>
+            </div>
+          </section>
+
+          <section className="tableCard">
+            <div className="filterBar">
+              <div className="searchWrap">
+                <span className="searchIcon" aria-hidden="true">
+                  🔍
+                </span>
+                <input
+                  className="searchInput"
+                  type="text"
+                  value={inventoryKeyword}
+                  onChange={(e) => setInventoryKeyword(e.target.value)}
+                  placeholder="상품코드 또는 한국상품명 검색..."
+                />
+              </div>
+              <input
+                type="date"
+                value={compareSelectedDate}
+                onChange={(e) => setCompareSelectedDate(e.target.value)}
+              />
+              <button
+                className="ghost resetBtn"
+                onClick={() => {
+                  setInventoryKeyword("");
+                  setCompareSelectedDate(getLatestDateKey(compareAvailableDates));
+                }}
+              >
+                필터 초기화
+              </button>
+            </div>
+
+            {compareSelectedDate && compareMissingCountries.length > 0 && (
+              <pre className="error">
+                선택한 기준일 `{compareSelectedDate}` 에 데이터가 없는 국가: {compareMissingCountries.join(", ")}
+              </pre>
+            )}
+
+            {!filteredCompareRows.length ? (
+              <pre className="error">
+                비교할 데이터가 없습니다.
+                {"\n"}- 먼저 한국 재고 또는 해외 재고 탭에서 파일 업로드 후 재고 통합 실행을 해주세요.
+              </pre>
+            ) : (
+              <>
+                <div
+                  ref={topScrollRef}
+                  className="tableTopScroll"
+                  onScroll={() => syncScroll("top")}
+                >
+                  <div style={{ width: topScrollWidth || 980 }} />
+                </div>
+              <div
+                ref={tableScrollRef}
+                className="tableWrap"
+                onScroll={() => syncScroll("table")}
+              >
+                <table className="compareTable" style={{ minWidth: 980 }}>
+                  <thead>
+                    <tr>
+                      <th className="compareCodeCol">상품코드</th>
+                      <th className="compareNameCol">한국상품명</th>
+                      <th className="compareCountryCol krCompareCol">한국</th>
+                      {OVERSEAS_UPLOAD_COUNTRIES.map((code) => (
+                        <th key={code} className="compareCountryCol">{countryLabel(code)}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredCompareRows.map((row) => (
+                      <tr key={`compare-${row["상품코드"]}`}>
+                        <td className="compareCodeCol">{row["상품코드"]}</td>
+                        <td className="compareNameCol">{row["한국상품명"] || "-"}</td>
+                        <td className="compareCountryCol krCompareCol">
+                          {row["한국 현 재고"] === null ? "-" : toFixed(row["한국 현 재고"], 0)}
+                        </td>
+                        {OVERSEAS_UPLOAD_COUNTRIES.map((code) => (
+                          <td key={`${row["상품코드"]}-${code}`} className="compareCountryCol">
+                            {row[countryLabel(code)] === null
+                              ? "-"
+                              : toFixed(row[countryLabel(code)], 0)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              </>
+            )}
+          </section>
+        </>
+      )}
+
+      {activeTrendRow && activeTrendData && (
+        <div
+          className="trendModalBackdrop"
+          onClick={() => {
+            setSelectedKrTrendRowKey("");
+            setSelectedOverseasTrendRowKey("");
+          }}
+        >
+          <div className="trendModal" onClick={(e) => e.stopPropagation()}>
+            <div className="trendModalHeader">
+              <div>
+                <div className="trendModalTitle">재고 변화 추이</div>
+                <div className="trendModalSubtitle">
+                  {activeTrendRow.itemno} · {activeTrendRow.description || "(상품명 없음)"}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="ghost trendCloseBtn"
+                onClick={() => {
+                  setSelectedKrTrendRowKey("");
+                  setSelectedOverseasTrendRowKey("");
+                }}
+              >
+                닫기
+              </button>
+            </div>
+
+            <div className="trendSummaryGrid">
+              <div className="trendSummaryCard">
+                <div className="trendSummaryLabel">최신 재고</div>
+                <div className="trendSummaryValue">{toFixed(activeTrendData.latestQty, 0)}</div>
+              </div>
+              <div className="trendSummaryCard">
+                <div className="trendSummaryLabel">직전 데이터 대비 증감</div>
+                <div
+                  className={`trendSummaryValue ${
+                    Number(activeTrendData.latestDelta || 0) > 0
+                      ? "up"
+                      : Number(activeTrendData.latestDelta || 0) < 0
+                        ? "down"
+                        : ""
+                  }`}
+                >
+                  {toSigned(activeTrendData.latestDelta, 0)}
+                </div>
+              </div>
+              <div className="trendSummaryCard">
+                <div className="trendSummaryLabel">직전 데이터 대비 증감률</div>
+                <div
+                  className={`trendSummaryValue ${
+                    Number(activeTrendData.latestDeltaRate || 0) > 0
+                      ? "up"
+                      : Number(activeTrendData.latestDeltaRate || 0) < 0
+                        ? "down"
+                        : ""
+                  }`}
+                >
+                  {toPercent(activeTrendData.latestDeltaRate, 1)}
+                </div>
+              </div>
+              <div className="trendSummaryCard">
+                <div className="trendSummaryLabel">최대-최소 변동폭</div>
+                <div className="trendSummaryValue">
+                  {toSigned(activeTrendData.highestQty - activeTrendData.lowestQty, 0)}
+                </div>
+              </div>
+            </div>
+
+            <div className="trendChartCard">
+              <div className="trendSectionTitle">날짜별 재고 변화</div>
+              <svg
+                viewBox={`0 0 ${activeTrendData.chartWidth} ${activeTrendData.chartHeight}`}
+                className="trendChart"
+                role="img"
+                aria-label="재고 변화 추이 차트"
+              >
+                <line
+                  x1="30"
+                  y1={activeTrendData.chartHeight - 20}
+                  x2={activeTrendData.chartWidth - 30}
+                  y2={activeTrendData.chartHeight - 20}
+                  className="trendAxis"
+                />
+                <line x1="30" y1="20" x2="30" y2={activeTrendData.chartHeight - 20} className="trendAxis" />
+                {activeTrendData.points.length > 1 && (
+                  <polyline
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    points={activeTrendData.points.map((point) => `${point.x},${point.y}`).join(" ")}
+                    className="trendLine"
+                  />
+                )}
+                {activeTrendData.points.map((point, pointIdx) => (
+                  <g key={point.dateKey}>
+                    <title>{`${point.dateKey} | 재고 ${toFixed(point.qty, 0)}`}</title>
+                    <circle cx={point.x} cy={point.y} r="5" className="trendDot" />
+                    {activeTrendData.showPointValueLabels && (
+                      <text x={point.x} y={point.y - 12} textAnchor="middle" className="trendDotLabel">
+                        {toFixed(point.qty, 0)}
+                      </text>
+                    )}
+                    {pointIdx % activeTrendData.xLabelStep === 0 && (
+                      <text
+                        x={point.x}
+                        y={activeTrendData.chartHeight - 2}
+                        textAnchor="middle"
+                        className="trendXAxisLabel"
+                      >
+                        {point.dateKey.slice(5)}
+                      </text>
+                    )}
+                  </g>
+                ))}
+              </svg>
+            </div>
+
+            <div className="trendTableCard">
+              <div className="trendSectionTitle">날짜별 변화 상세</div>
+              <div className="trendTableWrap">
+                <table className="trendDetailTable">
+                  <thead>
+                    <tr>
+                      <th>기준일</th>
+                      <th>재고</th>
+                      <th>직전 데이터 대비</th>
+                      <th>증감률</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeTrendData.series.map((point) => (
+                      <tr key={`trend-${point.dateKey}`}>
+                        <td>{point.dateKey}</td>
+                        <td>{toFixed(point.qty, 0)}</td>
+                        <td>{toSigned(point.delta, 0)}</td>
+                        <td>{toPercent(point.deltaRate, 1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCautionModal && (
+        <div className="cautionModalBackdrop" onClick={() => setShowCautionModal(false)}>
+          <div className="cautionModal" onClick={(e) => e.stopPropagation()}>
+            <div className="cautionModalHeader">
+              <div>
+                <div className="cautionModalTitle">주의사항</div>
+                <div className="cautionModalSubtitle">데이터 형식이나 날짜 기준이 다르면 재고 파악이 정확하지 않을 수 있습니다.</div>
+              </div>
+              <button
+                type="button"
+                className="ghost cautionCloseBtn"
+                onClick={() => setShowCautionModal(false)}
+              >
+                닫기
+              </button>
+            </div>
+
+            <div className="cautionSection">
+              <div className="cautionSectionTitle">공통</div>
+              <ul className="cautionList">
+                <li>같은 이름의 파일은 중복 업로드되지 않습니다.</li>
+                <li>필수 컬럼명이나 날짜 형식이 맞지 않으면 재고가 집계되지 않을 수 있습니다.</li>
+                <li>재고 비교 탭은 선택한 동일 기준일의 데이터만 비교하며, 없는 값은 대체하지 않습니다.</li>
+              </ul>
+            </div>
+
+            <div className="cautionSection">
+              <div className="cautionSectionTitle">한국 재고</div>
+              <ul className="cautionList">
+                <li>날짜는 파일명에서 읽습니다. 파일명에 `YYYYMMDD` 8자리 날짜가 포함되어야 합니다.</li>
+                <li>재고는 `정상재고` 컬럼 기준으로만 파악합니다.</li>
+                <li>한국 탭은 현재고 스냅샷 데이터를 날짜별로 비교하는 방식입니다.</li>
+              </ul>
+            </div>
+
+            <div className="cautionSection">
+              <div className="cautionSectionTitle">해외 재고</div>
+              <ul className="cautionList">
+                <li>날짜는 파일명 기준이 아니라 파일 내부의 `Date` 컬럼에서 읽습니다.</li>
+                <li>재고는 `Quantity` 컬럼 기준으로 집계합니다.</li>
+                <li>`한국 현 재고 비교`는 UTC 오늘 날짜의 한국 데이터가 있을 때만 표시됩니다.</li>
+              </ul>
+            </div>
+
+            <div className="cautionSection">
+              <div className="cautionSectionTitle">재고 비교</div>
+              <ul className="cautionList">
+                <li>선택한 날짜에 특정 국가 데이터가 없으면 `-`로 표시됩니다.</li>
+                <li>전날 데이터나 최신 데이터를 임의로 끌어와 대체하지 않습니다.</li>
+                <li>의미 있는 비교를 위해 가능한 한 같은 기준일의 국가별 파일을 맞춰 업로드해주세요.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       )}
 
       {countryTabMode === "SETTINGS" && (
