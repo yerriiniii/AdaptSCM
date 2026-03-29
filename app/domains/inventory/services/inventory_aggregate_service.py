@@ -141,21 +141,18 @@ def _normalize_level_value(value: object) -> str | None:
     return normalized or "0"
 
 
-def _read_inventory_file(upload_file: UploadFile) -> pd.DataFrame:
-    upload_file.file.seek(0)
-    raw = upload_file.file.read()
-    upload_file.file.seek(0)
+def _read_inventory_bytes(filename: str, raw: bytes) -> pd.DataFrame:
     if not raw:
-        raise HTTPException(status_code=400, detail=f"{upload_file.filename}: 파일이 비어 있습니다.")
+        raise HTTPException(status_code=400, detail=f"{filename}: 파일이 비어 있습니다.")
 
     try:
-        if upload_file.filename.lower().endswith(".csv"):
+        if filename.lower().endswith(".csv"):
             df = pd.read_csv(io.BytesIO(raw))
         else:
             df = pd.read_excel(io.BytesIO(raw), sheet_name=0)
     except Exception as exc:
         raise HTTPException(
-            status_code=400, detail=f"{upload_file.filename}: 파일 파싱 실패 ({exc})"
+            status_code=400, detail=f"{filename}: 파일 파싱 실패 ({exc})"
         ) from exc
 
     df = _standardize_columns(df)
@@ -164,7 +161,7 @@ def _read_inventory_file(upload_file: UploadFile) -> pd.DataFrame:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"{upload_file.filename}: 필수 컬럼 누락 {missing}. "
+                f"{filename}: 필수 컬럼 누락 {missing}. "
                 "필요 컬럼: itemno(또는 상품코드), quantity(또는 정상재고)"
             ),
         )
@@ -193,6 +190,13 @@ def _read_inventory_file(upload_file: UploadFile) -> pd.DataFrame:
         .replace("", "미분류")
     )
     return df
+
+
+def _read_inventory_file(upload_file: UploadFile) -> pd.DataFrame:
+    upload_file.file.seek(0)
+    raw = upload_file.file.read()
+    upload_file.file.seek(0)
+    return _read_inventory_bytes(upload_file.filename, raw)
 
 
 def _parse_date_series(series: pd.Series) -> pd.Series:

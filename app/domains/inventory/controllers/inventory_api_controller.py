@@ -1,16 +1,23 @@
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Query, UploadFile
 from sqlalchemy.orm import Session
 
-from app.domains.inventory.dto.inventory_api_dto import InventoryAggregateResponse
+from app.domains.inventory.dto.inventory_api_dto import (
+    InventoryAggregateResponse,
+    InventoryCompleteUploadRequest,
+    InventoryDirectUploadPreparedResponse,
+    InventoryDirectUploadRequest,
+)
 from app.domains.inventory.services.inventory_aggregate_service import (
     aggregate_inventory_files,
     inspect_inventory_files,
 )
 from app.domains.inventory.services.inventory_persistence_service import (
+    complete_inventory_direct_uploads,
     delete_inventory_file,
     delete_inventory_files,
     get_inventory_view,
     list_inventory_files,
+    prepare_inventory_direct_uploads,
     persist_inventory_uploads,
 )
 from app.shared.db import get_db_session
@@ -71,6 +78,22 @@ def inventory_file_metadata(
 ) -> dict:
     items = inspect_inventory_files(files=files, file_countries=file_countries)
     return {"files": items}
+
+
+@router.post("/upload-url", response_model=InventoryDirectUploadPreparedResponse)
+def inventory_upload_url(
+    payload: InventoryDirectUploadRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> InventoryDirectUploadPreparedResponse:
+    return InventoryDirectUploadPreparedResponse(files=prepare_inventory_direct_uploads([item.model_dump() for item in payload.files], db=db))
+
+
+@router.post("/complete-upload")
+def inventory_complete_upload(
+    payload: InventoryCompleteUploadRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    return {"files": complete_inventory_direct_uploads(db=db, files=[item.model_dump() for item in payload.files])}
 
 
 @router.get("/files")

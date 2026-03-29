@@ -19,3 +19,16 @@ def get_s3_client():
         aws_secret_access_key=settings.aws_secret_access_key,
         region_name=settings.aws_region,
     )
+
+
+def create_presigned_upload_url(*, bucket: str, key: str, content_type: str | None = None, expires_in: int = 3600) -> str:
+    client = get_s3_client()
+    params = {"Bucket": bucket, "Key": key}
+    if content_type:
+        params["ContentType"] = content_type
+    return client.generate_presigned_url(
+        "put_object",
+        Params=params,
+        ExpiresIn=expires_in,
+        HttpMethod="PUT",
+    )

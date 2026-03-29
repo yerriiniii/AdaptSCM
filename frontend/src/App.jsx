@@ -46,6 +46,77 @@ function detectDate(name = "") {
   return "";
 }
 
+function normalizeHeaderKey(value = "") {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[_\-()]/g, "");
+}
+
+function parseDateValue(value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const date = XLSX.SSF.parse_date_code(value);
+    if (date?.y && date?.m && date?.d) {
+      return `${date.y}-${String(date.m).padStart(2, "0")}-${String(date.d).padStart(2, "0")}`;
+    }
+  }
+  const raw = String(value).trim().replace(/\.0$/, "");
+  const digits = raw.replace(/\D/g, "");
+  if (/^\d{8}$/.test(digits)) {
+    return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
+}
+
+function mostFrequent(items = []) {
+  const counts = new Map();
+  for (const item of items) {
+    if (!item) continue;
+    counts.set(item, (counts.get(item) || 0) + 1);
+  }
+  let best = "";
+  let bestCount = 0;
+  counts.forEach((count, item) => {
+    if (count > bestCount) {
+      best = item;
+      bestCount = count;
+    }
+  });
+  return best;
+}
+
+async function inferFileMetadata(file, overrideCountry = "") {
+  const country = overrideCountry || detectCountry(file.name);
+  const filenameDate = detectDate(file.name);
+  if (country === "KR" && filenameDate) {
+    return { country, date: filenameDate };
+  }
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const firstSheetName = workbook.SheetNames?.[0];
+    const sheet = firstSheetName ? workbook.Sheets[firstSheetName] : null;
+    if (!sheet) return { country, date: filenameDate };
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
+    const header = Array.isArray(rows[0]) ? rows[0] : [];
+    const normalizedHeader = header.map((cell) => normalizeHeaderKey(cell));
+    const dateIndex = normalizedHeader.findIndex((key) => ["date", "일자", "날짜"].map(normalizeHeaderKey).includes(key));
+    if (dateIndex === -1) return { country, date: filenameDate };
+    const parsedDates = rows
+      .slice(1)
+      .map((row) => parseDateValue(Array.isArray(row) ? row[dateIndex] : ""))
+      .filter(Boolean);
+    return { country, date: mostFrequent(parsedDates) || filenameDate };
+  } catch {
+    return { country, date: filenameDate };
+  }
+}
+
 function formatFileSize(bytes = 0) {
   const kb = Math.max(1, Math.round(bytes / 1024));
   return `${kb}KB`;
@@ -590,39 +661,16 @@ export default function App() {
         await hydratePersistedState();
         return;
       }
-      const formData = new FormData();
-      requestEntries.forEach((entry) => {
-        formData.append("files", entry.file);
-        formData.append("file_dates", entry.date || "");
-        formData.append("file_countries", entry.country || "");
-        formData.append("file_client_ids", entry.id || "");
-        formData.append("file_db_ids", entry.dbFileId || "");
-      });
-      formData.append("level_filter", "all");
-      const res = await axios.post(`${API_BASE}/api/inventory/aggregate`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      const persistedFiles = Array.isArray(res.data.files) ? res.data.files : [];
-      if (persistedFiles.length) {
-        const byClientId = new Map(
-          persistedFiles
-            .filter((item) => item?.client_id)
-            .map((item) => [String(item.client_id), item])
-        );
-        setFileEntries((prev) =>
-          prev.map((entry) => {
-            const persisted = byClientId.get(String(entry.id));
-            if (!persisted) return entry;
-            return {
-              ...entry,
-              dbFileId: persisted.file_id || entry.dbFileId,
-              country: persisted.country || entry.country,
-              date: persisted.date || entry.date,
-              size: persisted.size || entry.size,
-            };
-          })
-        );
+      const uploadPlans = await requestDirectUploadPlans(requestEntries);
+      const planByClientId = new Map(uploadPlans.map((plan) => [String(plan.client_id), plan]));
+      for (const entry of requestEntries) {
+        const plan = planByClientId.get(String(entry.id));
+        if (!plan) continue;
+        if (!plan.file_id && plan.upload_url) {
+          await uploadFileToS3(plan, entry.file);
+        }
       }
+      await completeDirectUploads(uploadPlans);
       await hydratePersistedState();
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -711,6 +759,46 @@ export default function App() {
       headers: { "Content-Type": "multipart/form-data" },
     });
     return res?.data?.files || [];
+  }
+
+  async function requestDirectUploadPlans(entries) {
+    const payload = {
+      files: entries.map((entry) => ({
+        client_id: entry.id,
+        original_name: entry.name,
+        country_code: entry.country,
+        date: entry.date || "",
+        content_type: entry.file?.type || "application/octet-stream",
+        size: entry.size || 0,
+      })),
+    };
+    const res = await axios.post(`${API_BASE}/api/inventory/upload-url`, payload);
+    return Array.isArray(res?.data?.files) ? res.data.files : [];
+  }
+
+  async function uploadFileToS3(plan, file) {
+    await axios.put(plan.upload_url, file, {
+      headers: {
+        "Content-Type": file?.type || "application/octet-stream",
+      },
+    });
+  }
+
+  async function completeDirectUploads(plans) {
+    const payload = {
+      files: plans.map((plan) => ({
+        client_id: plan.client_id,
+        original_name: plan.original_name,
+        country_code: plan.country_code,
+        date: plan.date || "",
+        stored_name: plan.stored_name,
+        s3_key: plan.s3_key,
+        size: plan.size || 0,
+        content_type: plan.content_type || "application/octet-stream",
+        file_id: plan.file_id || "",
+      })),
+    };
+    return axios.post(`${API_BASE}/api/inventory/complete-upload`, payload);
   }
 
   function onClickUpload() {
@@ -945,12 +1033,9 @@ export default function App() {
                   countryTabMode === "OVERSEAS"
                     ? String(selectedOverseasCountry || OVERSEAS_UPLOAD_COUNTRIES[0]).trim().toUpperCase()
                     : "KR";
-                let metadata = [];
-                try {
-                  metadata = await fetchFileMetadata(uploadableFiles, override);
-                } catch {
-                  metadata = [];
-                }
+                const metadata = await Promise.all(
+                  uploadableFiles.map((file) => inferFileMetadata(file, override))
+                );
                 setFileEntries((prev) => [
                   ...prev,
                   ...uploadableFiles.map((file, idx) => {
