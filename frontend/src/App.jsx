@@ -858,11 +858,16 @@ export default function App() {
     setScopeResultCache(nextCache);
     setScopeErrorCache({});
     setFileEntries((prev) => {
+      const persistedKeys = new Set(
+        persistedFiles.map((entry) => `${entry.name}::${entry.country || ""}::${entry.date || ""}`)
+      );
       const localOnlyEntries = preserveLocalOnly
         ? prev.filter((entry) => {
             if (entry.dbFileId || !entry.file) return false;
             if (excludeEntryId && entry.id === excludeEntryId) return false;
             if (excludeCountry && String(entry.country || "").toUpperCase() === excludeCountry) return false;
+            const entryKey = `${entry.name}::${entry.country || ""}::${entry.date || ""}`;
+            if (persistedKeys.has(entryKey)) return false;
             return true;
           })
         : [];
