@@ -5,3 +5,7 @@ openpyxl
 fastapi
 uvicorn
 python-multipart
+sqlalchemy
+psycopg[binary]
+boto3
+python-dotenv

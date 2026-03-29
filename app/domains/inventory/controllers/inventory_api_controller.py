@@ -1,10 +1,19 @@
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from sqlalchemy.orm import Session
 
 from app.domains.inventory.dto.inventory_api_dto import InventoryAggregateResponse
 from app.domains.inventory.services.inventory_aggregate_service import (
     aggregate_inventory_files,
     inspect_inventory_files,
 )
+from app.domains.inventory.services.inventory_persistence_service import (
+    delete_inventory_file,
+    delete_inventory_files,
+    get_inventory_view,
+    list_inventory_files,
+    persist_inventory_uploads,
+)
+from app.shared.db import get_db_session
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 
@@ -19,6 +28,9 @@ def aggregate_inventory(
     end_date: str | None = Form(default=None),
     date_range: str | None = Form(default=None),
     level_filter: str | None = Form(default="1"),
+    file_client_ids: list[str] | None = Form(default=None),
+    file_db_ids: list[str] | None = Form(default=None),
+    db: Session = Depends(get_db_session),
 ) -> InventoryAggregateResponse:
     rows, dates = aggregate_inventory_files(
         files=files,
@@ -30,12 +42,26 @@ def aggregate_inventory(
         file_dates=file_dates,
         file_countries=file_countries,
     )
+    persisted_files = persist_inventory_uploads(
+        db=db,
+        files=files,
+        file_dates=file_dates,
+        file_countries=file_countries,
+        file_client_ids=file_client_ids,
+        file_db_ids=file_db_ids,
+    )
     countries = sorted({str(row.get("country", "KR")) for row in rows})
     summary = {
         "item_count": len(rows),
         "date_count": len(dates),
     }
-    return InventoryAggregateResponse(summary=summary, countries=countries, dates=dates, rows=rows)
+    return InventoryAggregateResponse(
+        summary=summary,
+        countries=countries,
+        dates=dates,
+        rows=rows,
+        files=persisted_files,
+    )
 
 
 @router.post("/file-metadata")
@@ -45,4 +71,29 @@ def inventory_file_metadata(
 ) -> dict:
     items = inspect_inventory_files(files=files, file_countries=file_countries)
     return {"files": items}
+
+
+@router.get("/files")
+def inventory_files(db: Session = Depends(get_db_session)) -> dict:
+    return {"files": list_inventory_files(db)}
+
+
+@router.get("/view", response_model=InventoryAggregateResponse)
+def inventory_view(country_code: str = Query(...), db: Session = Depends(get_db_session)) -> InventoryAggregateResponse:
+    payload = get_inventory_view(db=db, country_code=country_code)
+    return InventoryAggregateResponse(**payload)
+
+
+@router.delete("/files/{file_id}")
+def remove_inventory_file(file_id: str, db: Session = Depends(get_db_session)) -> dict:
+    delete_inventory_file(db=db, file_id=file_id)
+    return {"ok": True}
+
+
+@router.delete("/files")
+def remove_inventory_files(
+    country_code: str | None = Query(default=None),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    return delete_inventory_files(db=db, country_code=country_code)
 

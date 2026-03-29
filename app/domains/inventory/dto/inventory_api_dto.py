@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class InventoryAggregateResponse(BaseModel):
@@ -6,4 +6,5 @@ class InventoryAggregateResponse(BaseModel):
     countries: list[str]
     dates: list[str]
     rows: list[dict]
+    files: list[dict] = Field(default_factory=list)
 

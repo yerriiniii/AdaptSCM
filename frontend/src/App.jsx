@@ -147,6 +147,7 @@ export default function App() {
   const [selectedOverseasTrendRowKey, setSelectedOverseasTrendRowKey] = useState("");
   const [compareSelectedDate, setCompareSelectedDate] = useState("");
   const [showCautionModal, setShowCautionModal] = useState(false);
+  const [settingsMutating, setSettingsMutating] = useState(false);
   const [topScrollWidth, setTopScrollWidth] = useState(0);
   const topScrollRef = useRef(null);
   const tableScrollRef = useRef(null);
@@ -202,6 +203,18 @@ export default function App() {
     setInventoryRequested(false);
     setInventoryError(scopeErrorCache[currentScopeKey] || "");
   }, [currentScopeKey, scopeResultCache, scopeErrorCache]);
+
+  useEffect(() => {
+    const run = async () => {
+      try {
+        await hydratePersistedState();
+      } catch (err) {
+        const detail = err?.response?.data?.detail;
+        setInventoryError(Array.isArray(detail) ? detail.join("\n") : detail || "저장된 데이터를 불러오는 중 오류");
+      }
+    };
+    run();
+  }, []);
 
   function setDatePreset(nextRange) {
     setInventoryDateRange(nextRange);
@@ -341,7 +354,7 @@ export default function App() {
 
   const krNameMap = useMemo(() => {
     const map = new Map();
-    for (const row of rawInventoryRows) {
+    for (const row of scopeResultCache.KR?.rows || []) {
       if (String(row.country || "KR") !== "KR") continue;
       const code = extractBaseProductCode(row.itemno);
       if (!code) continue;
@@ -349,7 +362,7 @@ export default function App() {
       if (!map.has(code) && name) map.set(code, name);
     }
     return map;
-  }, [rawInventoryRows]);
+  }, [scopeResultCache]);
 
   const totalInventory = useMemo(() => {
     const latestDate = getLatestDateKey(filteredDateColumns);
@@ -572,40 +585,45 @@ export default function App() {
     }
     setInventoryLoading(true);
     try {
+      const requestEntries = scopedFileEntries.filter((entry) => entry.file && !entry.dbFileId);
+      if (!requestEntries.length) {
+        await hydratePersistedState();
+        return;
+      }
       const formData = new FormData();
-      const requestEntries = (() => {
-        if (!isOverseasScope) return scopedFileEntries;
-        const krEntries = fileEntries.filter((entry) => String(entry.country || "KR") === "KR");
-        const merged = new Map();
-        [...scopedFileEntries, ...krEntries].forEach((entry) => merged.set(entry.id, entry));
-        return Array.from(merged.values());
-      })();
       requestEntries.forEach((entry) => {
         formData.append("files", entry.file);
         formData.append("file_dates", entry.date || "");
         formData.append("file_countries", entry.country || "");
+        formData.append("file_client_ids", entry.id || "");
+        formData.append("file_db_ids", entry.dbFileId || "");
       });
       formData.append("level_filter", "all");
       const res = await axios.post(`${API_BASE}/api/inventory/aggregate`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setRawInventoryRows(res.data.rows || []);
-      setRawInventoryDates(res.data.dates || []);
-      setInventorySummary(res.data.summary || { item_count: 0, date_count: 0 });
-      const countries = res.data.countries || [];
-      setAvailableCountries(countries);
-      const overseas = countries.filter((code) => code !== "KR");
-      setSelectedOverseasCountry((prev) => prev || overseas[0] || "");
-      setScopeResultCache((prev) => ({
-        ...prev,
-        [scopeKey]: {
-          rows: res.data.rows || [],
-          dates: res.data.dates || [],
-          summary: res.data.summary || { item_count: 0, date_count: 0 },
-          countries,
-          requested: true,
-        },
-      }));
+      const persistedFiles = Array.isArray(res.data.files) ? res.data.files : [];
+      if (persistedFiles.length) {
+        const byClientId = new Map(
+          persistedFiles
+            .filter((item) => item?.client_id)
+            .map((item) => [String(item.client_id), item])
+        );
+        setFileEntries((prev) =>
+          prev.map((entry) => {
+            const persisted = byClientId.get(String(entry.id));
+            if (!persisted) return entry;
+            return {
+              ...entry,
+              dbFileId: persisted.file_id || entry.dbFileId,
+              country: persisted.country || entry.country,
+              date: persisted.date || entry.date,
+              size: persisted.size || entry.size,
+            };
+          })
+        );
+      }
+      await hydratePersistedState();
     } catch (err) {
       const detail = err?.response?.data?.detail;
       const msg = Array.isArray(detail) ? detail.join("\n") : detail || "재고 통합 중 오류";
@@ -708,6 +726,118 @@ export default function App() {
     setInventoryError("");
     setScopeResultCache({});
     setScopeErrorCache({});
+  }
+
+  async function fetchPersistedFiles() {
+    const res = await axios.get(`${API_BASE}/api/inventory/files`);
+    return Array.isArray(res?.data?.files) ? res.data.files : [];
+  }
+
+  async function fetchPersistedScopeView(countryCode) {
+    const res = await axios.get(`${API_BASE}/api/inventory/view`, {
+      params: { country_code: countryCode },
+    });
+    return {
+      rows: res?.data?.rows || [],
+      dates: res?.data?.dates || [],
+      summary: res?.data?.summary || { item_count: 0, date_count: 0 },
+      countries: res?.data?.countries || [countryCode],
+      requested: true,
+    };
+  }
+
+  async function hydratePersistedState(options = {}) {
+    const { preserveLocalOnly = true, excludeCountry = "", excludeEntryId = "" } = options;
+    const [persistedFiles, ...views] = await Promise.all([
+      fetchPersistedFiles(),
+      fetchPersistedScopeView("KR"),
+      ...OVERSEAS_UPLOAD_COUNTRIES.map((code) => fetchPersistedScopeView(code)),
+    ]);
+
+    const nextCache = {
+      KR: views[0],
+    };
+    OVERSEAS_UPLOAD_COUNTRIES.forEach((code, idx) => {
+      nextCache[`OVERSEAS:${code}`] = views[idx + 1];
+    });
+
+    const available = new Set();
+    Object.values(nextCache).forEach((scope) => {
+      (scope?.countries || []).forEach((code) => available.add(code));
+    });
+
+    setAvailableCountries(Array.from(available));
+    setScopeResultCache(nextCache);
+    setScopeErrorCache({});
+    setFileEntries((prev) => {
+      const localOnlyEntries = preserveLocalOnly
+        ? prev.filter((entry) => {
+            if (entry.dbFileId || !entry.file) return false;
+            if (excludeEntryId && entry.id === excludeEntryId) return false;
+            if (excludeCountry && String(entry.country || "").toUpperCase() === excludeCountry) return false;
+            return true;
+          })
+        : [];
+      const serverEntries = persistedFiles.map((entry) => ({
+        id: entry.file_id,
+        dbFileId: entry.file_id,
+        file: null,
+        name: entry.name,
+        size: entry.size,
+        country: entry.country,
+        date: entry.date,
+      }));
+      return [...serverEntries, ...localOnlyEntries];
+    });
+  }
+
+  async function deleteFileEntry(entry) {
+    if (!entry) return;
+    try {
+      setSettingsMutating(true);
+      if (entry.dbFileId) {
+        await axios.delete(`${API_BASE}/api/inventory/files/${entry.dbFileId}`);
+      }
+      await hydratePersistedState({ excludeEntryId: entry.id });
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      window.alert(Array.isArray(detail) ? detail.join("\n") : detail || "파일 삭제 중 오류");
+    } finally {
+      setSettingsMutating(false);
+    }
+  }
+
+  async function clearFilesByCountry(country, entries) {
+    if (!entries?.length) return;
+    try {
+      setSettingsMutating(true);
+      if (entries.some((entry) => entry.dbFileId)) {
+        await axios.delete(`${API_BASE}/api/inventory/files`, {
+          params: { country_code: country },
+        });
+      }
+      await hydratePersistedState({ excludeCountry: country });
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      window.alert(Array.isArray(detail) ? detail.join("\n") : detail || "국가 데이터 삭제 중 오류");
+    } finally {
+      setSettingsMutating(false);
+    }
+  }
+
+  async function clearAllFiles() {
+    try {
+      setSettingsMutating(true);
+      if (fileEntries.some((entry) => entry.dbFileId)) {
+        await axios.delete(`${API_BASE}/api/inventory/files`);
+      }
+      await hydratePersistedState({ preserveLocalOnly: false });
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      window.alert(Array.isArray(detail) ? detail.join("\n") : detail || "전체 데이터 삭제 중 오류");
+    } finally {
+      setSettingsMutating(false);
+    }
   }
 
   const selectedKrTrendRow = useMemo(() => {
@@ -1434,10 +1564,8 @@ export default function App() {
             <div className="settingsTopActions">
               <button
                 className="ghost settingsResetBtn"
-                onClick={() => {
-                  setFileEntries([]);
-                  invalidateAggregatedResult();
-                }}
+                disabled={settingsMutating}
+                onClick={clearAllFiles}
               >
                 전체 초기화
               </button>
@@ -1467,15 +1595,12 @@ export default function App() {
                     <button
                       type="button"
                       className="ghost settingsCountryResetBtn"
-                      disabled={entries.length === 0}
-                      onClick={(e) => {
+                      disabled={entries.length === 0 || settingsMutating}
+                      onClick={async (e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         if (!entries.length) return;
-                        setFileEntries((prev) =>
-                          prev.filter((x) => String(x.country || "").toUpperCase() !== country)
-                        );
-                        invalidateAggregatedResult();
+                        await clearFilesByCountry(country, entries);
                       }}
                     >
                       데이터 초기화
@@ -1507,10 +1632,8 @@ export default function App() {
                       </div>
                       <button
                         className="ghost"
-                        onClick={() => {
-                          setFileEntries((prev) => prev.filter((x) => x.id !== entry.id));
-                          invalidateAggregatedResult();
-                        }}
+                        disabled={settingsMutating}
+                        onClick={() => deleteFileEntry(entry)}
                       >
                         삭제
                       </button>

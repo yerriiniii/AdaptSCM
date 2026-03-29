@@ -40,6 +40,8 @@ COLUMN_ALIASES = {
     "date": {"date", "일자", "날짜"},
 }
 
+LEVEL_NONE_SENTINEL = "__NONE__"
+
 COUNTRY_PATTERNS = {
     "KR": ["kr", "korea", "korean", "한국"],
     "TW": ["tw", "taiwan", "대만", "taipei"],
@@ -123,8 +125,26 @@ def _normalize_item_code(value: object) -> str:
     return raw.upper()
 
 
+def _normalize_level_value(value: object) -> str | None:
+    if pd.isna(value):
+        return None
+
+    raw = str(value).strip()
+    if not raw:
+        return None
+
+    match = re.search(r"(\d+)", raw)
+    if not match:
+        return None
+
+    normalized = match.group(1).lstrip("0")
+    return normalized or "0"
+
+
 def _read_inventory_file(upload_file: UploadFile) -> pd.DataFrame:
+    upload_file.file.seek(0)
     raw = upload_file.file.read()
+    upload_file.file.seek(0)
     if not raw:
         raise HTTPException(status_code=400, detail=f"{upload_file.filename}: 파일이 비어 있습니다.")
 
@@ -161,6 +181,7 @@ def _read_inventory_file(upload_file: UploadFile) -> pd.DataFrame:
             df["category"] = df["warehouse"]
         else:
             df["category"] = "미분류"
+    df["raw_item_code"] = df["itemno"].fillna("").astype(str).str.strip()
     df["itemno"] = df["itemno"].apply(_normalize_item_code)
     df["description"] = df["description"].fillna("").astype(str).str.strip()
     df["supplier"] = df["supplier"].fillna("").astype(str).str.strip()
@@ -275,18 +296,11 @@ def aggregate_inventory_files(
             df["date"] = inferred_date
 
         if "level" not in df.columns:
-            df["level"] = "1"
-        df["level"] = (
-            df["level"]
-            .fillna("")
-            .astype(str)
-            .str.extract(r"(\d+)", expand=False)
-            .fillna("1")
-            .str.lstrip("0")
-            .replace("", "0")
-        )
+            df["level"] = pd.Series([None] * len(df), index=df.index, dtype="object")
+        df["level"] = df["level"].apply(_normalize_level_value)
+        df["level"] = df["level"].where(df["level"].notna(), LEVEL_NONE_SENTINEL)
 
-        df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0)
+        df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0).round().astype(int)
         grouped = (
             df.groupby(["date", "itemno", "level", "country"], as_index=False)
             .agg(
@@ -337,9 +351,12 @@ def aggregate_inventory_files(
         ]
 
     if level_filter and level_filter.lower() != "all":
-        level_key = str(level_filter).strip()
-        level_key = level_key.lstrip("0") or "0"
-        merged = merged[merged["level"] == level_key]
+        requested_level = str(level_filter).strip().lower()
+        if requested_level in {"none", "null", "empty", "non"}:
+            merged = merged[merged["level"] == LEVEL_NONE_SENTINEL]
+        else:
+            level_key = requested_level.lstrip("0") or "0"
+            merged = merged[merged["level"] == level_key]
 
     if merged.empty:
         return [], []
@@ -352,6 +369,7 @@ def aggregate_inventory_files(
         aggfunc="sum",
         fill_value=0,
     ).reset_index()
+    pivot["level"] = pivot["level"].replace({LEVEL_NONE_SENTINEL: None})
 
     date_cols = sorted(
         [
