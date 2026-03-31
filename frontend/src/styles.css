@@ -75,6 +75,15 @@ body {
   margin-top: 26px;
 }
 
+.stickyTopbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: #ffffff;
+  padding-top: 6px;
+  padding-bottom: 10px;
+}
+
 .brand {
   font-weight: 700;
   color: #4b5563;
@@ -128,6 +137,14 @@ body {
   display: flex;
   justify-content: flex-start;
   gap: 50px;
+}
+
+.stickyCountryChips {
+  position: sticky;
+  z-index: 25;
+  background: #ffffff;
+  padding-top: 6px;
+  padding-bottom: 10px;
 }
 
 .chip {
@@ -203,6 +220,15 @@ body {
   gap: 8px;
   align-items: center;
   margin-bottom: 10px;
+}
+
+.stickyFilterBar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: #ffffff;
+  padding-top: 6px;
+  padding-bottom: 12px;
 }
 
 .krOnlyNotice {
@@ -316,13 +342,43 @@ button:disabled {
 }
 
 .tableWrap {
-  overflow: auto;
+  position: relative;
+  overflow-x: auto;
+  overflow-y: visible;
+  border: 1px solid #e5e9f0;
+  border-radius: 8px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tableWrap::-webkit-scrollbar {
+  height: 0;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
   min-width: 980px;
+}
+
+.stickyTableHeader {
+  position: sticky;
+  z-index: 18;
+  background: #ffffff;
+}
+
+.tableHeaderScroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  border: 1px solid #e5e9f0;
+  border-radius: 8px 8px 0 0;
+  border-bottom: 0;
+}
+
+.tableHeaderScroll::-webkit-scrollbar {
+  height: 0;
 }
 
 th,
@@ -338,6 +394,104 @@ th {
   background: #f8fafd;
   color: #6b7280;
   font-weight: 700;
+}
+
+.stickyHeaderTable thead th {
+  position: static;
+  box-shadow: inset 0 -1px 0 #dbe3ef;
+}
+
+.stickyCol {
+  position: sticky;
+  z-index: 3;
+  background: #ffffff;
+}
+
+.inventoryTable thead .stickyCol,
+.compareTable thead .stickyCol {
+  z-index: 8;
+  background: #f8fafd;
+}
+
+.stickyColBoundary {
+  box-shadow: 2px 0 0 #dbe3ef;
+}
+
+.inventoryTable.krTable .stickyColSupplier {
+  left: 0;
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+}
+
+.inventoryTable.krTable .stickyColCode {
+  left: 120px;
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+}
+
+.inventoryTable.krTable .stickyColName {
+  left: 240px;
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+}
+
+.inventoryTable.krTable .stickyColTrend {
+  left: 480px;
+  width: 132px;
+  min-width: 132px;
+  max-width: 132px;
+}
+
+.inventoryTable.overseasTable .stickyColCode {
+  left: 0;
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+}
+
+.inventoryTable.overseasTable .stickyColName {
+  left: 120px;
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+}
+
+.inventoryTable.overseasTable .stickyColKrName {
+  left: 360px;
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+}
+
+.inventoryTable.overseasTable .stickyColTrend {
+  left: 600px;
+  width: 132px;
+  min-width: 132px;
+  max-width: 132px;
+}
+
+.inventoryTable.overseasTable .stickyColCompare {
+  left: 732px;
+  width: 108px;
+  min-width: 108px;
+  max-width: 108px;
+}
+
+.dateCol {
+  width: 88px;
+  min-width: 88px;
+  max-width: 88px;
+}
+
+.compareTable .stickyColCode {
+  left: 0;
+}
+
+.compareTable .stickyColName {
+  left: 110px;
 }
 
 .error {
@@ -471,6 +625,11 @@ th {
   background: #f4f6fa;
 }
 
+.stickyTableTopScroll {
+  position: sticky;
+  z-index: 19;
+}
+
 .tableTopScroll::-webkit-scrollbar {
   height: 10px;
 }
@@ -483,10 +642,6 @@ th {
 .tableTopScroll::-webkit-scrollbar-thumb {
   background: #e2e7ef;
   border-radius: 10px;
-}
-
-.tableWrap::-webkit-scrollbar {
-  height: 10px;
 }
 
 .tableWrap::-webkit-scrollbar-track {

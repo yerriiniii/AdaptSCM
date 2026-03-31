@@ -3,6 +3,7 @@ import axios from "axios";
 import * as XLSX from "xlsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const DEFAULT_DATE_RANGE = "10d";
 const OVERSEAS_UPLOAD_COUNTRIES = ["US", "JP", "TW", "SEA", "HK", "CN"];
 const SETTINGS_COUNTRY_ORDER = ["KR", "US", "JP", "TW", "SEA", "HK", "CN"];
 
@@ -203,7 +204,7 @@ export default function App() {
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [inventoryError, setInventoryError] = useState("");
   const [inventoryKeyword, setInventoryKeyword] = useState("");
-  const [inventoryDateRange, setInventoryDateRange] = useState("all");
+  const [inventoryDateRange, setInventoryDateRange] = useState(DEFAULT_DATE_RANGE);
   const [inventoryStartDate, setInventoryStartDate] = useState("");
   const [inventoryEndDate, setInventoryEndDate] = useState("");
   const [inventoryLevelFilter, setInventoryLevelFilter] = useState("1");
@@ -220,9 +221,22 @@ export default function App() {
   const [showCautionModal, setShowCautionModal] = useState(false);
   const [settingsMutating, setSettingsMutating] = useState(false);
   const [topScrollWidth, setTopScrollWidth] = useState(0);
+  const [showTopScroll, setShowTopScroll] = useState(false);
   const topScrollRef = useRef(null);
+  const headerScrollRef = useRef(null);
   const tableScrollRef = useRef(null);
   const syncingScrollRef = useRef(false);
+  const topbarRef = useRef(null);
+  const countryChipsRef = useRef(null);
+  const inventoryFilterBarRef = useRef(null);
+  const compareFilterBarRef = useRef(null);
+  const [stickyHeights, setStickyHeights] = useState({
+    topbar: 0,
+    countryChips: 0,
+    inventoryFilter: 0,
+    compareFilter: 0,
+    topScroll: 0,
+  });
 
   function matchesCountryScope(code) {
     const country = String(code || "KR");
@@ -249,6 +263,11 @@ export default function App() {
   const isKRScope = countryTabMode === "KR";
   const isOverseasScope = countryTabMode === "OVERSEAS";
   const isCompareScope = countryTabMode === "COMPARE";
+  const activeCountryChipsHeight = isOverseasScope ? stickyHeights.countryChips : 0;
+  const activeFilterStickyTop = stickyHeights.topbar + activeCountryChipsHeight;
+  const activeFilterHeight = isCompareScope ? stickyHeights.compareFilter : stickyHeights.inventoryFilter;
+  const activeTopScrollHeight = showTopScroll ? stickyHeights.topScroll : 0;
+  const tableHeaderTop = activeFilterStickyTop + activeFilterHeight + activeTopScrollHeight;
 
   const scopedFileEntries = useMemo(
     () => fileEntries.filter((entry) => matchesCountryScope(entry.country)),
@@ -314,9 +333,9 @@ export default function App() {
     let to = null;
     const maxDate = new Date(Math.max(...parsed.map((d) => d.getTime())));
 
-    if (inventoryDateRange === "7d") {
+    if (inventoryDateRange === "10d") {
       from = new Date(maxDate);
-      from.setDate(maxDate.getDate() - 6);
+      from.setDate(maxDate.getDate() - 9);
     } else if (inventoryDateRange === "30d") {
       from = new Date(maxDate);
       from.setDate(maxDate.getDate() - 29);
@@ -582,6 +601,10 @@ export default function App() {
     const compareCol = isOverseasScope ? 120 + (showKrCompare ? 120 : 0) : 0;
     return Math.max(900, base + dateCols + compareCol);
   }, [filteredDateColumns, isOverseasScope, showKrCompare]);
+  const inventoryTableWidth = useMemo(
+    () => (isKRScope ? Math.max(980, 420 + filteredDateColumns.length * 88) : tableMinWidth),
+    [isKRScope, filteredDateColumns, tableMinWidth]
+  );
 
   useEffect(() => {
     const el = tableScrollRef.current;
@@ -589,6 +612,14 @@ export default function App() {
     const measure = () => {
       const w = el.scrollWidth || tableMinWidth;
       setTopScrollWidth(w);
+      setShowTopScroll((el.scrollWidth || 0) > (el.clientWidth || 0) + 1);
+      setStickyHeights((prev) => ({
+        topbar: topbarRef.current?.offsetHeight || 0,
+        countryChips: countryChipsRef.current?.offsetHeight || 0,
+        inventoryFilter: inventoryFilterBarRef.current?.offsetHeight || 0,
+        compareFilter: compareFilterBarRef.current?.offsetHeight || 0,
+        topScroll: topScrollRef.current?.offsetHeight || 0,
+      }));
     };
     measure();
     if (typeof ResizeObserver !== "undefined") {
@@ -609,16 +640,52 @@ export default function App() {
     isKRScope,
     isOverseasScope,
     isCompareScope,
+    showTopScroll,
+  ]);
+
+  useEffect(() => {
+    if (!hasTableData || isCompareScope) return;
+    const topEl = topScrollRef.current;
+    const headerEl = headerScrollRef.current;
+    const tableEl = tableScrollRef.current;
+    if (!tableEl) return;
+
+    const scrollToLatest = () => {
+      const nextScrollLeft = Math.max(0, tableEl.scrollWidth - tableEl.clientWidth);
+      if (topEl) topEl.scrollLeft = nextScrollLeft;
+      if (headerEl) headerEl.scrollLeft = nextScrollLeft;
+      tableEl.scrollLeft = nextScrollLeft;
+    };
+
+    scrollToLatest();
+    const rafId = requestAnimationFrame(scrollToLatest);
+    return () => cancelAnimationFrame(rafId);
+  }, [
+    hasTableData,
+    isCompareScope,
+    isKRScope,
+    isOverseasScope,
+    filteredDateColumns,
+    showKrCompare,
+    showTopScroll,
   ]);
 
   function syncScroll(source) {
     if (syncingScrollRef.current) return;
     const topEl = topScrollRef.current;
+    const headerEl = headerScrollRef.current;
     const tableEl = tableScrollRef.current;
-    if (!topEl || !tableEl) return;
+    if (!tableEl) return;
     syncingScrollRef.current = true;
-    if (source === "top") tableEl.scrollLeft = topEl.scrollLeft;
-    else topEl.scrollLeft = tableEl.scrollLeft;
+    const nextScrollLeft =
+      source === "top"
+        ? topEl?.scrollLeft || 0
+        : source === "header"
+          ? headerEl?.scrollLeft || 0
+          : tableEl.scrollLeft;
+    if (topEl && source !== "top") topEl.scrollLeft = nextScrollLeft;
+    if (headerEl && source !== "header") headerEl.scrollLeft = nextScrollLeft;
+    if (source !== "table") tableEl.scrollLeft = nextScrollLeft;
     requestAnimationFrame(() => {
       syncingScrollRef.current = false;
     });
@@ -637,6 +704,43 @@ export default function App() {
       );
     }
     return dateKey;
+  }
+
+  function renderInventoryHeaderCells() {
+    return (
+      <>
+        {isKRScope && <th className="stickyCol stickyColSupplier">공급처</th>}
+        <th className="stickyCol stickyColCode">상품코드</th>
+        <th className="stickyCol stickyColName stickyColBoundary">상품명</th>
+        {isOverseasScope && <th className="stickyCol stickyColKrName stickyColBoundary">한국상품명</th>}
+        {(isKRScope || isOverseasScope) && (
+          <th
+            className={`trendActionCol stickyCol stickyColTrend ${
+              !isOverseasScope || !showKrCompare ? "stickyColBoundary" : ""
+            }`}
+          ></th>
+        )}
+        {isOverseasScope && showKrCompare && (
+          <th className="krCompareCol stickyCol stickyColCompare stickyColBoundary">한국 현 재고</th>
+        )}
+        {filteredDateColumns.map((dt) => (
+          <th key={dt} className="dateCol">{renderDateHeader(dt)}</th>
+        ))}
+      </>
+    );
+  }
+
+  function renderCompareHeaderCells() {
+    return (
+      <>
+        <th className="compareCodeCol stickyCol stickyColCode">상품코드</th>
+        <th className="compareNameCol stickyCol stickyColName stickyColBoundary">한국상품명</th>
+        <th className="compareCountryCol krCompareCol">한국</th>
+        {OVERSEAS_UPLOAD_COUNTRIES.map((code) => (
+          <th key={code} className="compareCountryCol">{countryLabel(code)}</th>
+        ))}
+      </>
+    );
   }
 
   async function aggregateInventory() {
@@ -1063,41 +1167,46 @@ export default function App() {
           </div>
         </section>
 
-        <header className="topbar">
-          <div className="tabs">
-            <button
-              className={`tab ${countryTabMode === "KR" ? "active" : ""}`}
-              onClick={() => setCountryTabMode("KR")}
-            >
-              한국 재고
-            </button>
-            <button
-              className={`tab ${countryTabMode === "OVERSEAS" ? "active" : ""}`}
-              onClick={() => {
-                setCountryTabMode("OVERSEAS");
-                setSelectedOverseasCountry((prev) => prev || OVERSEAS_UPLOAD_COUNTRIES[0]);
-              }}
-            >
-              해외 재고
-            </button>
-            <button
-              className={`tab ${countryTabMode === "COMPARE" ? "active" : ""}`}
-              onClick={() => setCountryTabMode("COMPARE")}
-            >
-              재고 비교
-            </button>
-            <button
-              className={`tab ${countryTabMode === "SETTINGS" ? "active" : ""}`}
-              onClick={() => setCountryTabMode("SETTINGS")}
-            >
-              데이터 관리
-            </button>
-          </div>
-        </header>
       </div>
 
+      <header ref={topbarRef} className="topbar stickyTopbar">
+        <div className="tabs">
+          <button
+            className={`tab ${countryTabMode === "KR" ? "active" : ""}`}
+            onClick={() => setCountryTabMode("KR")}
+          >
+            한국 재고
+          </button>
+          <button
+            className={`tab ${countryTabMode === "OVERSEAS" ? "active" : ""}`}
+            onClick={() => {
+              setCountryTabMode("OVERSEAS");
+              setSelectedOverseasCountry((prev) => prev || OVERSEAS_UPLOAD_COUNTRIES[0]);
+            }}
+          >
+            해외 재고
+          </button>
+          <button
+            className={`tab ${countryTabMode === "COMPARE" ? "active" : ""}`}
+            onClick={() => setCountryTabMode("COMPARE")}
+          >
+            재고 비교
+          </button>
+          <button
+            className={`tab ${countryTabMode === "SETTINGS" ? "active" : ""}`}
+            onClick={() => setCountryTabMode("SETTINGS")}
+          >
+            데이터 관리
+          </button>
+        </div>
+      </header>
+
       {countryTabMode === "OVERSEAS" && (
-        <div className="countryChips">
+        <div
+          ref={countryChipsRef}
+          className="countryChips stickyCountryChips"
+          style={{ top: stickyHeights.topbar }}
+        >
           {overseasCountries.map((code) => (
             <button
               key={code}
@@ -1132,7 +1241,11 @@ export default function App() {
 
       <section className="tableCard">
         {isKRScope && <div className="krOnlyNotice">정상 재고만 파악합니다.</div>}
-        <div className="filterBar">
+        <div
+          ref={inventoryFilterBarRef}
+          className="filterBar stickyFilterBar"
+          style={{ top: activeFilterStickyTop }}
+        >
           <div className="searchWrap">
             <span className="searchIcon" aria-hidden="true">
               🔍
@@ -1155,16 +1268,10 @@ export default function App() {
             )}
             <div className="datePresetBox">
               <button
-                className={inventoryDateRange === "all" ? "preset active" : "preset"}
-                onClick={() => setDatePreset("all")}
+                className={inventoryDateRange === "10d" ? "preset active" : "preset"}
+                onClick={() => setDatePreset("10d")}
               >
-                전체
-              </button>
-              <button
-                className={inventoryDateRange === "7d" ? "preset active" : "preset"}
-                onClick={() => setDatePreset("7d")}
-              >
-                최근 7일
+                최근 10일
               </button>
               <button
                 className={inventoryDateRange === "30d" ? "preset active" : "preset"}
@@ -1219,7 +1326,7 @@ export default function App() {
             className="ghost resetBtn"
             onClick={() => {
               setInventoryKeyword("");
-              setDatePreset("all");
+              setDatePreset(DEFAULT_DATE_RANGE);
               setInventoryStartDate("");
               setInventoryEndDate("");
               setInventoryLevelFilter("1");
@@ -1233,47 +1340,60 @@ export default function App() {
 
         {hasTableData && (
           <>
-            <div
-              ref={topScrollRef}
-              className="tableTopScroll"
-              onScroll={() => syncScroll("top")}
-            >
-              <div style={{ width: topScrollWidth || tableMinWidth }} />
+            {showTopScroll && (
+              <div
+                ref={topScrollRef}
+                className="tableTopScroll stickyTableTopScroll"
+                style={{ top: activeFilterStickyTop + activeFilterHeight }}
+                onScroll={() => syncScroll("top")}
+              >
+                <div style={{ width: topScrollWidth || tableMinWidth }} />
+              </div>
+            )}
+            <div className="stickyTableHeader" style={{ top: tableHeaderTop }}>
+              <div
+                ref={headerScrollRef}
+                className="tableHeaderScroll"
+                onScroll={() => syncScroll("header")}
+              >
+                <table
+                  className={`inventoryTable stickyHeaderTable ${isKRScope ? "krTable" : "overseasTable"}`}
+                  style={{ minWidth: inventoryTableWidth }}
+                >
+                  <thead>
+                    <tr>{renderInventoryHeaderCells()}</tr>
+                  </thead>
+                </table>
+              </div>
             </div>
             <div
               ref={tableScrollRef}
               className="tableWrap"
               onScroll={() => syncScroll("table")}
             >
-            <table style={{ minWidth: isKRScope ? Math.max(980, 420 + filteredDateColumns.length * 88) : tableMinWidth }}>
-              <thead>
-                <tr>
-                  {isKRScope && <th>공급처</th>}
-                  <th>상품코드</th>
-                  <th>상품명</th>
-                  {isOverseasScope && <th>한국상품명</th>}
-                  {(isKRScope || isOverseasScope) && <th className="trendActionCol"></th>}
-                  {isOverseasScope && showKrCompare && <th className="krCompareCol">한국 현 재고</th>}
-                  {isKRScope
-                    ? filteredDateColumns.map((dt) => <th key={dt}>{renderDateHeader(dt)}</th>)
-                    : (
-                    filteredDateColumns.map((dt) => (
-                      <th key={dt}>{renderDateHeader(dt)}</th>
-                    ))
-                  )}
-                </tr>
-              </thead>
+            <table
+              className={`inventoryTable bodyTable ${isKRScope ? "krTable" : "overseasTable"}`}
+              style={{ minWidth: inventoryTableWidth }}
+            >
               <tbody>
                 {(isKRScope ? krDisplayRows : isOverseasScope ? overseasDisplayRows : filteredRows).map((row, idx) => (
                   <tr key={row.trendRowKey || `${row.country}-${row.itemno}-${row.level}-${row.category}-${idx}`}>
-                    {isKRScope && <td>{row.supplier}</td>}
-                    <td>{isOverseasScope ? extractBaseProductCode(row.itemno) : row.itemno}</td>
-                    <td>{row.description || "(상품명 없음)"}</td>
+                    {isKRScope && <td className="stickyCol stickyColSupplier">{row.supplier}</td>}
+                    <td className="stickyCol stickyColCode">
+                      {isOverseasScope ? extractBaseProductCode(row.itemno) : row.itemno}
+                    </td>
+                    <td className="stickyCol stickyColName stickyColBoundary">{row.description || "(상품명 없음)"}</td>
                     {isOverseasScope && (
-                      <td>{krNameMap.get(extractBaseProductCode(row.itemno)) || "-"}</td>
+                      <td className="stickyCol stickyColKrName stickyColBoundary">
+                        {krNameMap.get(extractBaseProductCode(row.itemno)) || "-"}
+                      </td>
                     )}
                     {(isKRScope || isOverseasScope) && (
-                      <td className="trendActionCell">
+                      <td
+                        className={`trendActionCell stickyCol stickyColTrend ${
+                          !isOverseasScope || !showKrCompare ? "stickyColBoundary" : ""
+                        }`}
+                      >
                         <button
                           type="button"
                           className="ghost compareToggle on trendActionBtn"
@@ -1287,7 +1407,7 @@ export default function App() {
                       </td>
                     )}
                     {isOverseasScope && showKrCompare && (
-                      <td className="krCompareCol">
+                      <td className="krCompareCol stickyCol stickyColCompare stickyColBoundary">
                         {krCompareMap.size
                           ? toFixed(
                               krCompareMap.get(
@@ -1300,13 +1420,12 @@ export default function App() {
                     )}
                     {isKRScope
                       ? filteredDateColumns.map((dt) => (
-                          <td key={`${row.itemno}-${dt}`}>{toFixed(row[dt], 0)}</td>
+                          <td key={`${row.itemno}-${dt}`} className="dateCol">{toFixed(row[dt], 0)}</td>
                         ))
-                      : (
-                      filteredDateColumns.map((dt) => (
-                        <td key={`${row.itemno}-${dt}`}>{toFixed(row[dt], 0)}</td>
+                      : filteredDateColumns.map((dt) => (
+                        <td key={`${row.itemno}-${dt}`} className="dateCol">{toFixed(row[dt], 0)}</td>
                       ))
-                    )}
+                    }
                   </tr>
                 ))}
               </tbody>
@@ -1354,7 +1473,11 @@ export default function App() {
           </section>
 
           <section className="tableCard">
-            <div className="filterBar">
+            <div
+              ref={compareFilterBarRef}
+              className="filterBar stickyFilterBar"
+              style={{ top: activeFilterStickyTop }}
+            >
               <div className="searchWrap">
                 <span className="searchIcon" aria-hidden="true">
                   🔍
@@ -1396,34 +1519,42 @@ export default function App() {
               </pre>
             ) : (
               <>
+                {showTopScroll && (
+                  <div
+                    ref={topScrollRef}
+                    className="tableTopScroll stickyTableTopScroll"
+                    style={{ top: activeFilterStickyTop + activeFilterHeight }}
+                    onScroll={() => syncScroll("top")}
+                  >
+                    <div style={{ width: topScrollWidth || 980 }} />
+                  </div>
+                )}
+              <div className="stickyTableHeader" style={{ top: tableHeaderTop }}>
                 <div
-                  ref={topScrollRef}
-                  className="tableTopScroll"
-                  onScroll={() => syncScroll("top")}
+                  ref={headerScrollRef}
+                  className="tableHeaderScroll"
+                  onScroll={() => syncScroll("header")}
                 >
-                  <div style={{ width: topScrollWidth || 980 }} />
+                  <table className="compareTable stickyHeaderTable" style={{ minWidth: 980 }}>
+                    <thead>
+                      <tr>{renderCompareHeaderCells()}</tr>
+                    </thead>
+                  </table>
                 </div>
+              </div>
               <div
                 ref={tableScrollRef}
                 className="tableWrap"
                 onScroll={() => syncScroll("table")}
               >
-                <table className="compareTable" style={{ minWidth: 980 }}>
-                  <thead>
-                    <tr>
-                      <th className="compareCodeCol">상품코드</th>
-                      <th className="compareNameCol">한국상품명</th>
-                      <th className="compareCountryCol krCompareCol">한국</th>
-                      {OVERSEAS_UPLOAD_COUNTRIES.map((code) => (
-                        <th key={code} className="compareCountryCol">{countryLabel(code)}</th>
-                      ))}
-                    </tr>
-                  </thead>
+                <table className="compareTable bodyTable" style={{ minWidth: 980 }}>
                   <tbody>
                     {filteredCompareRows.map((row) => (
                       <tr key={`compare-${row["상품코드"]}`}>
-                        <td className="compareCodeCol">{row["상품코드"]}</td>
-                        <td className="compareNameCol">{row["한국상품명"] || "-"}</td>
+                        <td className="compareCodeCol stickyCol stickyColCode">{row["상품코드"]}</td>
+                        <td className="compareNameCol stickyCol stickyColName stickyColBoundary">
+                          {row["한국상품명"] || "-"}
+                        </td>
                         <td className="compareCountryCol krCompareCol">
                           {row["한국 현 재고"] === null ? "-" : toFixed(row["한국 현 재고"], 0)}
                         </td>
