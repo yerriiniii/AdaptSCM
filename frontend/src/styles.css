@@ -330,8 +330,28 @@ body {
 .skuManualGrid {
   margin-top: 42px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.skuCountryCard {
+  border: 1px solid #e6edf5;
+  border-radius: 12px;
+  background: #f8fbff;
+  padding: 14px;
+}
+
+.skuCountryCardTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.skuCountryCardFields {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .skuField {
@@ -472,6 +492,193 @@ body {
   margin-right: auto;
 }
 
+.productMappingCard {
+  max-width: 100%;
+  min-height: 560px;
+  padding: 18px 18px 22px;
+}
+
+.productMappingHero {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.productMappingChipRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+
+.productMappingChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #dbe4ee;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.productMappingHeroTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+  line-height: 1.4;
+}
+
+.productMappingHeroSubtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.productMappingSearchRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 22px;
+}
+
+.productMappingSearchWrap {
+  width: min(100%, 520px);
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.productMappingSearchInput {
+  width: 100%;
+  height: 46px;
+  font-size: 14px;
+}
+
+.productMappingSearchStats {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #64748b;
+  font-size: 13px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.productMappingSearchStats strong {
+  color: #475569;
+  font-weight: 700;
+}
+
+.productMappingList {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.productMappingNoResult {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.productMappingItemCard {
+  border: 1px solid #e6edf5;
+  border-radius: 14px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.productMappingItemHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #eef3f8;
+  background: #fbfdff;
+}
+
+.productMappingItemTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.productMappingItemMeta {
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.productMappingCountryList {
+  display: flex;
+  flex-direction: column;
+}
+
+.productMappingCountryRow {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr) 140px;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.productMappingCountryRow:first-child {
+  border-top: 0;
+}
+
+.productMappingCountryLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.productMappingCountryCode {
+  color: #111827;
+}
+
+.productMappingCountryBody,
+.productMappingCountrySku {
+  min-width: 0;
+}
+
+.productMappingMiniLabel {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-bottom: 3px;
+}
+
+.productMappingCountryName {
+  font-size: 14px;
+  color: #334155;
+  word-break: break-word;
+}
+
+.productMappingSkuValue {
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748b;
+  word-break: break-word;
+  text-align: right;
+}
+
 .mappingSearchHead {
   margin-bottom: 10px;
 }
@@ -539,6 +746,15 @@ button:disabled {
   cursor: not-allowed;
 }
 
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 1px solid #cbd5e1;
+  outline-offset: 0;
+  border-color: #cbd5e1;
+  box-shadow: 0 0 0 2px rgba(203, 213, 225, 0.2);
+}
+
 .searchWrap {
   position: relative;
   min-width: 300px;
@@ -563,6 +779,21 @@ button:disabled {
 
 .searchInput::placeholder {
   color: #6c7b8f;
+}
+
+@media (max-width: 900px) {
+  .productMappingHero {
+    min-height: 220px;
+  }
+
+  .productMappingCountryRow {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .productMappingSkuValue {
+    text-align: left;
+  }
 }
 
 .datePresetBox {

@@ -61,31 +61,39 @@ class InventorySkuMappingSummaryResponse(BaseModel):
 
 
 class InventorySkuMappingUploadResponse(InventorySkuMappingSummaryResponse):
-    replaced_count: int = 0
+    processed_file_count: int = 0
+    merged_item_count: int = 0
+
+
+class InventorySkuMappingLocaleResponse(BaseModel):
+    country_code: str
+    name: str | None = None
+    sku: str
 
 
 class InventorySkuMappingUpsertRequest(BaseModel):
-    description: str
-    kr: str
-    us: str | None = None
-    tw: str | None = None
-    vn: str | None = None
-    sg: str | None = None
-    au: str | None = None
-    uk: str | None = None
-    ae: str | None = None
+    kr_name: str
+    kr_sku: str
+    us_name: str | None = None
+    us_sku: str | None = None
+    tw_name: str | None = None
+    tw_sku: str | None = None
+    vn_name: str | None = None
+    vn_sku: str | None = None
+    sg_name: str | None = None
+    sg_sku: str | None = None
+    au_name: str | None = None
+    au_sku: str | None = None
+    uk_name: str | None = None
+    uk_sku: str | None = None
+    ae_name: str | None = None
+    ae_sku: str | None = None
 
 
 class InventorySkuMappingItemResponse(BaseModel):
-    description: str
-    kr: str
-    us: str | None = None
-    tw: str | None = None
-    vn: str | None = None
-    sg: str | None = None
-    au: str | None = None
-    uk: str | None = None
-    ae: str | None = None
+    group_id: str
+    kr_name: str
+    locales: list[InventorySkuMappingLocaleResponse] = Field(default_factory=list)
 
 
 class InventorySkuMappingListResponse(BaseModel):

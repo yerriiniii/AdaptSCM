@@ -6,28 +6,24 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 const DEFAULT_DATE_RANGE = "10d";
 const OVERSEAS_UPLOAD_COUNTRIES = ["US", "TW", "VN", "SG", "AU", "UK", "AE"];
 const SETTINGS_COUNTRY_ORDER = ["KR", "US", "TW", "VN", "SG", "AU", "UK", "AE"];
-const SKU_MAPPING_TEMPLATE_COLUMNS = [
-  "description",
-  "kr",
-  "us",
-  "tw",
-  "vn",
-  "sg",
-  "au",
-  "uk",
-  "ae",
+const SKU_MAPPING_FIELDS = [
+  { code: "KR", label: "한국", nameKey: "kr_name", skuKey: "kr_sku" },
+  { code: "US", label: "미국", nameKey: "us_name", skuKey: "us_sku" },
+  { code: "TW", label: "대만", nameKey: "tw_name", skuKey: "tw_sku" },
+  { code: "VN", label: "베트남", nameKey: "vn_name", skuKey: "vn_sku" },
+  { code: "SG", label: "싱가포르", nameKey: "sg_name", skuKey: "sg_sku" },
+  { code: "AU", label: "호주", nameKey: "au_name", skuKey: "au_sku" },
+  { code: "UK", label: "영국", nameKey: "uk_name", skuKey: "uk_sku" },
+  { code: "AE", label: "아랍에미리트", nameKey: "ae_name", skuKey: "ae_sku" },
 ];
-const EMPTY_SKU_MAPPING_FORM = {
-  description: "",
-  kr: "",
-  us: "",
-  tw: "",
-  vn: "",
-  sg: "",
-  au: "",
-  uk: "",
-  ae: "",
-};
+const SKU_MAPPING_TEMPLATE_COLUMNS = SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [nameKey, skuKey]);
+const EMPTY_SKU_MAPPING_FORM = Object.fromEntries(
+  SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [
+    [nameKey, ""],
+    [skuKey, ""],
+  ])
+);
+const PRODUCT_MAPPING_SEARCH_CHIPS = SKU_MAPPING_FIELDS.map(({ code }) => code);
 function toFixed(value, digits = 2) {
   if (value === null || value === undefined) return "-";
   const parsed = Number(value);
@@ -217,6 +213,23 @@ function countryLabel(code = "KR") {
   return code;
 }
 
+function getProductMappingCountries(row = {}) {
+  const locales = Array.isArray(row?.locales) ? row.locales : [];
+  return locales
+    .map((locale) => {
+      const code = String(locale?.country_code || "").trim().toUpperCase();
+      const sku = String(locale?.sku || "").trim();
+      if (!code || !sku) return null;
+      return {
+        code,
+        label: countryLabel(code),
+        sku,
+        description: String(locale?.name || "").trim() || "-",
+      };
+    })
+    .filter(Boolean);
+}
+
 function getLatestDateKey(dateKeys = []) {
   if (!dateKeys.length) return "";
   return [...dateKeys].sort().at(-1) || "";
@@ -282,7 +295,7 @@ export default function App() {
   const [inventoryDateRange, setInventoryDateRange] = useState(DEFAULT_DATE_RANGE);
   const [inventoryStartDate, setInventoryStartDate] = useState("");
   const [inventoryEndDate, setInventoryEndDate] = useState("");
-  const [inventoryLevelFilter, setInventoryLevelFilter] = useState("1");
+  const [inventoryLevelFilter, setInventoryLevelFilter] = useState("all");
   const [inventoryRequested, setInventoryRequested] = useState(false);
   const [scopeResultCache, setScopeResultCache] = useState({});
   const [scopeErrorCache, setScopeErrorCache] = useState({});
@@ -326,6 +339,17 @@ export default function App() {
     compareFilter: 0,
     topScroll: 0,
   });
+  const productMappingCards = useMemo(
+    () =>
+      mappingRows
+        .map((row, idx) => ({
+          ...row,
+          _id: row.group_id || `${row.kr_name || "mapping"}-${idx}`,
+          _countries: getProductMappingCountries(row),
+        }))
+        .filter((row) => row._countries.length > 0),
+    [mappingRows]
+  );
 
   function matchesCountryScope(code) {
     const country = String(code || "KR");
@@ -468,6 +492,21 @@ export default function App() {
     inventoryEndDate,
   ]);
 
+  const availableInventoryLevels = useMemo(() => {
+    if (isKRScope) return [];
+    const values = Array.from(
+      new Set(
+        rawInventoryRows
+          .filter((row) => matchesCountryScope(row.country))
+          .map((row) => String(row.level ?? "").trim())
+          .filter(Boolean)
+      )
+    );
+    return values.sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+  }, [rawInventoryRows, selectedOverseasCountry, countryTabMode, isKRScope]);
+  const hasInventoryLevels = availableInventoryLevels.length > 0;
+  const defaultInventoryLevelFilter = availableInventoryLevels[0] || "all";
+
   const filteredRows = useMemo(() => {
     if (!rawInventoryRows.length) return [];
     const needle = inventoryKeyword.trim().toLowerCase();
@@ -475,7 +514,7 @@ export default function App() {
     return rawInventoryRows.filter((row) => {
       if (!matchesCountryScope(row.country)) return false;
 
-      if (!isKRScope && inventoryLevelFilter !== "all") {
+      if (!isKRScope && hasInventoryLevels && inventoryLevelFilter !== "all") {
         const lv = (String(row.level ?? "").replace(/^0+/, "") || "0").trim();
         if (lv !== inventoryLevelFilter) return false;
       }
@@ -490,9 +529,27 @@ export default function App() {
     rawInventoryRows,
     inventoryKeyword,
     inventoryLevelFilter,
+    hasInventoryLevels,
     countryTabMode,
     selectedOverseasCountry,
     isKRScope,
+  ]);
+
+  useEffect(() => {
+    if (isKRScope || !hasInventoryLevels) {
+      if (inventoryLevelFilter !== "all") setInventoryLevelFilter("all");
+      return;
+    }
+    if (!availableInventoryLevels.includes(inventoryLevelFilter)) {
+      setInventoryLevelFilter(defaultInventoryLevelFilter);
+    }
+  }, [
+    isKRScope,
+    hasInventoryLevels,
+    inventoryLevelFilter,
+    availableInventoryLevels,
+    defaultInventoryLevelFilter,
+    currentScopeKey,
   ]);
 
   const overseasCountries = useMemo(() => OVERSEAS_UPLOAD_COUNTRIES, []);
@@ -1141,17 +1198,11 @@ export default function App() {
 
   useEffect(() => {
     if (!isProductSearchScope) return;
-    if (!mappingSearchKeyword.trim()) {
-      setMappingRows([]);
-      setMappingRowsError("");
-      setMappingRowsLoading(false);
-      return;
-    }
     const run = async () => {
       try {
         setMappingRowsLoading(true);
         setMappingRowsError("");
-        const items = await fetchSkuMappingItems(mappingSearchKeyword);
+        const items = await fetchSkuMappingItems(mappingSearchKeyword.trim());
         setMappingRows(items);
       } catch (err) {
         const detail = err?.response?.data?.detail;
@@ -1167,13 +1218,14 @@ export default function App() {
     document.getElementById("sku-mapping-input")?.click();
   }
 
-  async function uploadSkuMappingFile(file) {
-    if (!file) return;
+  async function uploadSkuMappingFiles(files) {
+    const uploadFiles = Array.from(files || []).filter(Boolean);
+    if (!uploadFiles.length) return;
     try {
       setSettingsMutating(true);
       setMappingError("");
       const formData = new FormData();
-      formData.append("file", file);
+      uploadFiles.forEach((file) => formData.append("files", file));
       const res = await axios.post(`${API_BASE}/api/inventory/mappings/upload`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -1188,7 +1240,11 @@ export default function App() {
       });
       setMappingInputKey((prev) => prev + 1);
       await hydratePersistedState();
-      window.alert(`${Number(res?.data?.replaced_count || 0)}건의 SKU 매핑을 반영했습니다.`);
+      window.alert(
+        `${Number(res?.data?.processed_file_count || 0)}개 파일에서 ${Number(
+          res?.data?.merged_item_count || 0
+        )}개의 SKU 매핑을 병합 반영했습니다.`
+      );
     } catch (err) {
       const detail = err?.response?.data?.detail;
       const msg = Array.isArray(detail) ? detail.join("\n") : detail || "SKU 매핑 업로드 중 오류";
@@ -1519,10 +1575,13 @@ export default function App() {
             />
           </div>
           <>
-            {!isKRScope && (
+            {!isKRScope && hasInventoryLevels && (
               <select value={inventoryLevelFilter} onChange={(e) => setInventoryLevelFilter(e.target.value)}>
-                <option value="1">레벨 1</option>
-                <option value="5">레벨 5</option>
+                {availableInventoryLevels.map((level) => (
+                  <option key={level} value={level}>
+                    레벨 {level}
+                  </option>
+                ))}
                 <option value="all">전체 레벨</option>
               </select>
             )}
@@ -1589,7 +1648,7 @@ export default function App() {
               setDatePreset(DEFAULT_DATE_RANGE);
               setInventoryStartDate("");
               setInventoryEndDate("");
-              setInventoryLevelFilter("1");
+              setInventoryLevelFilter(defaultInventoryLevelFilter);
             }}
           >
             필터 초기화
@@ -2006,8 +2065,8 @@ export default function App() {
               <div className="cautionSectionTitle">공통</div>
               <ul className="cautionList">
                 <li>같은 이름의 파일은 중복 업로드되지 않습니다.</li>
-                <li>필수 컬럼명이나 날짜 형식이 맞지 않으면 재고가 집계되지 않을 수 있습니다.</li>
-                <li>재고 비교 탭은 선택한 동일 기준일의 데이터만 비교하며, 없는 값은 대체하지 않습니다.</li>
+                <li>필수 컬럼명이나 날짜 형식이 다르면 업로드나 집계가 실패할 수 있습니다.</li>
+                <li>재고 비교는 선택한 동일 기준일 데이터만 사용하며, 없는 값은 임의로 대체하지 않습니다.</li>
               </ul>
             </div>
 
@@ -2039,12 +2098,23 @@ export default function App() {
             </div>
 
             <div className="cautionSection">
-              <div className="cautionSectionTitle">SKU 매핑 마스터</div>
+              <div className="cautionSectionTitle">SKU 관리</div>
               <ul className="cautionList">
-                <li>매핑 마스터는 `.xlsx` 파일만 업로드할 수 있습니다.</li>
-                <li>필수 헤더는 `{SKU_MAPPING_TEMPLATE_COLUMNS.join("`, `")}` 입니다.</li>
-                <li>헤더 순서가 다르거나 `description` 또는 국가별 SKU가 중복되면 전체 업로드가 거절됩니다.</li>
+                <li>SKU 마스터 파일은 여러 개의 `.xlsx`를 올릴 수 있으며, 사용 가능한 alias 헤더는 `{SKU_MAPPING_TEMPLATE_COLUMNS.join("`, `")}` 입니다.</li>
+                <li>파일마다 일부 국가 컬럼만 있어도 되지만, 각 행에는 최소 한 국가의 SKU 값이 필요합니다.</li>
+                <li>같은 국가의 같은 SKU가 다른 상품과 충돌하면 전체 업로드가 거절되며 아무 데이터도 반영되지 않습니다.</li>
                 <li>원본 파일은 저장하지 않고, 읽은 매핑 데이터만 DB에 반영합니다.</li>
+                <li>파일 업로드는 기존 매핑을 지우지 않고 병합 업데이트하며, 수기 입력은 한국(`KR`) 상품명과 SKU가 필수입니다.</li>
+                <li>파일 업로드가 어려우면 아래 수기 입력 영역에서 국가별 상품명과 SKU를 직접 저장할 수 있습니다.</li>
+              </ul>
+            </div>
+
+            <div className="cautionSection">
+              <div className="cautionSectionTitle">상품 매핑</div>
+              <ul className="cautionList">
+                <li>상품명 또는 SKU로 검색하면 등록된 SKU 매핑 기준으로 같은 상품의 국가별 상품명과 SKU를 함께 확인할 수 있습니다.</li>
+                <li>검색 전에는 결과가 표시되지 않으며, 검색어와 일치하는 매핑이 없으면 결과가 비어 보일 수 있습니다.</li>
+                <li>재고 매칭은 국가별 SKU를 우선 사용하고, 필요 시 같은 국가의 상품명 기준으로도 연결됩니다.</li>
               </ul>
             </div>
           </div>
@@ -2053,12 +2123,6 @@ export default function App() {
 
       {isSettingsScope && (
         <section className="settingsPane settingsCard">
-          {fileEntries.length === 0 && (
-            <pre className="error settingsNotice">
-              업로드된 파일이 없습니다. 상단의 파일 업로드 버튼을 눌러주세요.
-            </pre>
-          )}
-
           <div className={`settingsToolbar ${fileEntries.length === 0 ? "settingsToolbarWithNotice" : ""}`}>
             <button
               className="ghost settingsDangerButton"
@@ -2144,7 +2208,7 @@ export default function App() {
           <div className="skuManageCard">
             <div className="skuManageHeader">
               <div className="skuManageSubtitle">
-                SKU 마스터 파일을 업로드하면 SKU 정보가 업데이트 됩니다. 파일은 저장되지 않습니다.
+                SKU 마스터 파일을 여러 개 업로드하면 alias 헤더 기준으로 SKU 정보가 병합 업데이트 됩니다. 파일은 저장되지 않습니다.
               </div>
               <button
                 type="button"
@@ -2160,8 +2224,9 @@ export default function App() {
               id="sku-mapping-input"
               type="file"
               accept=".xlsx"
+              multiple
               style={{ display: "none" }}
-              onChange={(e) => uploadSkuMappingFile(e.target.files?.[0] || null)}
+              onChange={(e) => uploadSkuMappingFiles(e.target.files || [])}
             />
             <div className="skuManageContent">
               <button
@@ -2187,80 +2252,37 @@ export default function App() {
                   파일 업로드가 어려운 경우 아래 칸에 직접 입력해서 SKU 정보를 갱신할 수 있습니다.
                 </div>
                 <div className="skuManualGrid">
-                  <label className="skuField">
-                    <span>상품명</span>
-                    <input
-                      type="text"
-                      value={manualMappingForm.description}
-                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, description: e.target.value }))}
-                      placeholder="한국 상품명"
-                    />
-                  </label>
-                  <label className="skuField">
-                    <span>한국 SKU</span>
-                    <input
-                      type="text"
-                      value={manualMappingForm.kr}
-                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, kr: e.target.value }))}
-                      placeholder="필수"
-                    />
-                  </label>
-                  <label className="skuField">
-                    <span>미국 SKU</span>
-                    <input
-                      type="text"
-                      value={manualMappingForm.us}
-                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, us: e.target.value }))}
-                    />
-                  </label>
-                  <label className="skuField">
-                    <span>대만 SKU</span>
-                    <input
-                      type="text"
-                      value={manualMappingForm.tw}
-                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, tw: e.target.value }))}
-                    />
-                  </label>
-                  <label className="skuField">
-                    <span>베트남 SKU</span>
-                    <input
-                      type="text"
-                      value={manualMappingForm.vn}
-                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, vn: e.target.value }))}
-                    />
-                  </label>
-                  <label className="skuField">
-                    <span>싱가포르 SKU</span>
-                    <input
-                      type="text"
-                      value={manualMappingForm.sg}
-                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, sg: e.target.value }))}
-                    />
-                  </label>
-                  <label className="skuField">
-                    <span>호주 SKU</span>
-                    <input
-                      type="text"
-                      value={manualMappingForm.au}
-                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, au: e.target.value }))}
-                    />
-                  </label>
-                  <label className="skuField">
-                    <span>영국 SKU</span>
-                    <input
-                      type="text"
-                      value={manualMappingForm.uk}
-                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, uk: e.target.value }))}
-                    />
-                  </label>
-                  <label className="skuField">
-                    <span>아랍에미리트 SKU</span>
-                    <input
-                      type="text"
-                      value={manualMappingForm.ae}
-                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, ae: e.target.value }))}
-                    />
-                  </label>
+                  {SKU_MAPPING_FIELDS.map((field) => (
+                    <div key={field.code} className="skuCountryCard">
+                      <div className="skuCountryCardTitle">
+                        {field.label} {field.code === "KR" ? "상품" : ""}
+                      </div>
+                      <div className="skuCountryCardFields">
+                        <label className="skuField">
+                          <span>상품명</span>
+                          <input
+                            type="text"
+                            value={manualMappingForm[field.nameKey]}
+                            onChange={(e) =>
+                              setManualMappingForm((prev) => ({ ...prev, [field.nameKey]: e.target.value }))
+                            }
+                            placeholder={field.code === "KR" ? "필수" : ""}
+                          />
+                        </label>
+                        <label className="skuField">
+                          <span>SKU</span>
+                          <input
+                            type="text"
+                            value={manualMappingForm[field.skuKey]}
+                            onChange={(e) =>
+                              setManualMappingForm((prev) => ({ ...prev, [field.skuKey]: e.target.value }))
+                            }
+                            placeholder={field.code === "KR" ? "필수" : ""}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
                 </div>
                 <div className="skuManualActions">
                   <div className="skuManageMeta">
@@ -2284,68 +2306,65 @@ export default function App() {
 
       {isProductSearchScope && (
         <section className="settingsPane settingsCard">
-          <section className="tableCard searchPanelCard">
-            <div className="mappingSearchHead">
-              <div>
-                <div className="mappingCardTitle">상품 매핑</div>
-                <div className="mappingCardSubtitle">
-                  SKU 또는 한국상품명을 검색하면 국가별 SKU 매핑을 확인할 수 있습니다.
-                </div>
+          <section className="tableCard productMappingCard">
+            <div className="productMappingHero">
+              <div className="productMappingChipRow">
+                {PRODUCT_MAPPING_SEARCH_CHIPS.map((code) => (
+                  <span key={code} className="productMappingChip">
+                    {code}
+                  </span>
+                ))}
               </div>
-            </div>
-            <div className="filterBar">
-              <div className="searchWrap">
-                <span className="searchIcon" aria-hidden="true">
-                  🔍
-                </span>
-                <input
-                  className="searchInput"
-                  type="text"
-                  value={mappingSearchKeyword}
-                  onChange={(e) => setMappingSearchKeyword(e.target.value)}
-                  placeholder="한국상품명 또는 SKU 검색..."
-                />
+              <div className="productMappingHeroTitle">어느 국가든 상품명이나 SKU를 검색하세요</div>
+              <div className="productMappingHeroSubtitle">모든 국가별 동일한 상품을 한 눈에 확인할 수 있어요</div>
+              <div className="productMappingSearchRow">
+                <div className="searchWrap productMappingSearchWrap">
+                  <span className="searchIcon" aria-hidden="true">
+                    🔍
+                  </span>
+                  <input
+                    className="searchInput productMappingSearchInput"
+                    type="text"
+                    value={mappingSearchKeyword}
+                    onChange={(e) => setMappingSearchKeyword(e.target.value)}
+                    placeholder="상품명 또는 SKU 입력..."
+                  />
+                </div>
               </div>
             </div>
             {mappingRowsError && <pre className="error">{mappingRowsError}</pre>}
             {mappingRowsLoading ? (
               <div className="searchEmptyState">검색 중...</div>
-            ) : !mappingSearchKeyword.trim() ? (
-              <div className="searchEmptyState">SKU 또는 한국상품명을 입력하면 매핑 결과가 표시됩니다.</div>
-            ) : !mappingRows.length ? (
-              <div className="searchEmptyState">일치하는 매핑 결과가 없습니다.</div>
-            ) : (
-              <div className="tableWrap">
-                <table className="searchTable">
-                  <thead>
-                    <tr>
-                      <th>상품명</th>
-                      <th>한국</th>
-                      <th>미국</th>
-                      <th>대만</th>
-                      <th>베트남</th>
-                      <th>싱가포르</th>
-                      <th>호주</th>
-                      <th>영국</th>
-                      <th>아랍에미리트</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mappingRows.map((row, idx) => (
-                      <tr key={`${row.description}-${row.kr}-${idx}`}>
-                        <td>{row.description || "-"}</td>
-                        <td>{row.kr || "-"}</td>
-                        <td>{row.us || "-"}</td>
-                        <td>{row.tw || "-"}</td>
-                        <td>{row.vn || "-"}</td>
-                        <td>{row.sg || "-"}</td>
-                        <td>{row.au || "-"}</td>
-                        <td>{row.uk || "-"}</td>
-                        <td>{row.ae || "-"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            ) : !productMappingCards.length && mappingSearchKeyword.trim() ? (
+              <div className="productMappingNoResult">일치하는 매핑 결과가 없습니다.</div>
+            ) : !productMappingCards.length ? null : (
+              <div className="productMappingList">
+                {productMappingCards.map((row) => (
+                  <article key={row._id} className="productMappingItemCard">
+                    <div className="productMappingItemHead">
+                      <div className="productMappingItemTitle">{row.kr_name || "상품명 없음"}</div>
+                      <div className="productMappingItemMeta">{row._countries.length}개 국가</div>
+                    </div>
+                    <div className="productMappingCountryList">
+                      {row._countries.map((country) => (
+                        <div key={`${row._id}-${country.code}`} className="productMappingCountryRow">
+                          <div className="productMappingCountryLabel">
+                            <span className="productMappingCountryCode">{country.code}</span>
+                            <span>{country.label}</span>
+                          </div>
+                          <div className="productMappingCountryBody">
+                            <div className="productMappingMiniLabel">상품명</div>
+                            <div className="productMappingCountryName">{country.description}</div>
+                          </div>
+                          <div className="productMappingCountrySku">
+                            <div className="productMappingMiniLabel">SKU</div>
+                            <div className="productMappingSkuValue">{country.sku}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ))}
               </div>
             )}
           </section>

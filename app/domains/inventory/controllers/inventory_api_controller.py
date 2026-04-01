@@ -16,7 +16,7 @@ from app.domains.inventory.services.inventory_mapping_service import (
     clear_product_sku_mappings,
     get_product_sku_mapping_summary,
     list_product_sku_mappings,
-    replace_product_sku_mappings,
+    merge_product_sku_mappings,
     upsert_product_sku_mapping,
 )
 from app.domains.inventory.services.inventory_aggregate_service import (
@@ -46,7 +46,7 @@ def aggregate_inventory(
     start_date: str | None = Form(default=None),
     end_date: str | None = Form(default=None),
     date_range: str | None = Form(default=None),
-    level_filter: str | None = Form(default="1"),
+    level_filter: str | None = Form(default="all"),
     file_client_ids: list[str] | None = Form(default=None),
     file_db_ids: list[str] | None = Form(default=None),
     db: Session = Depends(get_db_session),
@@ -135,10 +135,10 @@ def inventory_mapping_items(
 
 @router.post("/mappings/upload", response_model=InventorySkuMappingUploadResponse)
 def inventory_mappings_upload(
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     db: Session = Depends(get_db_session),
 ) -> InventorySkuMappingUploadResponse:
-    return InventorySkuMappingUploadResponse(**replace_product_sku_mappings(db=db, upload_file=file))
+    return InventorySkuMappingUploadResponse(**merge_product_sku_mappings(db=db, upload_files=files))
 
 
 @router.post("/mappings/item", response_model=InventorySkuMappingItemResponse)

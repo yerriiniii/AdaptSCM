@@ -227,7 +227,7 @@ def aggregate_inventory_files(
     start_date: str | None = None,
     end_date: str | None = None,
     date_range: str | None = None,
-    level_filter: str | None = "1",
+    level_filter: str | None = "all",
     file_dates: list[str] | None = None,
     file_countries: list[str] | None = None,
 ) -> tuple[list[dict], list[str]]:

@@ -89,33 +89,47 @@ class InventoryAggregate(Base):
     )
 
 
-class ProductSkuMapping(Base):
-    __tablename__ = "sku"
+class ProductGroup(Base):
+    __tablename__ = "item"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid_value)
-    description: Mapped[str] = mapped_column(String(255), nullable=False)
-    kr: Mapped[str] = mapped_column(String(255), nullable=False)
-    us: Mapped[str | None] = mapped_column(String(255))
-    tw: Mapped[str | None] = mapped_column(String(255))
-    vn: Mapped[str | None] = mapped_column(String(255))
-    sg: Mapped[str | None] = mapped_column(String(255))
-    au: Mapped[str | None] = mapped_column(String(255))
-    uk: Mapped[str | None] = mapped_column(String(255))
-    ae: Mapped[str | None] = mapped_column(String(255))
+    kr_name: Mapped[str] = mapped_column(String(255), nullable=False)
     upload_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     manual_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utc_now, onupdate=_utc_now
     )
 
+    locales: Mapped[list["ProductLocale"]] = relationship(
+        back_populates="product_group",
+        cascade="all, delete-orphan",
+    )
+
     __table_args__ = (
-        Index("ix_sku_description", "description", unique=True),
-        Index("ix_sku_kr", "kr", unique=True),
-        Index("ix_sku_us", "us", unique=True),
-        Index("ix_sku_tw", "tw", unique=True),
-        Index("ix_sku_vn", "vn", unique=True),
-        Index("ix_sku_sg", "sg", unique=True),
-        Index("ix_sku_au", "au", unique=True),
-        Index("ix_sku_uk", "uk", unique=True),
-        Index("ix_sku_ae", "ae", unique=True),
+        Index("ix_item_kr_name", "kr_name"),
+    )
+
+
+class ProductLocale(Base):
+    __tablename__ = "item_mapping"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid_value)
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("item.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    country_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(255))
+    sku: Mapped[str] = mapped_column(String(255), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utc_now, onupdate=_utc_now
+    )
+
+    product_group: Mapped["ProductGroup"] = relationship(back_populates="locales")
+
+    __table_args__ = (
+        Index("ix_item_mapping_item_country", "item_id", "country_code", unique=True),
+        Index("ix_item_mapping_country_sku", "country_code", "sku", unique=True),
+        Index("ix_item_mapping_country_name", "country_code", "name"),
     )

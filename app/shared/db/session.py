@@ -1,4 +1,6 @@
+import uuid
 from collections.abc import Generator
+from datetime import datetime, timezone
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
@@ -6,6 +8,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.shared.config import get_runtime_settings
 from app.shared.db.base import Base
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 _engine: Engine | None = None
 _session_factory: sessionmaker[Session] | None = None
@@ -22,11 +28,6 @@ def _ensure_inventory_columns(engine: Engine) -> None:
         "inventory_aggregates": {
             "sku": "VARCHAR(255)",
             "warehouse": "VARCHAR(255)",
-        },
-        "sku": {
-            "updated_at": "TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL",
-            "upload_updated_at": "TIMESTAMP WITH TIME ZONE",
-            "manual_updated_at": "TIMESTAMP WITH TIME ZONE",
         },
     }
 
@@ -68,18 +69,154 @@ def _ensure_inventory_columns(engine: Engine) -> None:
                         """
                     )
                 )
-        if "sku" in existing_tables:
-            sku_columns = {column["name"] for column in inspector.get_columns("sku")}
-            if {"updated_at", "upload_updated_at", "manual_updated_at"}.issubset(sku_columns):
-                connection.execute(
+        if {"product_groups", "product_locales", "item", "item_mapping"}.issubset(existing_tables):
+            item_count = connection.execute(text("SELECT COUNT(*) FROM item")).scalar() or 0
+            item_mapping_count = connection.execute(text("SELECT COUNT(*) FROM item_mapping")).scalar() or 0
+            if int(item_count) == 0 and int(item_mapping_count) == 0:
+                legacy_groups = connection.execute(
                     text(
                         """
-                        UPDATE sku
-                        SET upload_updated_at = updated_at
-                        WHERE upload_updated_at IS NULL AND manual_updated_at IS NULL
+                        SELECT id, representative_name, upload_updated_at, manual_updated_at, updated_at
+                        FROM product_groups
+                        ORDER BY representative_name ASC
                         """
                     )
-                )
+                ).mappings().all()
+                legacy_locales = connection.execute(
+                    text(
+                        """
+                        SELECT id, product_group_id, country_code, name, sku, updated_at
+                        FROM product_locales
+                        ORDER BY product_group_id ASC, country_code ASC
+                        """
+                    )
+                ).mappings().all()
+
+                for row in legacy_groups:
+                    connection.execute(
+                        text(
+                            """
+                            INSERT INTO item (id, kr_name, upload_updated_at, manual_updated_at, updated_at)
+                            VALUES (:id, :kr_name, :upload_updated_at, :manual_updated_at, :updated_at)
+                            """
+                        ),
+                        {
+                            "id": row.get("id"),
+                            "kr_name": row.get("representative_name"),
+                            "upload_updated_at": row.get("upload_updated_at"),
+                            "manual_updated_at": row.get("manual_updated_at"),
+                            "updated_at": row.get("updated_at"),
+                        },
+                    )
+
+                for row in legacy_locales:
+                    connection.execute(
+                        text(
+                            """
+                            INSERT INTO item_mapping (id, item_id, country_code, name, sku, updated_at)
+                            VALUES (:id, :item_id, :country_code, :name, :sku, :updated_at)
+                            """
+                        ),
+                        {
+                            "id": row.get("id"),
+                            "item_id": row.get("product_group_id"),
+                            "country_code": row.get("country_code"),
+                            "name": row.get("name"),
+                            "sku": row.get("sku"),
+                            "updated_at": row.get("updated_at"),
+                        },
+                    )
+
+        if {"sku", "item", "item_mapping"}.issubset(existing_tables):
+            item_count = connection.execute(text("SELECT COUNT(*) FROM item")).scalar() or 0
+            item_mapping_count = connection.execute(text("SELECT COUNT(*) FROM item_mapping")).scalar() or 0
+            if int(item_count) == 0 and int(item_mapping_count) == 0:
+                sku_columns = {column["name"] for column in inspector.get_columns("sku")}
+                select_columns = ["description", "kr", "us", "tw", "vn", "sg", "au", "uk", "ae"]
+                optional_columns = ["updated_at", "upload_updated_at", "manual_updated_at"]
+                available_optional = [column for column in optional_columns if column in sku_columns]
+                selected = ", ".join(select_columns + available_optional)
+                legacy_rows = connection.execute(text(f"SELECT {selected} FROM sku ORDER BY description ASC")).mappings().all()
+                for row in legacy_rows:
+                    kr_name = str(row.get("description") or "").strip()
+                    if not kr_name:
+                        continue
+                    item_id = str(uuid.uuid4())
+                    updated_at = row.get("updated_at") or _utc_now()
+                    upload_updated_at = row.get("upload_updated_at")
+                    manual_updated_at = row.get("manual_updated_at")
+                    if upload_updated_at is None and manual_updated_at is None:
+                        upload_updated_at = updated_at
+
+                    connection.execute(
+                        text(
+                            """
+                            INSERT INTO item (
+                                id,
+                                kr_name,
+                                upload_updated_at,
+                                manual_updated_at,
+                                updated_at
+                            ) VALUES (
+                                :id,
+                                :kr_name,
+                                :upload_updated_at,
+                                :manual_updated_at,
+                                :updated_at
+                            )
+                            """
+                        ),
+                        {
+                            "id": item_id,
+                            "kr_name": kr_name,
+                            "upload_updated_at": upload_updated_at,
+                            "manual_updated_at": manual_updated_at,
+                            "updated_at": updated_at,
+                        },
+                    )
+
+                    for country_code, column_name in [
+                        ("KR", "kr"),
+                        ("US", "us"),
+                        ("TW", "tw"),
+                        ("VN", "vn"),
+                        ("SG", "sg"),
+                        ("AU", "au"),
+                        ("UK", "uk"),
+                        ("AE", "ae"),
+                    ]:
+                        sku = str(row.get(column_name) or "").strip()
+                        if not sku:
+                            continue
+                        connection.execute(
+                            text(
+                                """
+                                INSERT INTO item_mapping (
+                                    id,
+                                    item_id,
+                                    country_code,
+                                    name,
+                                    sku,
+                                    updated_at
+                                ) VALUES (
+                                    :id,
+                                    :item_id,
+                                    :country_code,
+                                    :name,
+                                    :sku,
+                                    :updated_at
+                                )
+                                """
+                            ),
+                            {
+                                "id": str(uuid.uuid4()),
+                                "item_id": item_id,
+                                "country_code": country_code,
+                                "name": kr_name,
+                                "sku": sku,
+                                "updated_at": updated_at,
+                            },
+                        )
 
 
 def is_database_configured() -> bool:
