@@ -11,15 +11,15 @@ body {
 
 .pageSplit {
   min-height: 100vh;
-  background: linear-gradient(to bottom, #ffffff 0 203px, #f5f7fb 195px 100%);
+  background: linear-gradient(to bottom, #ffffff 0 223px, #f5f7fb 50px 100%);
 }
 
 .pageSplit.split-default {
-  background: linear-gradient(to bottom, #ffffff 0 213px, #f5f7fb 195px 100%);
+  background: linear-gradient(to bottom, #ffffff 0 227px, #f5f7fb 50px 100%);
 }
 
 .pageSplit.split-overseas {
-  background: linear-gradient(to bottom, #ffffff 0 271px, #f5f7fb 235px 100%);
+  background: linear-gradient(to bottom, #ffffff 0 287px, #f5f7fb 130px 100%);
 }
 
 .dashboard {
@@ -79,7 +79,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 30;
-  background: #ffffff;
+  background: transparent;
   padding-top: 6px;
   padding-bottom: 10px;
 }
@@ -142,7 +142,7 @@ body {
 .stickyCountryChips {
   position: sticky;
   z-index: 25;
-  background: #ffffff;
+  background: transparent;
   padding-top: 6px;
   padding-bottom: 10px;
 }
