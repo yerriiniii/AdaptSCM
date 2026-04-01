@@ -322,6 +322,7 @@ export default function App() {
   const [mappingError, setMappingError] = useState("");
   const [manualMappingForm, setManualMappingForm] = useState({ ...EMPTY_SKU_MAPPING_FORM });
   const [mappingInputKey, setMappingInputKey] = useState(0);
+  const [skuManageMode, setSkuManageMode] = useState("UPLOAD");
   const [topScrollWidth, setTopScrollWidth] = useState(0);
   const [showTopScroll, setShowTopScroll] = useState(false);
   const topScrollRef = useRef(null);
@@ -1293,6 +1294,10 @@ export default function App() {
     }
   }
 
+  function resetManualSkuMappingForm() {
+    setManualMappingForm({ ...EMPTY_SKU_MAPPING_FORM });
+  }
+
   async function deleteFileEntry(entry) {
     if (!entry) return;
     try {
@@ -2206,19 +2211,6 @@ export default function App() {
       {isSkuMappingScope && (
         <section className="settingsPane settingsCard">
           <div className="skuManageCard">
-            <div className="skuManageHeader">
-              <div className="skuManageSubtitle">
-                SKU 마스터 파일을 여러 개 업로드하면 alias 헤더 기준으로 SKU 정보가 병합 업데이트 됩니다. 파일은 저장되지 않습니다.
-              </div>
-              <button
-                type="button"
-                className="ghost skuManageResetButton"
-                disabled={settingsMutating || mappingSummary.total_count === 0}
-                onClick={clearSkuMappings}
-              >
-                매핑 초기화
-              </button>
-            </div>
             <input
               key={mappingInputKey}
               id="sku-mapping-input"
@@ -2228,76 +2220,118 @@ export default function App() {
               style={{ display: "none" }}
               onChange={(e) => uploadSkuMappingFiles(e.target.files || [])}
             />
-            <div className="skuManageContent">
+            <div className="skuManageHeader">
+              <div className="skuManageTabs">
+                <button
+                  type="button"
+                  className={`skuManageTab ${skuManageMode === "UPLOAD" ? "active" : ""}`}
+                  onClick={() => setSkuManageMode("UPLOAD")}
+                >
+                  SKU 파일 업로드
+                </button>
+                <button
+                  type="button"
+                  className={`skuManageTab ${skuManageMode === "MANUAL" ? "active" : ""}`}
+                  onClick={() => setSkuManageMode("MANUAL")}
+                >
+                  수기 작성
+                </button>
+              </div>
               <button
                 type="button"
-                className="skuUploadPanel"
-                disabled={settingsMutating}
-                onClick={openSkuMappingInput}
+                className="ghost skuManageResetButton"
+                disabled={settingsMutating || mappingSummary.total_count === 0}
+                onClick={clearSkuMappings}
               >
-                <span className="skuUploadMain">
-                  <span className="skuUploadBadge">XLSX</span>
-                  <span className="skuUploadButtonLabel">{settingsMutating ? "업로드 중..." : "파일 업로드"}</span>
-                </span>
-                <span className="skuUploadMeta">
-                  파일 업로드 최근 반영일:{" "}
-                  {mappingSummary.upload_updated_at
-                    ? mappingSummary.upload_updated_at.replace("T", " ").slice(0, 19)
-                    : "-"}
-                </span>
+                SKU 정보 전체 초기화
               </button>
-              <div className="skuManualCard">
-                <div className="skuManualTitle">수기 SKU 입력</div>
-                <div className="skuManualSubtitle">
-                  파일 업로드가 어려운 경우 아래 칸에 직접 입력해서 SKU 정보를 갱신할 수 있습니다.
+            </div>
+            <div className={`skuManageContent ${skuManageMode === "MANUAL" ? "manual-only" : "upload-only"}`}>
+              {skuManageMode === "UPLOAD" ? (
+                <div className="skuUploadStage skuManageSinglePanel">
+                  <button
+                    type="button"
+                    className="skuUploadPanel"
+                    disabled={settingsMutating}
+                    onClick={openSkuMappingInput}
+                  >
+                    <span className="skuUploadMain">
+                      <span className="skuUploadBadge">XLSX</span>
+                      <span className="skuUploadButtonLabel">
+                        {settingsMutating ? "업로드 중..." : "SKU 파일 업로드"}
+                      </span>
+                    </span>
+                  </button>
+                  <div className="skuUploadFooter">
+                    파일 업로드 최근 반영일:{" "}
+                    {mappingSummary.upload_updated_at
+                      ? mappingSummary.upload_updated_at.replace("T", " ").slice(0, 19)
+                      : "-"}
+                  </div>
                 </div>
-                <div className="skuManualGrid">
-                  {SKU_MAPPING_FIELDS.map((field) => (
-                    <div key={field.code} className="skuCountryCard">
-                      <div className="skuCountryCardTitle">
-                        {field.label} {field.code === "KR" ? "상품" : ""}
+              ) : (
+                <div className="skuManualCard skuManageSinglePanel">
+                  <div className="skuManualHead">
+                    <div>
+                      <div className="skuManualTitle">국가별 상품명 &amp; SKU 입력</div>
+                      <div className="skuManualSubtitle">
+                        입력된 항목만 저장됩니다. 비워두면 해당 국가는 제외됩니다.
                       </div>
-                      <div className="skuCountryCardFields">
-                        <label className="skuField">
-                          <span>상품명</span>
+                    </div>
+                    <div className="skuManualHeadActions">
+                      <button type="button" className="ghost" disabled={settingsMutating} onClick={resetManualSkuMappingForm}>
+                        초기화
+                      </button>
+                      <button type="button" className="primary" disabled={settingsMutating} onClick={saveManualSkuMapping}>
+                        저장
+                      </button>
+                    </div>
+                  </div>
+                  <div className="skuManualTable">
+                    <div className="skuManualTableHead">
+                      <div>국가</div>
+                      <div>상품명</div>
+                      <div>SKU</div>
+                    </div>
+                    {SKU_MAPPING_FIELDS.map((field) => (
+                      <div key={field.code} className="skuManualRow">
+                        <div className="skuManualCountryCell">
+                          <span className="skuManualCountryLabel">{field.label}</span>
+                        </div>
+                        <div className="skuManualInputCell">
                           <input
                             type="text"
                             value={manualMappingForm[field.nameKey]}
                             onChange={(e) =>
                               setManualMappingForm((prev) => ({ ...prev, [field.nameKey]: e.target.value }))
                             }
-                            placeholder={field.code === "KR" ? "필수" : ""}
+                            placeholder={`${field.label} 상품명${field.code === "KR" ? "" : ""}`}
                           />
-                        </label>
-                        <label className="skuField">
-                          <span>SKU</span>
+                        </div>
+                        <div className="skuManualInputCell">
                           <input
                             type="text"
                             value={manualMappingForm[field.skuKey]}
                             onChange={(e) =>
                               setManualMappingForm((prev) => ({ ...prev, [field.skuKey]: e.target.value }))
                             }
-                            placeholder={field.code === "KR" ? "필수" : ""}
+                            placeholder={`${field.code} SKU`}
                           />
-                        </label>
+                        </div>
                       </div>
+                    ))}
+                  </div>
+                  <div className="skuManualActions">
+                    <div className="skuManageMeta">
+                      수기 입력 최근 반영일:{" "}
+                      {mappingSummary.manual_updated_at
+                        ? mappingSummary.manual_updated_at.replace("T", " ").slice(0, 19)
+                        : "-"}
                     </div>
-                  ))}
-                </div>
-                <div className="skuManualActions">
-                  <div className="skuManageMeta">
-                    수기 입력 최근 반영일:{" "}
-                    {mappingSummary.manual_updated_at
-                      ? mappingSummary.manual_updated_at.replace("T", " ").slice(0, 19)
-                      : "-"}
-                  </div>
-                  <div className="skuManualButtons">
-                    <button type="button" className="primary" disabled={settingsMutating} onClick={saveManualSkuMapping}>
-                      저장
-                    </button>
+                    <div className="skuManualButtons" />
                   </div>
                 </div>
-              </div>
+              )}
             </div>
             {mappingError && <pre className="error mappingError">{mappingError}</pre>}
           </div>
