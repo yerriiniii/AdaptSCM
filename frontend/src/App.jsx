@@ -264,7 +264,7 @@ export default function App() {
   const isCompareScope = countryTabMode === "COMPARE";
   const inventoryStickyWidth = useMemo(() => {
     if (isKRScope) return 700;
-    if (isOverseasScope) return showKrCompare ? 1000 : 892;
+    if (isOverseasScope) return showKrCompare ? 998 : 892;
     return 0;
   }, [isKRScope, isOverseasScope, showKrCompare]);
   const activeCountryChipsHeight = isOverseasScope ? stickyHeights.countryChips : 0;
@@ -601,7 +601,7 @@ export default function App() {
   }, [compareRows, inventoryKeyword, isCompareScope]);
   const tableMinWidth = useMemo(() => {
     const dateCols = filteredDateColumns.length * 88;
-    const overseasFixedCols = showKrCompare ? 1004 : 896;
+    const overseasFixedCols = showKrCompare ? 1002 : 896;
     const fixedCols = isOverseasScope ? overseasFixedCols : 844;
     return Math.max(980, fixedCols + dateCols);
   }, [filteredDateColumns, isOverseasScope, showKrCompare]);
