@@ -6,7 +6,6 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 const DEFAULT_DATE_RANGE = "10d";
 const OVERSEAS_UPLOAD_COUNTRIES = ["US", "JP", "TW", "SEA", "HK", "CN"];
 const SETTINGS_COUNTRY_ORDER = ["KR", "US", "JP", "TW", "SEA", "HK", "CN"];
-
 function toFixed(value, digits = 2) {
   if (value === null || value === undefined) return "-";
   const parsed = Number(value);
@@ -263,6 +262,11 @@ export default function App() {
   const isKRScope = countryTabMode === "KR";
   const isOverseasScope = countryTabMode === "OVERSEAS";
   const isCompareScope = countryTabMode === "COMPARE";
+  const inventoryStickyWidth = useMemo(() => {
+    if (isKRScope) return 700;
+    if (isOverseasScope) return showKrCompare ? 1000 : 892;
+    return 0;
+  }, [isKRScope, isOverseasScope, showKrCompare]);
   const activeCountryChipsHeight = isOverseasScope ? stickyHeights.countryChips : 0;
   const activeFilterStickyTop = stickyHeights.topbar + activeCountryChipsHeight;
   const activeFilterHeight = isCompareScope ? stickyHeights.compareFilter : stickyHeights.inventoryFilter;
@@ -596,15 +600,23 @@ export default function App() {
     });
   }, [compareRows, inventoryKeyword, isCompareScope]);
   const tableMinWidth = useMemo(() => {
-    const base = 460;
     const dateCols = filteredDateColumns.length * 88;
-    const compareCol = isOverseasScope ? 120 + (showKrCompare ? 120 : 0) : 0;
-    return Math.max(900, base + dateCols + compareCol);
+    const overseasFixedCols = showKrCompare ? 1004 : 896;
+    const fixedCols = isOverseasScope ? overseasFixedCols : 844;
+    return Math.max(980, fixedCols + dateCols);
   }, [filteredDateColumns, isOverseasScope, showKrCompare]);
   const inventoryTableWidth = useMemo(
-    () => (isKRScope ? Math.max(980, 420 + filteredDateColumns.length * 88) : tableMinWidth),
+    () => (isKRScope ? Math.max(980, 844 + filteredDateColumns.length * 88) : tableMinWidth),
     [isKRScope, filteredDateColumns, tableMinWidth]
   );
+  const compareTableWidth = useMemo(
+    () => Math.max(1120, 410 + (OVERSEAS_UPLOAD_COUNTRIES.length + 1) * 96),
+    []
+  );
+  const datePeekFadeStyle =
+    !isCompareScope && inventoryStickyWidth > 0 && filteredDateColumns.length > 0
+      ? { "--date-peek-fade-left": `${inventoryStickyWidth + 2}px` }
+      : undefined;
 
   useEffect(() => {
     const el = tableScrollRef.current;
@@ -666,6 +678,7 @@ export default function App() {
     isKRScope,
     isOverseasScope,
     filteredDateColumns,
+    inventoryStickyWidth,
     showKrCompare,
     showTopScroll,
   ]);
@@ -1240,7 +1253,6 @@ export default function App() {
       </section>
 
       <section className="tableCard">
-        {isKRScope && <div className="krOnlyNotice">정상 재고만 파악합니다.</div>}
         <div
           ref={inventoryFilterBarRef}
           className="filterBar stickyFilterBar"
@@ -1353,7 +1365,8 @@ export default function App() {
             <div className="stickyTableHeader" style={{ top: tableHeaderTop }}>
               <div
                 ref={headerScrollRef}
-                className="tableHeaderScroll"
+                className={`tableHeaderScroll ${datePeekFadeStyle ? "withDatePeekFade" : ""}`}
+                style={datePeekFadeStyle}
                 onScroll={() => syncScroll("header")}
               >
                 <table
@@ -1368,7 +1381,8 @@ export default function App() {
             </div>
             <div
               ref={tableScrollRef}
-              className="tableWrap"
+              className={`tableWrap ${datePeekFadeStyle ? "withDatePeekFade" : ""}`}
+              style={datePeekFadeStyle}
               onScroll={() => syncScroll("table")}
             >
             <table
@@ -1382,10 +1396,14 @@ export default function App() {
                     <td className="stickyCol stickyColCode">
                       {isOverseasScope ? extractBaseProductCode(row.itemno) : row.itemno}
                     </td>
-                    <td className="stickyCol stickyColName stickyColBoundary">{row.description || "(상품명 없음)"}</td>
+                    <td className="stickyCol stickyColName stickyColBoundary">
+                      <span className="nameCellText">{row.description || "(상품명 없음)"}</span>
+                    </td>
                     {isOverseasScope && (
                       <td className="stickyCol stickyColKrName stickyColBoundary">
-                        {krNameMap.get(extractBaseProductCode(row.itemno)) || "-"}
+                        <span className="nameCellText">
+                          {krNameMap.get(extractBaseProductCode(row.itemno)) || "-"}
+                        </span>
                       </td>
                     )}
                     {(isKRScope || isOverseasScope) && (
@@ -1526,7 +1544,7 @@ export default function App() {
                     style={{ top: activeFilterStickyTop + activeFilterHeight }}
                     onScroll={() => syncScroll("top")}
                   >
-                    <div style={{ width: topScrollWidth || 980 }} />
+                    <div style={{ width: topScrollWidth || compareTableWidth }} />
                   </div>
                 )}
               <div className="stickyTableHeader" style={{ top: tableHeaderTop }}>
@@ -1535,7 +1553,7 @@ export default function App() {
                   className="tableHeaderScroll"
                   onScroll={() => syncScroll("header")}
                 >
-                  <table className="compareTable stickyHeaderTable" style={{ minWidth: 980 }}>
+                  <table className="compareTable stickyHeaderTable" style={{ minWidth: compareTableWidth }}>
                     <thead>
                       <tr>{renderCompareHeaderCells()}</tr>
                     </thead>
@@ -1547,13 +1565,13 @@ export default function App() {
                 className="tableWrap"
                 onScroll={() => syncScroll("table")}
               >
-                <table className="compareTable bodyTable" style={{ minWidth: 980 }}>
+                <table className="compareTable bodyTable" style={{ minWidth: compareTableWidth }}>
                   <tbody>
                     {filteredCompareRows.map((row) => (
                       <tr key={`compare-${row["상품코드"]}`}>
                         <td className="compareCodeCol stickyCol stickyColCode">{row["상품코드"]}</td>
                         <td className="compareNameCol stickyCol stickyColName stickyColBoundary">
-                          {row["한국상품명"] || "-"}
+                          <span className="nameCellText">{row["한국상품명"] || "-"}</span>
                         </td>
                         <td className="compareCountryCol krCompareCol">
                           {row["한국 현 재고"] === null ? "-" : toFixed(row["한국 현 재고"], 0)}

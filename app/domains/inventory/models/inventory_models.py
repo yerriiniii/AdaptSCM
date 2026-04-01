@@ -7,7 +7,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.db.base import Base
 
-
 def _uuid_value() -> uuid.UUID:
     return uuid.uuid4()
 

@@ -344,7 +344,7 @@ button:disabled {
 .tableWrap {
   position: relative;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: auto;
   border: 1px solid #e5e9f0;
   border-radius: 8px;
   scrollbar-width: none;
@@ -359,6 +359,24 @@ table {
   width: 100%;
   border-collapse: collapse;
   min-width: 980px;
+  table-layout: fixed;
+}
+
+/* 재고/비교 메인 테이블은 항상 컬럼 폭 고정 */
+.inventoryTable,
+.compareTable {
+  width: 100% !important;
+  table-layout: fixed;
+}
+
+.inventoryTable th,
+.inventoryTable td,
+.compareTable th,
+.compareTable td {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  box-sizing: border-box;
 }
 
 .stickyTableHeader {
@@ -368,6 +386,7 @@ table {
 }
 
 .tableHeaderScroll {
+  position: relative;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -383,7 +402,7 @@ table {
 
 th,
 td {
-  border-bottom: 1px solid #ececef;
+  border-bottom: 1px solid #e5e7eb;
   text-align: left;
   padding: 10px 8px;
   font-size: 13px;
@@ -396,15 +415,15 @@ th {
   font-weight: 700;
 }
 
-.stickyHeaderTable thead th {
+.stickyHeaderTable thead th:not(.stickyCol) {
   position: static;
-  box-shadow: inset 0 -1px 0 #dbe3ef;
 }
 
 .stickyCol {
   position: sticky;
   z-index: 3;
   background: #ffffff;
+  overflow: hidden;
 }
 
 .inventoryTable thead .stickyCol,
@@ -414,7 +433,7 @@ th {
 }
 
 .stickyColBoundary {
-  box-shadow: 2px 0 0 #dbe3ef;
+  box-shadow: none;
 }
 
 .inventoryTable.krTable .stickyColSupplier {
@@ -433,16 +452,16 @@ th {
 
 .inventoryTable.krTable .stickyColName {
   left: 240px;
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  width: 320px;
+  min-width: 320px;
+  max-width: 320px;
 }
 
 .inventoryTable.krTable .stickyColTrend {
-  left: 480px;
-  width: 132px;
-  min-width: 132px;
-  max-width: 132px;
+  left: 560px;
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
 }
 
 .inventoryTable.overseasTable .stickyColCode {
@@ -454,36 +473,74 @@ th {
 
 .inventoryTable.overseasTable .stickyColName {
   left: 120px;
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  width: 320px;
+  min-width: 320px;
+  max-width: 320px;
 }
 
 .inventoryTable.overseasTable .stickyColKrName {
-  left: 360px;
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  left: 440px;
+  width: 320px;
+  min-width: 320px;
+  max-width: 320px;
 }
 
 .inventoryTable.overseasTable .stickyColTrend {
-  left: 600px;
+  left: 760px;
   width: 132px;
   min-width: 132px;
   max-width: 132px;
 }
 
 .inventoryTable.overseasTable .stickyColCompare {
-  left: 732px;
+  left: 892px;
   width: 108px;
   min-width: 108px;
   max-width: 108px;
+}
+
+.inventoryTable tbody .stickyColName,
+.inventoryTable tbody .stickyColKrName {
+  white-space: normal;
+}
+
+.nameCellText {
+  display: -webkit-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+  max-height: calc(1.25em * 2);
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .dateCol {
   width: 88px;
   min-width: 88px;
   max-width: 88px;
+}
+
+.tableHeaderScroll.withDatePeekFade::after,
+.tableWrap.withDatePeekFade::after {
+  content: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--date-peek-fade-left, 0px);
+  width: 28px;
+  pointer-events: none;
+}
+
+.tableHeaderScroll.withDatePeekFade::after {
+  background: linear-gradient(90deg, rgba(248, 250, 253, 0) 0%, rgba(248, 250, 253, 0.94) 100%);
+  z-index: 7;
+}
+
+.tableWrap.withDatePeekFade::after {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.94) 100%);
+  z-index: 2;
 }
 
 .compareTable .stickyColCode {
@@ -627,7 +684,7 @@ th {
 
 .stickyTableTopScroll {
   position: sticky;
-  z-index: 19;
+  z-index: 6;
 }
 
 .tableTopScroll::-webkit-scrollbar {
@@ -677,8 +734,8 @@ th {
   background: #e8f4ee !important;
   color: #167a58;
   font-weight: 700;
-  border-left: 2px solid #c4e7d8;
-  border-right: 2px solid #c4e7d8;
+  border-left: 1px solid #c4e7d8;
+  border-right: 1px solid #c4e7d8;
   text-align: left !important;
   padding-left: 8px !important;
   padding-right: 8px !important;
@@ -692,9 +749,23 @@ th {
 }
 
 .compareTable .compareNameCol {
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  width: 400px;
+  min-width: 400px;
+  max-width: 400px;
+}
+
+.inventoryTable th:first-child,
+.inventoryTable td:first-child,
+.compareTable th:first-child,
+.compareTable td:first-child {
+  padding-left: 18px !important;
+}
+
+.inventoryTable th:last-child,
+.inventoryTable td:last-child,
+.compareTable th:last-child,
+.compareTable td:last-child {
+  padding-right: 12px !important;
 }
 
 .compareTable .compareCountryCol {
@@ -732,6 +803,13 @@ th {
 .trendActionCol + th,
 .trendActionCell + td {
   padding-left: 20px !important;
+}
+
+.inventoryTable.overseasTable .trendActionCol + th,
+.inventoryTable.overseasTable .trendActionCell + td,
+.inventoryTable.overseasTable .krCompareCol + th,
+.inventoryTable.overseasTable .krCompareCol + td {
+  padding-left: 24px !important;
 }
 
 .trendModalBackdrop {
