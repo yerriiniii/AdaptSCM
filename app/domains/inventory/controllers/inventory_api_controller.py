@@ -6,6 +6,18 @@ from app.domains.inventory.dto.inventory_api_dto import (
     InventoryCompleteUploadRequest,
     InventoryDirectUploadPreparedResponse,
     InventoryDirectUploadRequest,
+    InventorySkuMappingListResponse,
+    InventorySkuMappingItemResponse,
+    InventorySkuMappingSummaryResponse,
+    InventorySkuMappingUpsertRequest,
+    InventorySkuMappingUploadResponse,
+)
+from app.domains.inventory.services.inventory_mapping_service import (
+    clear_product_sku_mappings,
+    get_product_sku_mapping_summary,
+    list_product_sku_mappings,
+    replace_product_sku_mappings,
+    upsert_product_sku_mapping,
 )
 from app.domains.inventory.services.inventory_aggregate_service import (
     aggregate_inventory_files,
@@ -105,6 +117,41 @@ def inventory_files(db: Session = Depends(get_db_session)) -> dict:
 def inventory_view(country_code: str = Query(...), db: Session = Depends(get_db_session)) -> InventoryAggregateResponse:
     payload = get_inventory_view(db=db, country_code=country_code)
     return InventoryAggregateResponse(**payload)
+
+
+@router.get("/mappings", response_model=InventorySkuMappingSummaryResponse)
+def inventory_mappings(db: Session = Depends(get_db_session)) -> InventorySkuMappingSummaryResponse:
+    return InventorySkuMappingSummaryResponse(**get_product_sku_mapping_summary(db))
+
+
+@router.get("/mappings/items", response_model=InventorySkuMappingListResponse)
+def inventory_mapping_items(
+    query: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db_session),
+) -> InventorySkuMappingListResponse:
+    return InventorySkuMappingListResponse(items=list_product_sku_mappings(db=db, query=query, limit=limit))
+
+
+@router.post("/mappings/upload", response_model=InventorySkuMappingUploadResponse)
+def inventory_mappings_upload(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db_session),
+) -> InventorySkuMappingUploadResponse:
+    return InventorySkuMappingUploadResponse(**replace_product_sku_mappings(db=db, upload_file=file))
+
+
+@router.post("/mappings/item", response_model=InventorySkuMappingItemResponse)
+def inventory_mapping_upsert(
+    payload: InventorySkuMappingUpsertRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> InventorySkuMappingItemResponse:
+    return InventorySkuMappingItemResponse(**upsert_product_sku_mapping(db=db, payload=payload.model_dump()))
+
+
+@router.delete("/mappings")
+def inventory_mappings_clear(db: Session = Depends(get_db_session)) -> dict:
+    return clear_product_sku_mappings(db=db)
 
 
 @router.delete("/files/{file_id}")

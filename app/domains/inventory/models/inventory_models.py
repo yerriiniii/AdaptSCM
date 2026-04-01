@@ -51,11 +51,11 @@ class InventoryRow(Base):
         ForeignKey("uploaded_files.id", ondelete="CASCADE"),
         nullable=False,
     )
-    raw_item_code: Mapped[str] = mapped_column(String(255), nullable=False)
-    item_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    sku: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(String(255))
     supplier: Mapped[str | None] = mapped_column(String(255))
     level: Mapped[str | None] = mapped_column(String(20))
+    warehouse: Mapped[str | None] = mapped_column(String(255))
     quantity: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
 
@@ -63,8 +63,7 @@ class InventoryRow(Base):
 
     __table_args__ = (
         Index("ix_inventory_rows_uploaded_file_id", "uploaded_file_id"),
-        Index("ix_inventory_rows_item_code", "item_code"),
-        Index("ix_inventory_rows_raw_item_code", "raw_item_code"),
+        Index("ix_inventory_rows_sku", "sku"),
     )
 
 
@@ -74,18 +73,49 @@ class InventoryAggregate(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid_value)
     country_code: Mapped[str] = mapped_column(String(10), nullable=False)
     base_date: Mapped[date | None] = mapped_column(Date)
-    raw_item_code: Mapped[str] = mapped_column(String(255), nullable=False)
-    item_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    sku: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(String(255))
     supplier: Mapped[str | None] = mapped_column(String(255))
     level: Mapped[str | None] = mapped_column(String(20))
+    warehouse: Mapped[str | None] = mapped_column(String(255))
     total_quantity: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
     aggregation_version: Mapped[int] = mapped_column(Integer, nullable=False)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
 
     __table_args__ = (
         Index("ix_inventory_aggregates_country_date", "country_code", "base_date"),
-        Index("ix_inventory_aggregates_item_code", "item_code"),
-        Index("ix_inventory_aggregates_raw_item_code", "raw_item_code"),
+        Index("ix_inventory_aggregates_sku", "sku"),
         Index("ix_inventory_aggregates_version", "aggregation_version"),
+    )
+
+
+class ProductSkuMapping(Base):
+    __tablename__ = "sku"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid_value)
+    description: Mapped[str] = mapped_column(String(255), nullable=False)
+    kr: Mapped[str] = mapped_column(String(255), nullable=False)
+    us: Mapped[str | None] = mapped_column(String(255))
+    tw: Mapped[str | None] = mapped_column(String(255))
+    vn: Mapped[str | None] = mapped_column(String(255))
+    sg: Mapped[str | None] = mapped_column(String(255))
+    au: Mapped[str | None] = mapped_column(String(255))
+    uk: Mapped[str | None] = mapped_column(String(255))
+    ae: Mapped[str | None] = mapped_column(String(255))
+    upload_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    manual_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utc_now, onupdate=_utc_now
+    )
+
+    __table_args__ = (
+        Index("ix_sku_description", "description", unique=True),
+        Index("ix_sku_kr", "kr", unique=True),
+        Index("ix_sku_us", "us", unique=True),
+        Index("ix_sku_tw", "tw", unique=True),
+        Index("ix_sku_vn", "vn", unique=True),
+        Index("ix_sku_sg", "sg", unique=True),
+        Index("ix_sku_au", "au", unique=True),
+        Index("ix_sku_uk", "uk", unique=True),
+        Index("ix_sku_ae", "ae", unique=True),
     )

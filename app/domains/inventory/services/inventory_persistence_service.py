@@ -1,5 +1,4 @@
 import os
-import re
 import uuid
 from collections.abc import Iterable
 from datetime import date
@@ -19,6 +18,10 @@ from app.domains.inventory.services.inventory_aggregate_service import (
     _parse_date_series,
     _read_inventory_bytes,
     _read_inventory_file,
+)
+from app.domains.inventory.services.inventory_mapping_service import (
+    build_product_sku_mapping_lookups,
+    resolve_product_sku_mapping,
 )
 from app.shared.config import get_runtime_settings
 from app.shared.storage import create_presigned_upload_url, get_s3_client, is_s3_configured
@@ -106,28 +109,6 @@ def _country_type(country_code: str) -> str:
     return "KR" if country_code == "KR" else "OVERSEAS"
 
 
-def _extract_service_item_code(country_code: str, raw_item_code: str) -> str:
-    normalized = _normalize_item_code(raw_item_code)
-    if re.fullmatch(r"\d{5}", normalized):
-        return normalized
-
-    prefixed_match = re.search(r"^[A-Z]+(\d{5})", normalized)
-    if prefixed_match:
-        return prefixed_match.group(1)
-
-    if country_code == "KR":
-        return normalized
-
-    match = re.search(r"(\d{5})", normalized)
-    if match:
-        return match.group(1)
-
-    digits = re.sub(r"\D", "", normalized)
-    if len(digits) >= 5:
-        return digits[:5]
-    return normalized
-
-
 def _build_s3_key(prefix: str, country_type: str, country_code: str, base_date: date | None, stored_name: str) -> str:
     parts = [
         prefix.strip("/"),
@@ -204,11 +185,11 @@ def _rebuild_aggregate_scope(db: Session, country_code: str, base_date: date | N
 
     rows = db.execute(
         select(
-            InventoryRow.raw_item_code,
-            InventoryRow.item_code,
+            InventoryRow.sku,
             InventoryRow.description,
             InventoryRow.supplier,
             InventoryRow.level,
+            InventoryRow.warehouse,
             InventoryRow.quantity,
         ).where(InventoryRow.uploaded_file_id.in_(uploaded_file_ids))
     ).all()
@@ -218,11 +199,11 @@ def _rebuild_aggregate_scope(db: Session, country_code: str, base_date: date | N
     frame = pd.DataFrame(
         [
             {
-                "raw_item_code": row.raw_item_code,
-                "item_code": row.item_code,
+                "sku": row.sku,
                 "description": row.description,
                 "supplier": row.supplier,
                 "level": row.level,
+                "warehouse": row.warehouse,
                 "quantity": int(row.quantity or 0),
             }
             for row in rows
@@ -230,7 +211,7 @@ def _rebuild_aggregate_scope(db: Session, country_code: str, base_date: date | N
     )
     grouped = (
         frame.groupby(
-            ["raw_item_code", "item_code", "description", "supplier", "level"],
+            ["sku", "description", "supplier", "level", "warehouse"],
             dropna=False,
             as_index=False,
         )["quantity"]
@@ -242,11 +223,11 @@ def _rebuild_aggregate_scope(db: Session, country_code: str, base_date: date | N
             InventoryAggregate(
                 country_code=country_code,
                 base_date=base_date,
-                raw_item_code=str(record["raw_item_code"]),
-                item_code=str(record["item_code"]),
+                sku=str(record["sku"]),
                 description=_nullable_string(record["description"]),
                 supplier=_nullable_string(record["supplier"]),
                 level=_nullable_string(record["level"]),
+                warehouse=_nullable_string(record["warehouse"]),
                 total_quantity=int(record["quantity"]),
                 aggregation_version=aggregation_version,
             )
@@ -259,22 +240,24 @@ def _rebuild_aggregate_scopes(db: Session, scopes: Iterable[tuple[str, date | No
         _rebuild_aggregate_scope(db, country_code, base_date)
 
 
-def _build_row_frame(df: pd.DataFrame, country_code: str) -> pd.DataFrame:
+def _build_row_frame(df: pd.DataFrame) -> pd.DataFrame:
     level_series = (
         df["level"]
         if "level" in df.columns
         else pd.Series([None] * len(df), index=df.index, dtype="object")
     )
+    warehouse_series = (
+        df["warehouse"]
+        if "warehouse" in df.columns
+        else pd.Series([None] * len(df), index=df.index, dtype="object")
+    )
     return pd.DataFrame(
         {
-            "raw_item_code": df["raw_item_code"].fillna("").astype(str).str.strip(),
-            "item_code": df["raw_item_code"]
-            .fillna("")
-            .astype(str)
-            .map(lambda value: _extract_service_item_code(country_code, value)),
+            "sku": df["sku"].fillna("").astype(str).str.strip(),
             "description": df["description"].fillna("").astype(str).str.strip(),
             "supplier": df["supplier"].fillna("").astype(str).str.strip(),
             "level": level_series.apply(_normalize_level_value),
+            "warehouse": warehouse_series.map(_nullable_string),
             "quantity": pd.to_numeric(df["quantity"], errors="coerce").fillna(0).round().astype(int),
         }
     )
@@ -309,16 +292,16 @@ def _persist_dataframe(
     db.add(uploaded_file)
     db.flush()
 
-    row_frame = _build_row_frame(df, country_code)
+    row_frame = _build_row_frame(df)
     for record in row_frame.to_dict(orient="records"):
         db.add(
             InventoryRow(
                 uploaded_file_id=uploaded_file.id,
-                raw_item_code=str(record["raw_item_code"]),
-                item_code=str(record["item_code"]),
+                sku=str(record["sku"]),
                 description=_nullable_string(record["description"]),
                 supplier=_nullable_string(record["supplier"]),
                 level=_nullable_string(record["level"]),
+                warehouse=_nullable_string(record["warehouse"]),
                 quantity=int(record["quantity"]),
             )
         )
@@ -344,15 +327,17 @@ def get_inventory_view(db: Session, country_code: str) -> dict:
     normalized_country = str(country_code or "").strip().upper()
     if not normalized_country:
         raise HTTPException(status_code=400, detail="country_code가 필요합니다.")
+    mapping_lookups = build_product_sku_mapping_lookups(db)
 
     rows = db.execute(
         select(
             InventoryAggregate.country_code,
             InventoryAggregate.base_date,
-            InventoryAggregate.raw_item_code,
+            InventoryAggregate.sku,
             InventoryAggregate.description,
             InventoryAggregate.supplier,
             InventoryAggregate.level,
+            InventoryAggregate.warehouse,
             InventoryAggregate.total_quantity,
         ).where(InventoryAggregate.country_code == normalized_country)
     ).all()
@@ -370,11 +355,11 @@ def get_inventory_view(db: Session, country_code: str) -> dict:
             {
                 "country": row.country_code,
                 "date_key": row.base_date.isoformat() if row.base_date else "",
-                "itemno": row.raw_item_code,
+                "sku": row.sku,
                 "description": row.description or "",
                 "supplier": row.supplier or "",
-                "category": "",
                 "level": row.level if row.level is not None else "__NONE__",
+                "warehouse": row.warehouse or "",
                 "quantity": int(row.total_quantity or 0),
             }
             for row in rows
@@ -392,7 +377,7 @@ def get_inventory_view(db: Session, country_code: str) -> dict:
 
     pivot = (
         frame.pivot_table(
-            index=["itemno", "description", "supplier", "category", "level", "country"],
+            index=["sku", "description", "supplier", "level", "warehouse", "country"],
             columns="date_key",
             values="quantity",
             aggfunc="sum",
@@ -405,6 +390,15 @@ def get_inventory_view(db: Session, country_code: str) -> dict:
 
     dates = sorted(frame["date_key"].dropna().unique().tolist())
     result_rows = pivot.to_dict(orient="records")
+    for row in result_rows:
+        row.update(
+            resolve_product_sku_mapping(
+                mapping_lookups,
+                normalized_country,
+                row.get("sku"),
+                row.get("description"),
+            )
+        )
     return {
         "summary": {"item_count": len(result_rows), "date_count": len(dates)},
         "countries": [normalized_country],
@@ -518,11 +512,11 @@ def persist_inventory_uploads(
                     [
                         "country_code",
                         "base_date",
-                        "raw_item_code",
-                        "item_code",
+                        "sku",
                         "description",
                         "supplier",
                         "level",
+                        "warehouse",
                     ],
                     dropna=False,
                     as_index=False,
@@ -535,11 +529,11 @@ def persist_inventory_uploads(
                     InventoryAggregate(
                         country_code=str(record["country_code"]),
                         base_date=record["base_date"],
-                        raw_item_code=str(record["raw_item_code"]),
-                        item_code=str(record["item_code"]),
+                        sku=str(record["sku"]),
                         description=_nullable_string(record["description"]),
                         supplier=_nullable_string(record["supplier"]),
                         level=_nullable_string(record["level"]),
+                        warehouse=_nullable_string(record["warehouse"]),
                         total_quantity=int(record["quantity"]),
                         aggregation_version=aggregation_version,
                     )
@@ -690,7 +684,7 @@ def complete_inventory_direct_uploads(db: Session, files: list[dict]) -> list[di
             merged = pd.concat(aggregate_frames, ignore_index=True)
             grouped = (
                 merged.groupby(
-                    ["country_code", "base_date", "raw_item_code", "item_code", "description", "supplier", "level"],
+                    ["country_code", "base_date", "sku", "description", "supplier", "level", "warehouse"],
                     dropna=False,
                     as_index=False,
                 )["quantity"]
@@ -701,11 +695,11 @@ def complete_inventory_direct_uploads(db: Session, files: list[dict]) -> list[di
                     InventoryAggregate(
                         country_code=str(record["country_code"]),
                         base_date=record["base_date"],
-                        raw_item_code=str(record["raw_item_code"]),
-                        item_code=str(record["item_code"]),
+                        sku=str(record["sku"]),
                         description=_nullable_string(record["description"]),
                         supplier=_nullable_string(record["supplier"]),
                         level=_nullable_string(record["level"]),
+                        warehouse=_nullable_string(record["warehouse"]),
                         total_quantity=int(record["quantity"]),
                         aggregation_version=aggregation_version,
                     )

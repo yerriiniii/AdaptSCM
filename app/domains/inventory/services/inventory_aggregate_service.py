@@ -45,8 +45,12 @@ LEVEL_NONE_SENTINEL = "__NONE__"
 COUNTRY_PATTERNS = {
     "KR": ["kr", "korea", "korean", "한국"],
     "TW": ["tw", "taiwan", "대만", "taipei"],
-    "JP": ["jp", "japan", "일본", "tokyo"],
     "US": ["us", "usa", "america", "미국"],
+    "VN": ["vn", "vietnam", "베트남", "hanoi", "ho chi minh"],
+    "SG": ["sg", "singapore", "싱가포르"],
+    "AU": ["au", "australia", "호주", "sydney", "melbourne"],
+    "UK": ["uk", "unitedkingdom", "britain", "england", "영국", "london"],
+    "AE": ["ae", "uae", "dubai", "abudhabi", "아랍에미리트"],
 }
 
 
@@ -141,6 +145,13 @@ def _normalize_level_value(value: object) -> str | None:
     return normalized or "0"
 
 
+def _nullable_string_like(value: object) -> str | None:
+    if pd.isna(value):
+        return None
+    raw = str(value).strip()
+    return raw or None
+
+
 def _read_inventory_bytes(filename: str, raw: bytes) -> pd.DataFrame:
     if not raw:
         raise HTTPException(status_code=400, detail=f"{filename}: 파일이 비어 있습니다.")
@@ -173,22 +184,12 @@ def _read_inventory_bytes(filename: str, raw: bytes) -> pd.DataFrame:
             df["description"] = df["itemno"]
     if "supplier" not in df.columns:
         df["supplier"] = ""
-    if "category" not in df.columns:
-        if "warehouse" in df.columns and df["warehouse"].notna().any():
-            df["category"] = df["warehouse"]
-        else:
-            df["category"] = "미분류"
-    df["raw_item_code"] = df["itemno"].fillna("").astype(str).str.strip()
-    df["itemno"] = df["itemno"].apply(_normalize_item_code)
+    if "warehouse" not in df.columns:
+        df["warehouse"] = pd.Series([None] * len(df), index=df.index, dtype="object")
+    df["sku"] = df["itemno"].apply(_normalize_item_code)
     df["description"] = df["description"].fillna("").astype(str).str.strip()
     df["supplier"] = df["supplier"].fillna("").astype(str).str.strip()
-    df["category"] = (
-        df["category"]
-        .fillna("")
-        .astype(str)
-        .str.strip()
-        .replace("", "미분류")
-    )
+    df["warehouse"] = df["warehouse"].apply(_nullable_string_like)
     return df
 
 
@@ -306,28 +307,22 @@ def aggregate_inventory_files(
 
         df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0).round().astype(int)
         grouped = (
-            df.groupby(["date", "itemno", "level", "country"], as_index=False)
+            df.groupby(["date", "sku", "description", "supplier", "level", "warehouse", "country"], as_index=False)
             .agg(
                 quantity=("quantity", "sum"),
-                description=("description", "first"),
-                supplier=("supplier", "first"),
-                category=("category", "first"),
             )
-            .sort_values(["date", "country", "itemno", "level"])
+            .sort_values(["date", "country", "sku", "description", "supplier", "level", "warehouse"])
         )
         daily_frames.append(grouped)
 
     merged = pd.concat(daily_frames, ignore_index=True)
     merged["date"] = pd.to_datetime(merged["date"])
     merged = (
-        merged.groupby(["date", "itemno", "level", "country"], as_index=False)
+        merged.groupby(["date", "sku", "description", "supplier", "level", "warehouse", "country"], as_index=False)
         .agg(
             quantity=("quantity", "sum"),
-            description=("description", "first"),
-            supplier=("supplier", "first"),
-            category=("category", "first"),
         )
-        .sort_values(["country", "itemno", "level", "date"])
+        .sort_values(["country", "sku", "description", "supplier", "level", "warehouse", "date"])
     )
 
     max_date = merged["date"].max()
@@ -350,7 +345,7 @@ def aggregate_inventory_files(
     if keyword:
         needle = str(keyword).strip().lower()
         merged = merged[
-            merged["itemno"].astype(str).str.lower().str.contains(needle, na=False)
+            merged["sku"].astype(str).str.lower().str.contains(needle, na=False)
             | merged["description"].astype(str).str.lower().str.contains(needle, na=False)
         ]
 
@@ -367,7 +362,7 @@ def aggregate_inventory_files(
 
     merged["date_key"] = merged["date"].dt.strftime("%Y-%m-%d")
     pivot = merged.pivot_table(
-        index=["itemno", "description", "supplier", "category", "level", "country"],
+        index=["sku", "description", "supplier", "level", "warehouse", "country"],
         columns="date_key",
         values="quantity",
         aggfunc="sum",
@@ -379,7 +374,7 @@ def aggregate_inventory_files(
         [
             col
             for col in pivot.columns
-            if col not in {"itemno", "description", "supplier", "category", "level", "country"}
+            if col not in {"sku", "description", "supplier", "level", "warehouse", "country"}
         ]
     )
     rows = pivot.to_dict(orient="records")

@@ -205,14 +205,287 @@ body {
   padding: 0;
 }
 
-.settingsTopActions {
+.settingsNotice {
+  max-width: 660px;
+  margin: 0 auto 12px;
+}
+
+.skuManageCard {
+  width: 100%;
+  min-height: 530px;
+  margin: 0 0 12px;
+  padding: 18px 18px 24px;
+  border: 1px solid #e5e9f0;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.skuManageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 16px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.skuManageSubtitle {
+  font-size: 14px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.skuManageContent {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.skuUploadPanel {
+  border: 1px solid #e8edf4;
+  border-radius: 14px;
+  background: #f8fbff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: stretch;
+  padding: 26px 20px 28px;
+  min-height: 100%;
+  height: 100%;
+  text-align: left;
+}
+
+.skuUploadPanel:hover:not(:disabled) {
+  background: #f4f8fc;
+  border-color: #d5deea;
+}
+
+.skuUploadMain {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  flex: 1;
+  transform: translateY(-16px);
+}
+
+.skuUploadButtonLabel {
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #334155;
+  letter-spacing: -0.02em;
+}
+
+.skuUploadMeta {
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.skuUploadBadge {
+  width: 72px;
+  height: 72px;
+  border: 1px solid #dbe7df;
+  border-radius: 16px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f8a5f;
+  letter-spacing: 0.05em;
+}
+
+.skuManualCard {
+  border: 1px solid #e5e9f0;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 26px 20px 28px;
+  min-height: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.skuManualTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.skuManualSubtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.skuManualGrid {
+  margin-top: 42px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px 16px;
+}
+
+.skuField {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skuField span {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.skuManualActions {
+  margin-top: auto;
+  padding-top: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.skuManualButtons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skuManageMeta {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 20px;
+}
+
+.ghost.skuManageResetButton {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid #e3e8f0;
+  background: #fff;
+  color: #4b5563;
+}
+
+.ghost.skuManageResetButton:hover:not(:disabled) {
+  background: #fff;
+}
+
+.mappingCard {
+  max-width: 660px;
+  margin: 0 auto 12px;
+  padding: 14px;
+  border: 1px solid #c4e7d8;
+  border-radius: 12px;
+  background: #e8f4ee;
+}
+
+.mappingCardHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.mappingCardTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #167a58;
+}
+
+.mappingCardSubtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.mappingActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mappingMeta {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #167a58;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.mappingError {
+  margin-top: 12px;
+}
+
+.settingsToolbar {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 10px;
+  width: 100%;
   max-width: 660px;
+  margin: 0 auto 28px;
+}
+
+.settingsToolbarWithNotice {
+  margin-top: 36px;
+}
+
+.ghost.settingsDangerButton {
+  border: 1px solid #e3e8f0;
+  color: #4b5563;
+  background: #fff;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ghost.settingsDangerButton:hover:not(:disabled) {
+  background: #fff;
+}
+
+.ghost.settingsCountryResetBtn {
+  border: 1px solid #e3e8f0;
+  color: #4b5563;
+  background: #fff;
+}
+
+.ghost.settingsCountryResetBtn:hover:not(:disabled) {
+  background: #fff;
+}
+
+.searchPanelCard {
+  max-width: 1100px;
   margin-left: auto;
   margin-right: auto;
-  padding-right: 0;
+}
+
+.mappingSearchHead {
+  margin-bottom: 10px;
+}
+
+.searchEmptyState {
+  border: 1px dashed #d7dee8;
+  border-radius: 10px;
+  padding: 18px;
+  color: #64748b;
+  background: #f8fafc;
+}
+
+.searchTable {
+  min-width: 980px;
 }
 .filterBar {
   display: flex;
@@ -493,7 +766,7 @@ th {
 }
 
 .inventoryTable.overseasTable .stickyColCompare {
-  left: 892px;
+  left: 890px;
   width: 108px;
   min-width: 108px;
   max-width: 108px;
@@ -648,7 +921,7 @@ th {
   gap: 8px;
 }
 
-.settingsCountryResetBtn {
+.ghost.settingsCountryResetBtn {
   height: 28px;
   padding: 0 9px;
   font-size: 12px;
@@ -752,6 +1025,12 @@ th {
   width: 400px;
   min-width: 400px;
   max-width: 400px;
+}
+
+.compareTable .compareMetaCol {
+  width: 180px;
+  min-width: 180px;
+  max-width: 180px;
 }
 
 .inventoryTable th:first-child,
@@ -1104,6 +1383,32 @@ th {
     grid-template-columns: 1fr;
   }
 
+  .mappingCardHead {
+    flex-direction: column;
+  }
+
+  .mappingActions {
+    justify-content: flex-start;
+  }
+
+  .skuManageContent {
+    grid-template-columns: 1fr;
+  }
+
+  .skuManageHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .skuManualGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .skuManualActions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .trendSummaryGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1121,6 +1426,14 @@ th {
   }
 
   .trendSummaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .mappingStats {
+    grid-template-columns: 1fr;
+  }
+
+  .skuManualGrid {
     grid-template-columns: 1fr;
   }
 

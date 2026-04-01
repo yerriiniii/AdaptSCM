@@ -4,8 +4,30 @@ import * as XLSX from "xlsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 const DEFAULT_DATE_RANGE = "10d";
-const OVERSEAS_UPLOAD_COUNTRIES = ["US", "JP", "TW", "SEA", "HK", "CN"];
-const SETTINGS_COUNTRY_ORDER = ["KR", "US", "JP", "TW", "SEA", "HK", "CN"];
+const OVERSEAS_UPLOAD_COUNTRIES = ["US", "TW", "VN", "SG", "AU", "UK", "AE"];
+const SETTINGS_COUNTRY_ORDER = ["KR", "US", "TW", "VN", "SG", "AU", "UK", "AE"];
+const SKU_MAPPING_TEMPLATE_COLUMNS = [
+  "description",
+  "kr",
+  "us",
+  "tw",
+  "vn",
+  "sg",
+  "au",
+  "uk",
+  "ae",
+];
+const EMPTY_SKU_MAPPING_FORM = {
+  description: "",
+  kr: "",
+  us: "",
+  tw: "",
+  vn: "",
+  sg: "",
+  au: "",
+  uk: "",
+  ae: "",
+};
 function toFixed(value, digits = 2) {
   if (value === null || value === undefined) return "-";
   const parsed = Number(value);
@@ -34,8 +56,12 @@ function toPercent(value, digits = 1) {
 function detectCountry(name = "") {
   const n = name.toLowerCase();
   if (n.includes("tw") || n.includes("taiwan") || n.includes("대만")) return "TW";
-  if (n.includes("jp") || n.includes("japan") || n.includes("일본")) return "JP";
   if (n.includes("us") || n.includes("usa") || n.includes("미국")) return "US";
+  if (n.includes("vn") || n.includes("vietnam") || n.includes("베트남")) return "VN";
+  if (n.includes("sg") || n.includes("singapore") || n.includes("싱가포르")) return "SG";
+  if (n.includes("au") || n.includes("australia") || n.includes("호주")) return "AU";
+  if (n.includes("uk") || n.includes("england") || n.includes("britain") || n.includes("영국")) return "UK";
+  if (n.includes("ae") || n.includes("uae") || n.includes("dubai") || n.includes("아랍에미리트")) return "AE";
   return "KR";
 }
 
@@ -130,14 +156,64 @@ function extractBaseProductCode(itemno = "") {
   return m ? m[1] : raw;
 }
 
+function getRowSku(row) {
+  return String(row?.sku ?? row?.itemno ?? "").trim().toUpperCase();
+}
+
+function getCanonicalMatchCode(row) {
+  const mappedSku = String(row?.mapped_kr_sku || "").trim();
+  return mappedSku || getRowSku(row) || extractBaseProductCode(row?.itemno);
+}
+
+function getPreferredKrName(row) {
+  const mappedName = String(row?.mapped_kr_name || "").trim();
+  if (mappedName) return mappedName;
+  if (String(row?.country || "KR") === "KR") {
+    return String(row?.description || "").trim();
+  }
+  return "";
+}
+
+function getCompareDisplayName(row) {
+  const preferred = getPreferredKrName(row);
+  if (preferred) return preferred;
+  return String(row?.description || "").trim();
+}
+
+function getCompareMeta(row) {
+  return {
+    supplier: String(row?.supplier || "").trim(),
+    level: String(row?.level ?? "").trim(),
+    warehouse: String(row?.warehouse || row?.category || "").trim(),
+  };
+}
+
+function getCompareMetaLabel(row) {
+  const meta = getCompareMeta(row);
+  const parts = [];
+  if (meta.supplier) parts.push(meta.supplier);
+  if (meta.level) parts.push(`L${meta.level}`);
+  if (meta.warehouse) parts.push(meta.warehouse);
+  return parts.join(" / ");
+}
+
+function getCompareIdentity(row) {
+  const code = getCanonicalMatchCode(row);
+  const name = getCompareDisplayName(row);
+  const meta = getCompareMeta(row);
+  if (!code && !name && !meta.supplier && !meta.level && !meta.warehouse) return "";
+  return `${code}::${name}::${meta.supplier}::${meta.level}::${meta.warehouse}`;
+}
+
 function countryLabel(code = "KR") {
   if (code === "KR") return "한국";
   if (code === "TW") return "대만";
-  if (code === "JP") return "일본";
   if (code === "US") return "미국";
-  if (code === "HK") return "홍콩";
-  if (code === "CN") return "중국";
-  if (code === "SEA") return "동남아";
+  if (code === "VN") return "베트남";
+  if (code === "SG") return "싱가포르";
+  if (code === "AU") return "호주";
+  if (code === "UK") return "영국";
+  if (code === "AE") return "아랍에미리트";
   return code;
 }
 
@@ -219,6 +295,20 @@ export default function App() {
   const [compareSelectedDate, setCompareSelectedDate] = useState("");
   const [showCautionModal, setShowCautionModal] = useState(false);
   const [settingsMutating, setSettingsMutating] = useState(false);
+  const [mappingSearchKeyword, setMappingSearchKeyword] = useState("");
+  const [mappingRows, setMappingRows] = useState([]);
+  const [mappingRowsLoading, setMappingRowsLoading] = useState(false);
+  const [mappingRowsError, setMappingRowsError] = useState("");
+  const [mappingSummary, setMappingSummary] = useState({
+    total_count: 0,
+    updated_at: "",
+    upload_updated_at: "",
+    manual_updated_at: "",
+    required_columns: SKU_MAPPING_TEMPLATE_COLUMNS,
+  });
+  const [mappingError, setMappingError] = useState("");
+  const [manualMappingForm, setManualMappingForm] = useState({ ...EMPTY_SKU_MAPPING_FORM });
+  const [mappingInputKey, setMappingInputKey] = useState(0);
   const [topScrollWidth, setTopScrollWidth] = useState(0);
   const [showTopScroll, setShowTopScroll] = useState(false);
   const topScrollRef = useRef(null);
@@ -262,6 +352,10 @@ export default function App() {
   const isKRScope = countryTabMode === "KR";
   const isOverseasScope = countryTabMode === "OVERSEAS";
   const isCompareScope = countryTabMode === "COMPARE";
+  const isSettingsScope = countryTabMode === "SETTINGS";
+  const isSkuMappingScope = countryTabMode === "SKU_MAPPING";
+  const isProductSearchScope = countryTabMode === "PRODUCT_SEARCH";
+  const isInventoryAdminScope = isSettingsScope || isSkuMappingScope || isProductSearchScope;
   const inventoryStickyWidth = useMemo(() => {
     if (isKRScope) return 700;
     if (isOverseasScope) return showKrCompare ? 998 : 892;
@@ -386,7 +480,7 @@ export default function App() {
         if (lv !== inventoryLevelFilter) return false;
       }
       if (needle) {
-        const item = String(row.itemno ?? "").toLowerCase();
+        const item = String(getRowSku(row) ?? "").toLowerCase();
         const desc = String(row.description ?? "").toLowerCase();
         if (!item.includes(needle) && !desc.includes(needle)) return false;
       }
@@ -433,8 +527,8 @@ export default function App() {
     if (!hasKrCurrentSnapshot) return new Map();
     const map = new Map();
     for (const row of krRows) {
-      const baseCode = extractBaseProductCode(row.itemno);
-      const key = `${baseCode}`;
+      const key = getCompareIdentity(row);
+      if (!key) continue;
       const qty = Number(row[utcTodayKey] || 0);
       map.set(key, Number(map.get(key) || 0) + qty);
     }
@@ -450,10 +544,10 @@ export default function App() {
     const map = new Map();
     for (const row of scopeResultCache.KR?.rows || []) {
       if (String(row.country || "KR") !== "KR") continue;
-      const code = extractBaseProductCode(row.itemno);
-      if (!code) continue;
-      const name = String(row.description || "").trim();
-      if (!map.has(code) && name) map.set(code, name);
+      const key = getCompareIdentity(row);
+      if (!key) continue;
+      const name = getCompareDisplayName(row);
+      if (!map.has(key) && name) map.set(key, name);
     }
     return map;
   }, [scopeResultCache]);
@@ -469,8 +563,8 @@ export default function App() {
     return filteredRows.map((row, idx) => ({
       ...row,
       supplier: String(row.supplier || "").trim() || "-",
-      warehouseStock: String(row.category || "").trim() || "-",
-      trendRowKey: `${row.country}-${row.itemno}-${row.level}-${row.category}-${row.supplier}-${idx}`,
+      warehouseStock: String(row.warehouse || "").trim() || "-",
+      trendRowKey: `${row.country}-${getRowSku(row)}-${row.description}-${row.level}-${row.warehouse}-${row.supplier}-${idx}`,
     }));
   }, [isKRScope, filteredRows]);
 
@@ -478,7 +572,7 @@ export default function App() {
     if (!isOverseasScope) return [];
     return filteredRows.map((row, idx) => ({
       ...row,
-      trendRowKey: `${row.country}-${row.itemno}-${row.level}-${row.category}-${idx}`,
+      trendRowKey: `${row.country}-${getRowSku(row)}-${row.description}-${row.level}-${row.warehouse}-${idx}`,
     }));
   }, [isOverseasScope, filteredRows]);
 
@@ -515,8 +609,8 @@ export default function App() {
   }, [compareAvailableDates, compareSelectedDate]);
 
   const compareCountryData = useMemo(() => {
-    const allCodes = new Set();
-    const krNameLookup = new Map();
+    const allKeys = new Set();
+    const rowMetaLookup = new Map();
     const byCountry = {};
 
     const collectCountry = (countryCode) => {
@@ -528,15 +622,17 @@ export default function App() {
       const qtyMap = new Map();
 
       for (const row of rows) {
-        const code = extractBaseProductCode(row.itemno);
-        if (!code) continue;
-        allCodes.add(code);
-        if (countryCode === "KR") {
-          const name = String(row.description || "").trim();
-          if (!krNameLookup.has(code) && name) krNameLookup.set(code, name);
+        const code = getCanonicalMatchCode(row);
+        const displayName = getCompareDisplayName(row);
+        const metaLabel = getCompareMetaLabel(row);
+        const compareKey = getCompareIdentity(row);
+        if (!compareKey) continue;
+        allKeys.add(compareKey);
+        if (!rowMetaLookup.has(compareKey)) {
+          rowMetaLookup.set(compareKey, { code, name: displayName, metaLabel });
         }
         if (!hasDate) continue;
-        qtyMap.set(code, Number(qtyMap.get(code) || 0) + Number(row[compareSelectedDate] || 0));
+        qtyMap.set(compareKey, Number(qtyMap.get(compareKey) || 0) + Number(row[compareSelectedDate] || 0));
       }
 
       byCountry[countryCode] = { hasDate, qtyMap };
@@ -546,8 +642,15 @@ export default function App() {
     OVERSEAS_UPLOAD_COUNTRIES.forEach(collectCountry);
 
     return {
-      allCodes: Array.from(allCodes).sort(),
-      krNameLookup,
+      rowKeys: Array.from(allKeys).sort((a, b) => {
+        const aMeta = rowMetaLookup.get(a) || {};
+        const bMeta = rowMetaLookup.get(b) || {};
+        return (
+          String(aMeta.code || "").localeCompare(String(bMeta.code || "")) ||
+          String(aMeta.name || "").localeCompare(String(bMeta.name || ""))
+        );
+      }),
+      rowMetaLookup,
       byCountry,
     };
   }, [scopeResultCache, compareSelectedDate]);
@@ -571,18 +674,21 @@ export default function App() {
   }, [scopeResultCache]);
 
   const compareRows = useMemo(() => {
-    if (!compareSelectedDate || !compareCountryData.allCodes.length) return [];
-    return compareCountryData.allCodes.map((code) => {
+    if (!compareSelectedDate || !compareCountryData.rowKeys.length) return [];
+    return compareCountryData.rowKeys.map((rowKey) => {
+      const meta = compareCountryData.rowMetaLookup.get(rowKey) || {};
       const row = {
-        상품코드: code,
-        한국상품명: compareCountryData.krNameLookup.get(code) || "",
+        _compareKey: rowKey,
+        상품코드: meta.code || "",
+        한국상품명: meta.name || "",
+        구분: meta.metaLabel || "",
         "한국 현 재고": compareCountryData.byCountry.KR?.hasDate
-          ? Number(compareCountryData.byCountry.KR.qtyMap.get(code) || 0)
+          ? Number(compareCountryData.byCountry.KR.qtyMap.get(rowKey) || 0)
           : null,
       };
       for (const countryCode of OVERSEAS_UPLOAD_COUNTRIES) {
         row[countryLabel(countryCode)] = compareCountryData.byCountry[countryCode]?.hasDate
-          ? Number(compareCountryData.byCountry[countryCode].qtyMap.get(code) || 0)
+          ? Number(compareCountryData.byCountry[countryCode].qtyMap.get(rowKey) || 0)
           : null;
       }
       return row;
@@ -596,7 +702,8 @@ export default function App() {
     return compareRows.filter((row) => {
       const code = String(row["상품코드"] || "").toLowerCase();
       const krName = String(row["한국상품명"] || "").toLowerCase();
-      return code.includes(needle) || krName.includes(needle);
+      const meta = String(row["구분"] || "").toLowerCase();
+      return code.includes(needle) || krName.includes(needle) || meta.includes(needle);
     });
   }, [compareRows, inventoryKeyword, isCompareScope]);
   const tableMinWidth = useMemo(() => {
@@ -610,7 +717,7 @@ export default function App() {
     [isKRScope, filteredDateColumns, tableMinWidth]
   );
   const compareTableWidth = useMemo(
-    () => Math.max(1120, 410 + (OVERSEAS_UPLOAD_COUNTRIES.length + 1) * 96),
+    () => Math.max(1280, 590 + (OVERSEAS_UPLOAD_COUNTRIES.length + 1) * 96),
     []
   );
   const datePeekFadeStyle =
@@ -748,6 +855,7 @@ export default function App() {
       <>
         <th className="compareCodeCol stickyCol stickyColCode">상품코드</th>
         <th className="compareNameCol stickyCol stickyColName stickyColBoundary">한국상품명</th>
+        <th className="compareMetaCol">구분</th>
         <th className="compareCountryCol krCompareCol">한국</th>
         {OVERSEAS_UPLOAD_COUNTRIES.map((code) => (
           <th key={code} className="compareCountryCol">{countryLabel(code)}</th>
@@ -757,7 +865,7 @@ export default function App() {
   }
 
   async function aggregateInventory() {
-    if (countryTabMode === "SETTINGS" || countryTabMode === "COMPARE") return;
+    if (isInventoryAdminScope || countryTabMode === "COMPARE") return;
     const scopeKey = getScopeKey(countryTabMode, selectedOverseasCountry);
     if (scopeKey === "__NONE__") return;
     setInventoryRequested(true);
@@ -806,6 +914,7 @@ export default function App() {
         const out = {
           상품코드: row["상품코드"],
           한국상품명: row["한국상품명"] || "",
+          구분: row["구분"] || "",
           한국: row["한국 현 재고"] === null ? "-" : Number(row["한국 현 재고"] || 0),
         };
         for (const code of OVERSEAS_UPLOAD_COUNTRIES) {
@@ -825,8 +934,10 @@ export default function App() {
       const rows = krDisplayRows.map((row) => {
         const out = {
           공급처: row.supplier,
-          상품코드: row.itemno,
+          상품코드: getRowSku(row),
           상품명: row.description || "",
+          창고: row.warehouse || "",
+          레벨: row.level || "",
         };
         for (const dt of filteredDateColumns) {
           out[dt] = Number(row[dt] || 0);
@@ -841,14 +952,19 @@ export default function App() {
     }
     if (!filteredRows.length || !filteredDateColumns.length) return;
     const rows = filteredRows.map((row) => {
+      const matchCode = getCanonicalMatchCode(row);
+      const compareKey = getCompareIdentity(row);
       const out = {
-        상품코드: extractBaseProductCode(row.itemno),
+        상품코드: matchCode,
         상품명: row.description || "",
-        한국상품명: krNameMap.get(extractBaseProductCode(row.itemno)) || "",
+        한국상품명: getCompareDisplayName(row) || krNameMap.get(compareKey) || "",
+        공급처: row.supplier || "",
+        창고: row.warehouse || "",
+        레벨: row.level || "",
       };
       if (showKrCompare) {
         out["한국"] = krCompareMap.size
-          ? Number(krCompareMap.get(`${extractBaseProductCode(row.itemno)}`) || 0)
+          ? Number(krCompareMap.get(compareKey) || 0)
           : "-";
       }
       for (const dt of filteredDateColumns) {
@@ -919,7 +1035,7 @@ export default function App() {
   }
 
   function onClickUpload() {
-    if (countryTabMode === "SETTINGS" || countryTabMode === "COMPARE") return;
+    if (isInventoryAdminScope || countryTabMode === "COMPARE") return;
     openFileInput();
   }
 
@@ -938,6 +1054,26 @@ export default function App() {
     return Array.isArray(res?.data?.files) ? res.data.files : [];
   }
 
+  async function fetchSkuMappingSummary() {
+    const res = await axios.get(`${API_BASE}/api/inventory/mappings`);
+    return {
+      total_count: Number(res?.data?.total_count || 0),
+      updated_at: res?.data?.updated_at || "",
+      upload_updated_at: res?.data?.upload_updated_at || "",
+      manual_updated_at: res?.data?.manual_updated_at || "",
+      required_columns: Array.isArray(res?.data?.required_columns)
+        ? res.data.required_columns
+        : SKU_MAPPING_TEMPLATE_COLUMNS,
+    };
+  }
+
+  async function fetchSkuMappingItems(query = "") {
+    const res = await axios.get(`${API_BASE}/api/inventory/mappings/items`, {
+      params: { query: query || "", limit: 200 },
+    });
+    return Array.isArray(res?.data?.items) ? res.data.items : [];
+  }
+
   async function fetchPersistedScopeView(countryCode) {
     const res = await axios.get(`${API_BASE}/api/inventory/view`, {
       params: { country_code: countryCode },
@@ -953,8 +1089,9 @@ export default function App() {
 
   async function hydratePersistedState(options = {}) {
     const { preserveLocalOnly = true, excludeCountry = "", excludeEntryId = "" } = options;
-    const [persistedFiles, ...views] = await Promise.all([
+    const [persistedFiles, latestMappingSummary, ...views] = await Promise.all([
       fetchPersistedFiles(),
+      fetchSkuMappingSummary(),
       fetchPersistedScopeView("KR"),
       ...OVERSEAS_UPLOAD_COUNTRIES.map((code) => fetchPersistedScopeView(code)),
     ]);
@@ -972,6 +1109,7 @@ export default function App() {
     });
 
     setAvailableCountries(Array.from(available));
+    setMappingSummary(latestMappingSummary);
     setScopeResultCache(nextCache);
     setScopeErrorCache({});
     setFileEntries((prev) => {
@@ -999,6 +1137,104 @@ export default function App() {
       }));
       return [...serverEntries, ...localOnlyEntries];
     });
+  }
+
+  useEffect(() => {
+    if (!isProductSearchScope) return;
+    if (!mappingSearchKeyword.trim()) {
+      setMappingRows([]);
+      setMappingRowsError("");
+      setMappingRowsLoading(false);
+      return;
+    }
+    const run = async () => {
+      try {
+        setMappingRowsLoading(true);
+        setMappingRowsError("");
+        const items = await fetchSkuMappingItems(mappingSearchKeyword);
+        setMappingRows(items);
+      } catch (err) {
+        const detail = err?.response?.data?.detail;
+        setMappingRowsError(Array.isArray(detail) ? detail.join("\n") : detail || "매핑 검색 중 오류");
+      } finally {
+        setMappingRowsLoading(false);
+      }
+    };
+    run();
+  }, [isProductSearchScope, mappingSearchKeyword]);
+
+  function openSkuMappingInput() {
+    document.getElementById("sku-mapping-input")?.click();
+  }
+
+  async function uploadSkuMappingFile(file) {
+    if (!file) return;
+    try {
+      setSettingsMutating(true);
+      setMappingError("");
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await axios.post(`${API_BASE}/api/inventory/mappings/upload`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setMappingSummary({
+        total_count: Number(res?.data?.total_count || 0),
+        updated_at: res?.data?.updated_at || "",
+        upload_updated_at: res?.data?.upload_updated_at || "",
+        manual_updated_at: res?.data?.manual_updated_at || "",
+        required_columns: Array.isArray(res?.data?.required_columns)
+          ? res.data.required_columns
+          : SKU_MAPPING_TEMPLATE_COLUMNS,
+      });
+      setMappingInputKey((prev) => prev + 1);
+      await hydratePersistedState();
+      window.alert(`${Number(res?.data?.replaced_count || 0)}건의 SKU 매핑을 반영했습니다.`);
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "SKU 매핑 업로드 중 오류";
+      setMappingError(msg);
+      window.alert(msg);
+    } finally {
+      setSettingsMutating(false);
+    }
+  }
+
+  async function clearSkuMappings() {
+    if (!window.confirm("등록된 SKU 매핑 마스터를 모두 삭제할까요?")) return;
+    try {
+      setSettingsMutating(true);
+      setMappingError("");
+      await axios.delete(`${API_BASE}/api/inventory/mappings`);
+      await hydratePersistedState();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "SKU 매핑 초기화 중 오류";
+      setMappingError(msg);
+      window.alert(msg);
+    } finally {
+      setSettingsMutating(false);
+    }
+  }
+
+  async function saveManualSkuMapping() {
+    try {
+      setSettingsMutating(true);
+      setMappingError("");
+      const payload = Object.fromEntries(
+        Object.entries(manualMappingForm).map(([key, value]) => [key, String(value || "").trim()])
+      );
+      await axios.post(`${API_BASE}/api/inventory/mappings/item`, payload);
+      setManualMappingForm({ ...EMPTY_SKU_MAPPING_FORM });
+      await hydratePersistedState();
+      window.alert("SKU 정보를 저장했습니다.");
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "SKU 수기 저장 중 오류";
+      setMappingError(msg);
+      window.alert(msg);
+    } finally {
+      setSettingsMutating(false);
+    }
   }
 
   async function deleteFileEntry(entry) {
@@ -1097,7 +1333,7 @@ export default function App() {
             <button
               className="primary"
               onClick={onClickUpload}
-              disabled={countryTabMode === "SETTINGS" || countryTabMode === "COMPARE"}
+              disabled={isInventoryAdminScope || countryTabMode === "COMPARE"}
             >
               파일 업로드
             </button>
@@ -1105,7 +1341,7 @@ export default function App() {
               className="primary"
               onClick={aggregateInventory}
               disabled={
-                countryTabMode === "SETTINGS" ||
+                isInventoryAdminScope ||
                 countryTabMode === "COMPARE" ||
                 inventoryLoading ||
                 inventoryFiles.length === 0
@@ -1113,7 +1349,7 @@ export default function App() {
             >
               {inventoryLoading ? "통합 중..." : "재고 통합 실행"}
             </button>
-            <button className="ghost" onClick={exportCurrentView}>
+            <button className="ghost" onClick={exportCurrentView} disabled={isInventoryAdminScope}>
               내보내기
             </button>
             <input
@@ -1206,10 +1442,22 @@ export default function App() {
             재고 비교
           </button>
           <button
+            className={`tab ${countryTabMode === "PRODUCT_SEARCH" ? "active" : ""}`}
+            onClick={() => setCountryTabMode("PRODUCT_SEARCH")}
+          >
+            상품 매핑
+          </button>
+          <button
             className={`tab ${countryTabMode === "SETTINGS" ? "active" : ""}`}
             onClick={() => setCountryTabMode("SETTINGS")}
           >
             데이터 관리
+          </button>
+          <button
+            className={`tab ${countryTabMode === "SKU_MAPPING" ? "active" : ""}`}
+            onClick={() => setCountryTabMode("SKU_MAPPING")}
+          >
+            SKU 관리
           </button>
         </div>
       </header>
@@ -1231,7 +1479,7 @@ export default function App() {
           ))}
         </div>
       )}
-      {countryTabMode !== "SETTINGS" && !isCompareScope && (
+      {!isInventoryAdminScope && !isCompareScope && (
         <>
       <section className="kpiRow">
         <div className="kpiCard">
@@ -1391,10 +1639,10 @@ export default function App() {
             >
               <tbody>
                 {(isKRScope ? krDisplayRows : isOverseasScope ? overseasDisplayRows : filteredRows).map((row, idx) => (
-                  <tr key={row.trendRowKey || `${row.country}-${row.itemno}-${row.level}-${row.category}-${idx}`}>
+                  <tr key={row.trendRowKey || `${row.country}-${getRowSku(row)}-${row.description}-${row.level}-${row.warehouse}-${idx}`}>
                     {isKRScope && <td className="stickyCol stickyColSupplier">{row.supplier}</td>}
                     <td className="stickyCol stickyColCode">
-                      {isOverseasScope ? extractBaseProductCode(row.itemno) : row.itemno}
+                      {isOverseasScope ? getCanonicalMatchCode(row) : getRowSku(row)}
                     </td>
                     <td className="stickyCol stickyColName stickyColBoundary">
                       <span className="nameCellText">{row.description || "(상품명 없음)"}</span>
@@ -1402,7 +1650,7 @@ export default function App() {
                     {isOverseasScope && (
                       <td className="stickyCol stickyColKrName stickyColBoundary">
                         <span className="nameCellText">
-                          {krNameMap.get(extractBaseProductCode(row.itemno)) || "-"}
+                          {getCompareDisplayName(row) || krNameMap.get(getCompareIdentity(row)) || "-"}
                         </span>
                       </td>
                     )}
@@ -1427,21 +1675,16 @@ export default function App() {
                     {isOverseasScope && showKrCompare && (
                       <td className="krCompareCol stickyCol stickyColCompare stickyColBoundary">
                         {krCompareMap.size
-                          ? toFixed(
-                              krCompareMap.get(
-                                `${extractBaseProductCode(row.itemno)}`
-                              ) || 0,
-                              0
-                            )
+                          ? toFixed(krCompareMap.get(getCompareIdentity(row)) || 0, 0)
                           : "-"}
                       </td>
                     )}
                     {isKRScope
                       ? filteredDateColumns.map((dt) => (
-                          <td key={`${row.itemno}-${dt}`} className="dateCol">{toFixed(row[dt], 0)}</td>
+                          <td key={`${getRowSku(row)}-${row.description}-${row.level}-${row.warehouse}-${dt}`} className="dateCol">{toFixed(row[dt], 0)}</td>
                         ))
                       : filteredDateColumns.map((dt) => (
-                        <td key={`${row.itemno}-${dt}`} className="dateCol">{toFixed(row[dt], 0)}</td>
+                        <td key={`${getRowSku(row)}-${row.description}-${row.level}-${row.warehouse}-${dt}`} className="dateCol">{toFixed(row[dt], 0)}</td>
                       ))
                     }
                   </tr>
@@ -1568,16 +1811,17 @@ export default function App() {
                 <table className="compareTable bodyTable" style={{ minWidth: compareTableWidth }}>
                   <tbody>
                     {filteredCompareRows.map((row) => (
-                      <tr key={`compare-${row["상품코드"]}`}>
+                      <tr key={`compare-${row._compareKey}`}>
                         <td className="compareCodeCol stickyCol stickyColCode">{row["상품코드"]}</td>
                         <td className="compareNameCol stickyCol stickyColName stickyColBoundary">
                           <span className="nameCellText">{row["한국상품명"] || "-"}</span>
                         </td>
+                        <td className="compareMetaCol">{row["구분"] || "-"}</td>
                         <td className="compareCountryCol krCompareCol">
                           {row["한국 현 재고"] === null ? "-" : toFixed(row["한국 현 재고"], 0)}
                         </td>
                         {OVERSEAS_UPLOAD_COUNTRIES.map((code) => (
-                          <td key={`${row["상품코드"]}-${code}`} className="compareCountryCol">
+                          <td key={`${row._compareKey}-${code}`} className="compareCountryCol">
                             {row[countryLabel(code)] === null
                               ? "-"
                               : toFixed(row[countryLabel(code)], 0)}
@@ -1607,7 +1851,7 @@ export default function App() {
               <div>
                 <div className="trendModalTitle">재고 변화 추이</div>
                 <div className="trendModalSubtitle">
-                  {activeTrendRow.itemno} · {activeTrendRow.description || "(상품명 없음)"}
+                  {getRowSku(activeTrendRow)} · {activeTrendRow.description || "(상품명 없음)"}
                 </div>
               </div>
               <button
@@ -1793,27 +2037,37 @@ export default function App() {
                 <li>의미 있는 비교를 위해 가능한 한 같은 기준일의 국가별 파일을 맞춰 업로드해주세요.</li>
               </ul>
             </div>
+
+            <div className="cautionSection">
+              <div className="cautionSectionTitle">SKU 매핑 마스터</div>
+              <ul className="cautionList">
+                <li>매핑 마스터는 `.xlsx` 파일만 업로드할 수 있습니다.</li>
+                <li>필수 헤더는 `{SKU_MAPPING_TEMPLATE_COLUMNS.join("`, `")}` 입니다.</li>
+                <li>헤더 순서가 다르거나 `description` 또는 국가별 SKU가 중복되면 전체 업로드가 거절됩니다.</li>
+                <li>원본 파일은 저장하지 않고, 읽은 매핑 데이터만 DB에 반영합니다.</li>
+              </ul>
+            </div>
           </div>
         </div>
       )}
 
-      {countryTabMode === "SETTINGS" && (
+      {isSettingsScope && (
         <section className="settingsPane settingsCard">
-          {fileEntries.length > 0 && (
-            <div className="settingsTopActions">
-              <button
-                className="ghost settingsResetBtn"
-                disabled={settingsMutating}
-                onClick={clearAllFiles}
-              >
-                전체 초기화
-              </button>
-            </div>
+          {fileEntries.length === 0 && (
+            <pre className="error settingsNotice">
+              업로드된 파일이 없습니다. 상단의 파일 업로드 버튼을 눌러주세요.
+            </pre>
           )}
 
-          {fileEntries.length === 0 && (
-            <pre className="error">업로드된 파일이 없습니다. 상단의 파일 업로드 버튼을 눌러주세요.</pre>
-          )}
+          <div className={`settingsToolbar ${fileEntries.length === 0 ? "settingsToolbarWithNotice" : ""}`}>
+            <button
+              className="ghost settingsDangerButton"
+              disabled={settingsMutating || fileEntries.length === 0}
+              onClick={clearAllFiles}
+            >
+              전체 초기화
+            </button>
+          </div>
 
           {Object.entries(groupedFileEntries)
             .sort(([a], [b]) => {
@@ -1882,6 +2136,219 @@ export default function App() {
               </details>
             ))}
 
+        </section>
+      )}
+
+      {isSkuMappingScope && (
+        <section className="settingsPane settingsCard">
+          <div className="skuManageCard">
+            <div className="skuManageHeader">
+              <div className="skuManageSubtitle">
+                SKU 마스터 파일을 업로드하면 SKU 정보가 업데이트 됩니다. 파일은 저장되지 않습니다.
+              </div>
+              <button
+                type="button"
+                className="ghost skuManageResetButton"
+                disabled={settingsMutating || mappingSummary.total_count === 0}
+                onClick={clearSkuMappings}
+              >
+                매핑 초기화
+              </button>
+            </div>
+            <input
+              key={mappingInputKey}
+              id="sku-mapping-input"
+              type="file"
+              accept=".xlsx"
+              style={{ display: "none" }}
+              onChange={(e) => uploadSkuMappingFile(e.target.files?.[0] || null)}
+            />
+            <div className="skuManageContent">
+              <button
+                type="button"
+                className="skuUploadPanel"
+                disabled={settingsMutating}
+                onClick={openSkuMappingInput}
+              >
+                <span className="skuUploadMain">
+                  <span className="skuUploadBadge">XLSX</span>
+                  <span className="skuUploadButtonLabel">{settingsMutating ? "업로드 중..." : "파일 업로드"}</span>
+                </span>
+                <span className="skuUploadMeta">
+                  파일 업로드 최근 반영일:{" "}
+                  {mappingSummary.upload_updated_at
+                    ? mappingSummary.upload_updated_at.replace("T", " ").slice(0, 19)
+                    : "-"}
+                </span>
+              </button>
+              <div className="skuManualCard">
+                <div className="skuManualTitle">수기 SKU 입력</div>
+                <div className="skuManualSubtitle">
+                  파일 업로드가 어려운 경우 아래 칸에 직접 입력해서 SKU 정보를 갱신할 수 있습니다.
+                </div>
+                <div className="skuManualGrid">
+                  <label className="skuField">
+                    <span>상품명</span>
+                    <input
+                      type="text"
+                      value={manualMappingForm.description}
+                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, description: e.target.value }))}
+                      placeholder="한국 상품명"
+                    />
+                  </label>
+                  <label className="skuField">
+                    <span>한국 SKU</span>
+                    <input
+                      type="text"
+                      value={manualMappingForm.kr}
+                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, kr: e.target.value }))}
+                      placeholder="필수"
+                    />
+                  </label>
+                  <label className="skuField">
+                    <span>미국 SKU</span>
+                    <input
+                      type="text"
+                      value={manualMappingForm.us}
+                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, us: e.target.value }))}
+                    />
+                  </label>
+                  <label className="skuField">
+                    <span>대만 SKU</span>
+                    <input
+                      type="text"
+                      value={manualMappingForm.tw}
+                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, tw: e.target.value }))}
+                    />
+                  </label>
+                  <label className="skuField">
+                    <span>베트남 SKU</span>
+                    <input
+                      type="text"
+                      value={manualMappingForm.vn}
+                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, vn: e.target.value }))}
+                    />
+                  </label>
+                  <label className="skuField">
+                    <span>싱가포르 SKU</span>
+                    <input
+                      type="text"
+                      value={manualMappingForm.sg}
+                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, sg: e.target.value }))}
+                    />
+                  </label>
+                  <label className="skuField">
+                    <span>호주 SKU</span>
+                    <input
+                      type="text"
+                      value={manualMappingForm.au}
+                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, au: e.target.value }))}
+                    />
+                  </label>
+                  <label className="skuField">
+                    <span>영국 SKU</span>
+                    <input
+                      type="text"
+                      value={manualMappingForm.uk}
+                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, uk: e.target.value }))}
+                    />
+                  </label>
+                  <label className="skuField">
+                    <span>아랍에미리트 SKU</span>
+                    <input
+                      type="text"
+                      value={manualMappingForm.ae}
+                      onChange={(e) => setManualMappingForm((prev) => ({ ...prev, ae: e.target.value }))}
+                    />
+                  </label>
+                </div>
+                <div className="skuManualActions">
+                  <div className="skuManageMeta">
+                    수기 입력 최근 반영일:{" "}
+                    {mappingSummary.manual_updated_at
+                      ? mappingSummary.manual_updated_at.replace("T", " ").slice(0, 19)
+                      : "-"}
+                  </div>
+                  <div className="skuManualButtons">
+                    <button type="button" className="primary" disabled={settingsMutating} onClick={saveManualSkuMapping}>
+                      저장
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {mappingError && <pre className="error mappingError">{mappingError}</pre>}
+          </div>
+        </section>
+      )}
+
+      {isProductSearchScope && (
+        <section className="settingsPane settingsCard">
+          <section className="tableCard searchPanelCard">
+            <div className="mappingSearchHead">
+              <div>
+                <div className="mappingCardTitle">상품 매핑</div>
+                <div className="mappingCardSubtitle">
+                  SKU 또는 한국상품명을 검색하면 국가별 SKU 매핑을 확인할 수 있습니다.
+                </div>
+              </div>
+            </div>
+            <div className="filterBar">
+              <div className="searchWrap">
+                <span className="searchIcon" aria-hidden="true">
+                  🔍
+                </span>
+                <input
+                  className="searchInput"
+                  type="text"
+                  value={mappingSearchKeyword}
+                  onChange={(e) => setMappingSearchKeyword(e.target.value)}
+                  placeholder="한국상품명 또는 SKU 검색..."
+                />
+              </div>
+            </div>
+            {mappingRowsError && <pre className="error">{mappingRowsError}</pre>}
+            {mappingRowsLoading ? (
+              <div className="searchEmptyState">검색 중...</div>
+            ) : !mappingSearchKeyword.trim() ? (
+              <div className="searchEmptyState">SKU 또는 한국상품명을 입력하면 매핑 결과가 표시됩니다.</div>
+            ) : !mappingRows.length ? (
+              <div className="searchEmptyState">일치하는 매핑 결과가 없습니다.</div>
+            ) : (
+              <div className="tableWrap">
+                <table className="searchTable">
+                  <thead>
+                    <tr>
+                      <th>상품명</th>
+                      <th>한국</th>
+                      <th>미국</th>
+                      <th>대만</th>
+                      <th>베트남</th>
+                      <th>싱가포르</th>
+                      <th>호주</th>
+                      <th>영국</th>
+                      <th>아랍에미리트</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mappingRows.map((row, idx) => (
+                      <tr key={`${row.description}-${row.kr}-${idx}`}>
+                        <td>{row.description || "-"}</td>
+                        <td>{row.kr || "-"}</td>
+                        <td>{row.us || "-"}</td>
+                        <td>{row.tw || "-"}</td>
+                        <td>{row.vn || "-"}</td>
+                        <td>{row.sg || "-"}</td>
+                        <td>{row.au || "-"}</td>
+                        <td>{row.uk || "-"}</td>
+                        <td>{row.ae || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </section>
       )}
     </div>

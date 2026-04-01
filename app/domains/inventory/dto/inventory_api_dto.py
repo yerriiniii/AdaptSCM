@@ -51,3 +51,43 @@ class InventoryCompleteUploadFileRequest(BaseModel):
 class InventoryCompleteUploadRequest(BaseModel):
     files: list[InventoryCompleteUploadFileRequest]
 
+
+class InventorySkuMappingSummaryResponse(BaseModel):
+    total_count: int
+    updated_at: str | None = None
+    upload_updated_at: str | None = None
+    manual_updated_at: str | None = None
+    required_columns: list[str] = Field(default_factory=list)
+
+
+class InventorySkuMappingUploadResponse(InventorySkuMappingSummaryResponse):
+    replaced_count: int = 0
+
+
+class InventorySkuMappingUpsertRequest(BaseModel):
+    description: str
+    kr: str
+    us: str | None = None
+    tw: str | None = None
+    vn: str | None = None
+    sg: str | None = None
+    au: str | None = None
+    uk: str | None = None
+    ae: str | None = None
+
+
+class InventorySkuMappingItemResponse(BaseModel):
+    description: str
+    kr: str
+    us: str | None = None
+    tw: str | None = None
+    vn: str | None = None
+    sg: str | None = None
+    au: str | None = None
+    uk: str | None = None
+    ae: str | None = None
+
+
+class InventorySkuMappingListResponse(BaseModel):
+    items: list[InventorySkuMappingItemResponse] = Field(default_factory=list)
+
