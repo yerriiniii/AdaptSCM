@@ -320,9 +320,16 @@ export default function App() {
     required_columns: SKU_MAPPING_TEMPLATE_COLUMNS,
   });
   const [mappingError, setMappingError] = useState("");
+  const mappingErrorRef = useRef(null);
   const [manualMappingForm, setManualMappingForm] = useState({ ...EMPTY_SKU_MAPPING_FORM });
   const [mappingInputKey, setMappingInputKey] = useState(0);
   const [skuManageMode, setSkuManageMode] = useState("UPLOAD");
+
+  useEffect(() => {
+    if (!mappingError) return;
+    mappingErrorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [mappingError]);
+
   const [topScrollWidth, setTopScrollWidth] = useState(0);
   const [showTopScroll, setShowTopScroll] = useState(false);
   const topScrollRef = useRef(null);
@@ -1250,7 +1257,9 @@ export default function App() {
       const detail = err?.response?.data?.detail;
       const msg = Array.isArray(detail) ? detail.join("\n") : detail || "SKU 매핑 업로드 중 오류";
       setMappingError(msg);
-      window.alert(msg);
+      window.alert(
+        "SKU 매핑 업로드가 중단되었습니다.\n\n충돌하는 item_id, 엑셀 행에 적힌 값, DB 상품별 SKU·이름 요약은 이 화면 아래 빨간 오류 박스에 전체가 표시됩니다. (alert 는 긴 메시지를 잘라 보여 줄 수 있어요.)"
+      );
     } finally {
       setSettingsMutating(false);
     }
@@ -2333,7 +2342,11 @@ export default function App() {
                 </div>
               )}
             </div>
-            {mappingError && <pre className="error mappingError">{mappingError}</pre>}
+            {mappingError && (
+              <pre ref={mappingErrorRef} className="error mappingError">
+                {mappingError}
+              </pre>
+            )}
           </div>
         </section>
       )}

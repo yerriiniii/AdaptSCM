@@ -260,10 +260,46 @@ def get_db_session() -> Generator[Session, None, None]:
         session.close()
 
 
+def _ensure_item_mapping_allows_multiple_locales_per_country(engine: Engine) -> None:
+    """(item_id, country_code) 유니크 제거 → 동일 item 에 TW 등 국가별 SKU 여러 행 허용."""
+    inspector = inspect(engine)
+    if "item_mapping" not in inspector.get_table_names():
+        return
+    dialect = engine.dialect.name
+    with engine.begin() as conn:
+        if dialect == "sqlite":
+            conn.execute(text("DROP INDEX IF EXISTS ix_item_mapping_item_country"))
+        elif dialect == "postgresql":
+            conn.execute(text("DROP INDEX IF EXISTS ix_item_mapping_item_country"))
+        elif dialect == "mysql":
+            try:
+                conn.execute(text("ALTER TABLE item_mapping DROP INDEX ix_item_mapping_item_country"))
+            except Exception:
+                pass
+        if dialect in ("sqlite", "postgresql", "mysql"):
+            if dialect == "mysql":
+                try:
+                    conn.execute(
+                        text(
+                            "CREATE INDEX ix_item_mapping_item_country ON item_mapping (item_id, country_code)"
+                        )
+                    )
+                except Exception:
+                    pass
+            else:
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_item_mapping_item_country "
+                        "ON item_mapping (item_id, country_code)"
+                    )
+                )
+
+
 def initialize_database() -> None:
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
     _ensure_inventory_columns(engine)
+    _ensure_item_mapping_allows_multiple_locales_per_country(engine)
 
 
 def test_database_connection() -> bool:

@@ -129,7 +129,8 @@ class ProductLocale(Base):
     product_group: Mapped["ProductGroup"] = relationship(back_populates="locales")
 
     __table_args__ = (
-        Index("ix_item_mapping_item_country", "item_id", "country_code", unique=True),
+        # 국가당 SKU 여러 행 허용(예: 대만 HK06019 / HK06019-02 동일 한국 상품)
+        Index("ix_item_mapping_item_country", "item_id", "country_code"),
         Index("ix_item_mapping_country_sku", "country_code", "sku", unique=True),
         Index("ix_item_mapping_country_name", "country_code", "name"),
     )

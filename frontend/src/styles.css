@@ -530,6 +530,9 @@ body {
 
 .mappingError {
   margin-top: 12px;
+  max-height: min(50vh, 420px);
+  overflow: auto;
+  text-align: left;
 }
 
 .settingsToolbar {
