@@ -2380,6 +2380,7 @@ export default function App() {
               </div>
             </div>
             {mappingRowsError && <pre className="error">{mappingRowsError}</pre>}
+            <div className="productMappingResultsColumn">
             {mappingRowsLoading ? (
               <div className="searchEmptyState">검색 중...</div>
             ) : !productMappingCards.length && mappingSearchKeyword.trim() ? (
@@ -2414,6 +2415,7 @@ export default function App() {
                 ))}
               </div>
             )}
+            </div>
           </section>
         </section>
       )}

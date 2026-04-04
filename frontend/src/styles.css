@@ -612,12 +612,12 @@ body {
   border-radius: 999px;
   background: #ffffff;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .productMappingHeroTitle {
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 700;
   color: #1f2937;
   line-height: 1.4;
@@ -625,7 +625,7 @@ body {
 
 .productMappingHeroSubtitle {
   margin-top: 6px;
-  font-size: 13px;
+  font-size: 14px;
   color: #94a3b8;
   line-height: 1.5;
 }
@@ -638,6 +638,14 @@ body {
   margin-top: 22px;
 }
 
+.productMappingResultsColumn {
+  width: 60%;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .productMappingSearchWrap {
   width: min(100%, 520px);
   min-width: 0;
@@ -647,7 +655,7 @@ body {
 .productMappingSearchInput {
   width: 100%;
   height: 46px;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .productMappingSearchStats {
@@ -675,7 +683,7 @@ body {
 .productMappingNoResult {
   margin-top: 18px;
   text-align: center;
-  font-size: 13px;
+  font-size: 15px;
   color: #64748b;
 }
 
@@ -697,13 +705,13 @@ body {
 }
 
 .productMappingItemTitle {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
   color: #475569;
 }
 
 .productMappingItemMeta {
-  font-size: 11px;
+  font-size: 13px;
   color: #94a3b8;
   white-space: nowrap;
 }
@@ -730,7 +738,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: #475569;
 }
@@ -745,19 +753,19 @@ body {
 }
 
 .productMappingMiniLabel {
-  font-size: 10px;
+  font-size: 12px;
   color: #94a3b8;
   margin-bottom: 3px;
 }
 
 .productMappingCountryName {
-  font-size: 14px;
+  font-size: 16px;
   color: #334155;
   word-break: break-word;
 }
 
 .productMappingSkuValue {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   color: #64748b;
   word-break: break-word;
@@ -773,6 +781,7 @@ body {
   border-radius: 10px;
   padding: 18px;
   color: #64748b;
+  font-size: 15px;
   background: #f8fafc;
 }
 
@@ -869,6 +878,10 @@ textarea:focus {
 @media (max-width: 900px) {
   .productMappingHero {
     min-height: 220px;
+  }
+
+  .productMappingResultsColumn {
+    width: 100%;
   }
 
   .productMappingCountryRow {
