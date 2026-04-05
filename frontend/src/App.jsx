@@ -98,6 +98,11 @@ function parseDateValue(value) {
   return parsed.toISOString().slice(0, 10);
 }
 
+/** 한국 재고 '오늘' 스냅샷 판별용 — UTC가 아니라 Asia/Seoul 달력 날짜(YYYY-MM-DD) */
+function getKoreaDateKey(date = new Date()) {
+  return date.toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+}
+
 function mostFrequent(items = []) {
   const counts = new Map();
   for (const item of items) {
@@ -161,7 +166,7 @@ function getRowSku(row) {
 }
 
 function getCanonicalMatchCode(row) {
-  const mappedSku = String(row?.mapped_kr_sku || "").trim();
+  const mappedSku = String(row?.mapped_kr_sku || "").trim().toUpperCase();
   return mappedSku || getRowSku(row) || extractBaseProductCode(row?.itemno);
 }
 
@@ -590,33 +595,34 @@ export default function App() {
     return groups;
   }, [fileEntries]);
 
+  /** 해외 행과 맞출 때는 공급처/창고/레벨이 국가마다 달라 getCompareIdentity로는 키가 안 맞음 → 한국 SKU(매핑 우선) 기준으로 합산 */
   const krCompareMap = useMemo(() => {
     const krRows = (scopeResultCache.KR?.rows || []).filter((row) => String(row.country || "KR") === "KR");
     const krDates = scopeResultCache.KR?.dates || [];
     if (!krRows.length || !krDates.length) return new Map();
-    const utcTodayKey = new Date().toISOString().slice(0, 10);
-    const hasKrCurrentSnapshot = krDates.includes(utcTodayKey);
+    const koreaTodayKey = getKoreaDateKey();
+    const hasKrCurrentSnapshot = krDates.includes(koreaTodayKey);
     if (!hasKrCurrentSnapshot) return new Map();
     const map = new Map();
     for (const row of krRows) {
-      const key = getCompareIdentity(row);
+      const key = getCanonicalMatchCode(row);
       if (!key) continue;
-      const qty = Number(row[utcTodayKey] || 0);
+      const qty = Number(row[koreaTodayKey] || 0);
       map.set(key, Number(map.get(key) || 0) + qty);
     }
     return map;
   }, [scopeResultCache]);
 
   const hasTodayKrSnapshot = useMemo(() => {
-    const utcTodayKey = new Date().toISOString().slice(0, 10);
-    return (scopeResultCache.KR?.dates || []).includes(utcTodayKey);
+    const koreaTodayKey = getKoreaDateKey();
+    return (scopeResultCache.KR?.dates || []).includes(koreaTodayKey);
   }, [scopeResultCache]);
 
   const krNameMap = useMemo(() => {
     const map = new Map();
     for (const row of scopeResultCache.KR?.rows || []) {
       if (String(row.country || "KR") !== "KR") continue;
-      const key = getCompareIdentity(row);
+      const key = getCanonicalMatchCode(row);
       if (!key) continue;
       const name = getCompareDisplayName(row);
       if (!map.has(key) && name) map.set(key, name);
@@ -1024,18 +1030,18 @@ export default function App() {
     }
     if (!filteredRows.length || !filteredDateColumns.length) return;
     const rows = filteredRows.map((row) => {
-      const compareKey = getCompareIdentity(row);
+      const krMatchKey = getCanonicalMatchCode(row);
       const out = {
         상품코드: getRowSku(row),
         상품명: row.description || "",
-        한국상품명: getCompareDisplayName(row) || krNameMap.get(compareKey) || "",
+        한국상품명: getCompareDisplayName(row) || krNameMap.get(krMatchKey) || "",
         공급처: row.supplier || "",
         창고: row.warehouse || "",
         레벨: row.level || "",
       };
       if (showKrCompare) {
         out["한국"] = krCompareMap.size
-          ? Number(krCompareMap.get(compareKey) || 0)
+          ? Number(krCompareMap.get(krMatchKey) || 0)
           : "-";
       }
       for (const dt of filteredDateColumns) {
@@ -1742,7 +1748,7 @@ export default function App() {
                         }
                       >
                         <span className="nameCellText">
-                          {getCompareDisplayName(row) || krNameMap.get(getCompareIdentity(row)) || "-"}
+                          {getCompareDisplayName(row) || krNameMap.get(getCanonicalMatchCode(row)) || "-"}
                         </span>
                       </td>
                     )}
@@ -1767,7 +1773,7 @@ export default function App() {
                     {isOverseasScope && showKrCompare && (
                       <td className="krCompareCol stickyCol stickyColCompare stickyColBoundary">
                         {krCompareMap.size
-                          ? toFixed(krCompareMap.get(getCompareIdentity(row)) || 0, 0)
+                          ? toFixed(krCompareMap.get(getCanonicalMatchCode(row)) || 0, 0)
                           : "-"}
                       </td>
                     )}
@@ -2126,7 +2132,7 @@ export default function App() {
               <ul className="cautionList">
                 <li>날짜는 파일명 기준이 아니라 파일 내부의 `Date` 컬럼에서 읽습니다.</li>
                 <li>재고는 `Quantity` 컬럼 기준으로 집계합니다.</li>
-                <li>`한국 현 재고 비교`는 UTC 오늘 날짜의 한국 데이터가 있을 때만 표시됩니다.</li>
+                <li>`한국 현 재고 비교`는 한국 시간(Asia/Seoul) 기준 오늘 날짜의 한국 데이터가 있을 때만 켤 수 있습니다.</li>
               </ul>
             </div>
 
