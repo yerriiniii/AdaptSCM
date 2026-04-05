@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from collections.abc import Iterable
@@ -25,6 +26,8 @@ from app.domains.inventory.services.inventory_item_mapping_resolve import (
 )
 from app.shared.config import get_runtime_settings
 from app.shared.storage import create_presigned_upload_url, get_s3_client, is_s3_configured
+
+logger = logging.getLogger(__name__)
 
 
 def _read_upload_bytes(upload_file: UploadFile) -> bytes:
@@ -167,11 +170,70 @@ def _uploaded_file_scope_filter(country_code: str, base_date: date | None):
     return and_(UploadedFile.country_code == country_code, UploadedFile.base_date == base_date)
 
 
+def _resolved_upload_s3_bucket_and_key(uploaded_file: UploadedFile) -> tuple[str | None, str | None]:
+    """DB에 s3_key가 비어 있어도 stored_name·국가·날짜로 키를 재구성해 삭제를 시도한다."""
+    settings = get_runtime_settings()
+    bucket = (uploaded_file.s3_bucket or "").strip() or (settings.s3_bucket or "")
+    key = (uploaded_file.s3_key or "").strip()
+    stored = (uploaded_file.stored_name or "").strip()
+    if not key and stored:
+        key = _build_s3_key(
+            prefix=settings.s3_prefix,
+            country_type=_country_type(uploaded_file.country_code),
+            country_code=uploaded_file.country_code,
+            base_date=uploaded_file.base_date,
+            stored_name=stored,
+        )
+    return (bucket or None, key or None)
+
+
 def _delete_s3_object(bucket: str | None, key: str | None) -> None:
-    if not bucket or not key or not is_s3_configured():
+    if not is_s3_configured():
+        logger.warning("S3 미설정으로 객체 삭제를 건너뜁니다 (bucket=%r, key=%r).", bucket, key)
+        return
+    if not bucket or not key:
+        logger.warning("S3 bucket 또는 key가 없어 삭제를 건너뜁니다 (bucket=%r, key=%r).", bucket, key)
         return
     client = get_s3_client()
     client.delete_object(Bucket=bucket, Key=key)
+
+
+def _s3_prefix_for_country_scope(settings, country_code: str) -> str:
+    """해당 국가 재고 파일이 두는 공통 접두사(하위 날짜 폴더까지 스윕)."""
+    root = (settings.s3_prefix or "inventory").strip().strip("/")
+    if not root:
+        return ""
+    cc = str(country_code or "").strip().upper()
+    if not cc:
+        return ""
+    ct = "kr" if cc == "KR" else "overseas"
+    return f"{root}/{ct}/{cc.lower()}/"
+
+
+def _s3_prefix_inventory_root(settings) -> str:
+    root = (settings.s3_prefix or "inventory").strip().strip("/")
+    if not root:
+        return ""
+    return f"{root}/"
+
+
+def _delete_s3_prefix(bucket: str | None, prefix: str) -> int:
+    """prefix 아래 객체를 모두 삭제한다. 삭제한 객체 수를 반환한다."""
+    if not bucket or not prefix or not is_s3_configured():
+        return 0
+    client = get_s3_client()
+    deleted = 0
+    paginator = client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        contents = page.get("Contents") or []
+        if not contents:
+            continue
+        keys = [{"Key": c["Key"]} for c in contents]
+        for i in range(0, len(keys), 1000):
+            batch = keys[i : i + 1000]
+            client.delete_objects(Bucket=bucket, Delete={"Objects": batch})
+            deleted += len(batch)
+    return deleted
 
 
 def _rebuild_aggregate_scope(db: Session, country_code: str, base_date: date | None) -> None:
@@ -731,7 +793,8 @@ def delete_inventory_file(db: Session, file_id: str) -> None:
     if uploaded_file is None:
         raise HTTPException(status_code=404, detail="삭제할 파일을 찾을 수 없습니다.")
 
-    _delete_s3_object(uploaded_file.s3_bucket, uploaded_file.s3_key)
+    b, k = _resolved_upload_s3_bucket_and_key(uploaded_file)
+    _delete_s3_object(b, k)
 
     affected_scope = (uploaded_file.country_code, uploaded_file.base_date)
     db.delete(uploaded_file)
@@ -741,20 +804,48 @@ def delete_inventory_file(db: Session, file_id: str) -> None:
 
 
 def delete_inventory_files(db: Session, country_code: str | None = None) -> dict[str, int]:
+    settings = get_runtime_settings()
+    raw_cc = str(country_code or "").strip()
+    scope_country = _normalize_country_code(raw_cc) if raw_cc else None
+    if raw_cc and scope_country is None:
+        raise HTTPException(status_code=400, detail="올바른 country_code가 아닙니다.")
+
     query = select(UploadedFile)
-    if country_code:
-        query = query.where(UploadedFile.country_code == country_code)
+    if scope_country:
+        query = query.where(UploadedFile.country_code == scope_country)
 
     uploaded_files = list(db.execute(query).scalars().all())
     if not uploaded_files:
+        # DB 행이 없어도 S3에 고아 객체가 있을 수 있음 → 스윕만 수행
+        if is_s3_configured() and settings.s3_bucket:
+            if scope_country:
+                p = _s3_prefix_for_country_scope(settings, scope_country)
+                if p:
+                    _delete_s3_prefix(settings.s3_bucket, p)
+            else:
+                p = _s3_prefix_inventory_root(settings)
+                if p:
+                    _delete_s3_prefix(settings.s3_bucket, p)
         return {"deleted_count": 0}
 
     scopes = [(file.country_code, file.base_date) for file in uploaded_files]
     for uploaded_file in uploaded_files:
-        _delete_s3_object(uploaded_file.s3_bucket, uploaded_file.s3_key)
+        b, k = _resolved_upload_s3_bucket_and_key(uploaded_file)
+        _delete_s3_object(b, k)
         db.delete(uploaded_file)
 
     db.flush()
     _rebuild_aggregate_scopes(db, scopes)
     db.commit()
+
+    if is_s3_configured() and settings.s3_bucket:
+        if scope_country:
+            sweep = _s3_prefix_for_country_scope(settings, scope_country)
+            if sweep:
+                _delete_s3_prefix(settings.s3_bucket, sweep)
+        else:
+            sweep = _s3_prefix_inventory_root(settings)
+            if sweep:
+                _delete_s3_prefix(settings.s3_bucket, sweep)
+
     return {"deleted_count": len(uploaded_files)}

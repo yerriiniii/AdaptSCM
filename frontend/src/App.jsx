@@ -535,7 +535,8 @@ export default function App() {
       if (needle) {
         const item = String(getRowSku(row) ?? "").toLowerCase();
         const desc = String(row.description ?? "").toLowerCase();
-        if (!item.includes(needle) && !desc.includes(needle)) return false;
+        const krSku = String(row.mapped_kr_sku ?? "").toLowerCase();
+        if (!item.includes(needle) && !desc.includes(needle) && !krSku.includes(needle)) return false;
       }
       return true;
     });
@@ -1023,10 +1024,9 @@ export default function App() {
     }
     if (!filteredRows.length || !filteredDateColumns.length) return;
     const rows = filteredRows.map((row) => {
-      const matchCode = getCanonicalMatchCode(row);
       const compareKey = getCompareIdentity(row);
       const out = {
-        상품코드: matchCode,
+        상품코드: getRowSku(row),
         상품명: row.description || "",
         한국상품명: getCompareDisplayName(row) || krNameMap.get(compareKey) || "",
         공급처: row.supplier || "",
@@ -1339,11 +1339,9 @@ export default function App() {
     if (!entries?.length) return;
     try {
       setSettingsMutating(true);
-      if (entries.some((entry) => entry.dbFileId)) {
-        await axios.delete(`${API_BASE}/api/inventory/files`, {
-          params: { country_code: country },
-        });
-      }
+      await axios.delete(`${API_BASE}/api/inventory/files`, {
+        params: { country_code: country },
+      });
       await hydratePersistedState({ excludeCountry: country });
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -1356,9 +1354,7 @@ export default function App() {
   async function clearAllFiles() {
     try {
       setSettingsMutating(true);
-      if (fileEntries.some((entry) => entry.dbFileId)) {
-        await axios.delete(`${API_BASE}/api/inventory/files`);
-      }
+      await axios.delete(`${API_BASE}/api/inventory/files`);
       await hydratePersistedState({ preserveLocalOnly: false });
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -1727,13 +1723,20 @@ export default function App() {
                   <tr key={row.trendRowKey || `${row.country}-${getRowSku(row)}-${row.description}-${row.level}-${row.warehouse}-${idx}`}>
                     {isKRScope && <td className="stickyCol stickyColSupplier">{row.supplier}</td>}
                     <td className="stickyCol stickyColCode">
-                      {isOverseasScope ? getCanonicalMatchCode(row) : getRowSku(row)}
+                      {getRowSku(row)}
                     </td>
                     <td className="stickyCol stickyColName stickyColBoundary">
                       <span className="nameCellText">{row.description || "(상품명 없음)"}</span>
                     </td>
                     {isOverseasScope && (
-                      <td className="stickyCol stickyColKrName stickyColBoundary">
+                      <td
+                        className="stickyCol stickyColKrName stickyColBoundary"
+                        title={
+                          String(row.mapped_kr_sku || "").trim()
+                            ? `한국 SKU: ${String(row.mapped_kr_sku).trim()}`
+                            : "등록된 한국 SKU가 없습니다"
+                        }
+                      >
                         <span className="nameCellText">
                           {getCompareDisplayName(row) || krNameMap.get(getCompareIdentity(row)) || "-"}
                         </span>

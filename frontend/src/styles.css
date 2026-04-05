@@ -1101,9 +1101,13 @@ th {
   max-width: 108px;
 }
 
-.inventoryTable tbody .stickyColName,
+.inventoryTable tbody .stickyColName {
+  white-space: normal;
+}
+
 .inventoryTable tbody .stickyColKrName {
   white-space: normal;
+  cursor: help;
 }
 
 .nameCellText {
