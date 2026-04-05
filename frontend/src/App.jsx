@@ -1393,9 +1393,10 @@ export default function App() {
   }, [activeTrendRow]);
 
   return (
-    <div className={`pageSplit ${countryTabMode === "OVERSEAS" ? "split-overseas" : "split-default"}`}>
+    <div className="pageSplit">
     <div className="dashboard">
-      <div className="headerArea">
+      <div className="dashboardHeroBand">
+        <div className="headerArea">
         <section className="hero">
           <div className="heroHead">
             <h1 className="heroTitle">재고 분석 대시보드</h1>
@@ -1493,10 +1494,13 @@ export default function App() {
             />
           </div>
         </section>
-
+        </div>
       </div>
 
-      <header ref={topbarRef} className="topbar stickyTopbar">
+      <header
+        ref={topbarRef}
+        className={`topbar stickyTopbar dashboardStripWhite${countryTabMode !== "OVERSEAS" ? " isBottomCapsule" : ""}`}
+      >
         <div className="tabs">
           <button
             className={`tab ${countryTabMode === "KR" ? "active" : ""}`}
@@ -1543,7 +1547,7 @@ export default function App() {
       {countryTabMode === "OVERSEAS" && (
         <div
           ref={countryChipsRef}
-          className="countryChips stickyCountryChips"
+          className="countryChips stickyCountryChips dashboardStripWhite isBottomCapsule"
           style={{ top: stickyHeights.topbar }}
         >
           {overseasCountries.map((code) => (

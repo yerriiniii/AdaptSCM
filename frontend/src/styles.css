@@ -11,21 +11,38 @@ body {
 
 .pageSplit {
   min-height: 100vh;
-  background: linear-gradient(to bottom, #ffffff 0 223px, #f5f7fb 50px 100%);
-}
-
-.pageSplit.split-default {
-  background: linear-gradient(to bottom, #ffffff 0 227px, #f5f7fb 50px 100%);
-}
-
-.pageSplit.split-overseas {
-  background: linear-gradient(to bottom, #ffffff 0 287px, #f5f7fb 130px 100%);
+  background-color: #ffffff;
 }
 
 .dashboard {
   max-width: 1440px;
   margin: 0 auto;
   padding: 0 18px 18px;
+}
+
+/* 히어로 래퍼 — 탭/칩은 dashboard 직계 자식(sticky 유지). 전체 배경 흰색이라 띠 구분 없음 */
+.dashboardHeroBand {
+  background-color: transparent;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.dashboardStripWhite {
+  background-color: transparent;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.dashboardStripWhite.isBottomCapsule {
+  border-radius: 0;
+  padding-bottom: 4px;
+}
+
+.dashboardStripWhite.stickyCountryChips {
+  margin-top: 14px;
+  margin-bottom: 8px;
 }
 
 .headerArea {
@@ -79,9 +96,13 @@ body {
   position: sticky;
   top: 0;
   z-index: 30;
-  background: transparent;
-  padding-top: 6px;
-  padding-bottom: 10px;
+  background-color: #ffffff;
+  padding-top: 10px;
+  padding-bottom: 12px;
+}
+
+.stickyTopbar.dashboardStripWhite.isBottomCapsule {
+  padding-bottom: 12px;
 }
 
 .brand {
@@ -142,8 +163,12 @@ body {
 .stickyCountryChips {
   position: sticky;
   z-index: 25;
-  background: transparent;
-  padding-top: 6px;
+  background-color: #ffffff;
+  padding-top: 12px;
+  padding-bottom: 10px;
+}
+
+.dashboardStripWhite.isBottomCapsule.stickyCountryChips {
   padding-bottom: 10px;
 }
 
@@ -800,9 +825,10 @@ body {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: #ffffff;
-  padding-top: 6px;
-  padding-bottom: 12px;
+  /* tableCard(#fff) 안 — 카드 영역에만 맞춤 */
+  background-color: #ffffff;
+  padding-top: 10px;
+  padding-bottom: 14px;
 }
 
 .krOnlyNotice {
@@ -984,7 +1010,7 @@ table {
 .stickyTableHeader {
   position: sticky;
   z-index: 18;
-  background: #ffffff;
+  background-color: #ffffff;
 }
 
 .tableHeaderScroll {
@@ -1024,14 +1050,20 @@ th {
 .stickyCol {
   position: sticky;
   z-index: 3;
-  background: #ffffff;
+  background-color: #ffffff;
   overflow: hidden;
 }
 
 .inventoryTable thead .stickyCol,
 .compareTable thead .stickyCol {
   z-index: 8;
-  background: #f8fafd;
+  background-color: #f8fafd;
+}
+
+/* 가로 스크롤 시 뒤쪽 날짜 열이 비치지 않도록 본문 고정 열도 불투명 배경 유지 */
+.inventoryTable tbody td.stickyCol,
+.compareTable tbody td.stickyCol {
+  background-color: #ffffff;
 }
 
 .stickyColBoundary {
@@ -1291,6 +1323,7 @@ th {
 .stickyTableTopScroll {
   position: sticky;
   z-index: 6;
+  background-color: #f4f6fa;
 }
 
 .tableTopScroll::-webkit-scrollbar {
