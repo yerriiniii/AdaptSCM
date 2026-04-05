@@ -493,22 +493,6 @@ body {
   margin-top: 20px;
 }
 
-.ghost.skuManageResetButton {
-  margin-top: -8px;
-  height: 32px;
-  padding: 0 12px;
-  min-width: 132px;
-  font-size: 13px;
-  font-weight: 600;
-  border: 1px solid #e3e8f0;
-  background: #fff;
-  color: #4b5563;
-}
-
-.ghost.skuManageResetButton:hover:not(:disabled) {
-  background: #fff;
-}
-
 .mappingCard {
   max-width: 660px;
   margin: 0 auto 12px;
@@ -1086,13 +1070,13 @@ th {
 
 .inventoryTable.krTable .stickyColName {
   left: 240px;
-  width: 320px;
-  min-width: 320px;
-  max-width: 320px;
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
 }
 
 .inventoryTable.krTable .stickyColTrend {
-  left: 560px;
+  left: 540px;
   width: 140px;
   min-width: 140px;
   max-width: 140px;
@@ -1107,27 +1091,27 @@ th {
 
 .inventoryTable.overseasTable .stickyColName {
   left: 120px;
-  width: 320px;
-  min-width: 320px;
-  max-width: 320px;
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
 }
 
 .inventoryTable.overseasTable .stickyColKrName {
-  left: 440px;
-  width: 320px;
-  min-width: 320px;
-  max-width: 320px;
+  left: 420px;
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
 }
 
 .inventoryTable.overseasTable .stickyColTrend {
-  left: 760px;
+  left: 720px;
   width: 132px;
   min-width: 132px;
   max-width: 132px;
 }
 
 .inventoryTable.overseasTable .stickyColCompare {
-  left: 890px;
+  left: 852px;
   width: 108px;
   min-width: 108px;
   max-width: 108px;
@@ -1388,9 +1372,9 @@ th {
 }
 
 .compareTable .compareNameCol {
-  width: 400px;
-  min-width: 400px;
-  max-width: 400px;
+  width: 380px;
+  min-width: 380px;
+  max-width: 380px;
 }
 
 .compareTable .compareMetaCol {

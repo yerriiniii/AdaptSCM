@@ -400,8 +400,8 @@ export default function App() {
   const isProductSearchScope = countryTabMode === "PRODUCT_SEARCH";
   const isInventoryAdminScope = isSettingsScope || isSkuMappingScope || isProductSearchScope;
   const inventoryStickyWidth = useMemo(() => {
-    if (isKRScope) return 700;
-    if (isOverseasScope) return showKrCompare ? 998 : 892;
+    if (isKRScope) return 680;
+    if (isOverseasScope) return showKrCompare ? 960 : 852;
     return 0;
   }, [isKRScope, isOverseasScope, showKrCompare]);
   const activeCountryChipsHeight = isOverseasScope ? stickyHeights.countryChips : 0;
@@ -786,12 +786,12 @@ export default function App() {
   }, [compareRows, inventoryKeyword, isCompareScope]);
   const tableMinWidth = useMemo(() => {
     const dateCols = filteredDateColumns.length * 88;
-    const overseasFixedCols = showKrCompare ? 1002 : 896;
-    const fixedCols = isOverseasScope ? overseasFixedCols : 844;
+    const overseasFixedCols = showKrCompare ? 964 : 856;
+    const fixedCols = isOverseasScope ? overseasFixedCols : 824;
     return Math.max(980, fixedCols + dateCols);
   }, [filteredDateColumns, isOverseasScope, showKrCompare]);
   const inventoryTableWidth = useMemo(
-    () => (isKRScope ? Math.max(980, 844 + filteredDateColumns.length * 88) : tableMinWidth),
+    () => (isKRScope ? Math.max(980, 824 + filteredDateColumns.length * 88) : tableMinWidth),
     [isKRScope, filteredDateColumns, tableMinWidth]
   );
   const compareTableWidth = useMemo(
@@ -1278,23 +1278,6 @@ export default function App() {
       window.alert(
         "SKU 매핑 업로드가 중단되었습니다.\n\n충돌하는 item_id, 엑셀 행에 적힌 값, DB 상품별 SKU·이름 요약은 이 화면 아래 빨간 오류 박스에 전체가 표시됩니다. (alert 는 긴 메시지를 잘라 보여 줄 수 있어요.)"
       );
-    } finally {
-      setSettingsMutating(false);
-    }
-  }
-
-  async function clearSkuMappings() {
-    if (!window.confirm("등록된 SKU 매핑 마스터를 모두 삭제할까요?")) return;
-    try {
-      setSettingsMutating(true);
-      setMappingError("");
-      await axios.delete(`${API_BASE}/api/inventory/mappings`);
-      await hydratePersistedState();
-    } catch (err) {
-      const detail = err?.response?.data?.detail;
-      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "SKU 매핑 초기화 중 오류";
-      setMappingError(msg);
-      window.alert(msg);
     } finally {
       setSettingsMutating(false);
     }
@@ -2285,14 +2268,6 @@ export default function App() {
                   수기 작성
                 </button>
               </div>
-              <button
-                type="button"
-                className="ghost skuManageResetButton"
-                disabled={settingsMutating || mappingSummary.total_count === 0}
-                onClick={clearSkuMappings}
-              >
-                SKU 정보 전체 초기화
-              </button>
             </div>
             <div className={`skuManageContent ${skuManageMode === "MANUAL" ? "manual-only" : "upload-only"}`}>
               {skuManageMode === "UPLOAD" ? (
