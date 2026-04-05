@@ -118,8 +118,9 @@ def _lookup_group_by_country_sku_variants(
 
 
 def _tw_hk_five_digit_core_from_tw_sku(tw_sku: object) -> str | None:
-    """대만 SKU 의 5자리 코어 = 한국 SKU 의 5자리 코어와 같으면 동일 상품.
-    HK06019 / HK06019-02 → 접두 영문 뒤 5자리 우선. 그 외는 한국 SKU 와 동일 규칙으로 추출."""
+    """대만·홍콩 SKU 공통: 5자리 코어가 있으면 한국 마스터의 5자리 코어와 매칭.
+    HK06019 / HK06019-02 → 접두 영문 뒤 5자리 우선. 그 외는 한국 SKU 와 동일 규칙으로 추출.
+    연속 숫자 5자리를 뽑을 수 없으면 None → 해당 값 전체를 그 국가 SKU 로 두고 신규 item 경로."""
     s = _normalize_mapping_sku(tw_sku)
     if not s:
         return None
@@ -334,16 +335,19 @@ def _build_mapping_group(source: dict[str, object], row_label: str) -> dict:
 
 
 def _find_group_by_kr_anchor(groups: list[ProductGroup], payload: dict) -> ProductGroup | None:
+    """수기 upsert: 기존 그룹은 KR SKU로만 식별한다. (country_code, sku) 전역 유일.
+    이름만 겹치고 SKU가 다른 신규 상품이 기존 그룹에 잘못 붙는 것을 막는다."""
     kr_locale = next((locale for locale in payload["locales"] if locale["country_code"] == "KR"), None)
     if kr_locale is None:
         return None
-    target_name_key = _normalize_mapping_name_key(kr_locale["name"])
-    target_sku = kr_locale["sku"]
+    target_sku = _normalize_mapping_sku(kr_locale["sku"])
+    if not target_sku:
+        return None
     for group in groups:
         for locale in group.locales:
             if locale.country_code != "KR":
                 continue
-            if locale.sku == target_sku or _normalize_mapping_name_key(locale.name) == target_name_key:
+            if _normalize_mapping_sku(locale.sku) == target_sku:
                 return group
     return None
 
@@ -371,21 +375,32 @@ def _validate_group_conflicts(groups: list[ProductGroup], payload: dict, exclude
                     )
 
 
-def _upsert_group_locales(target: ProductGroup, payload: dict, now: datetime) -> None:
+def _merge_manual_mapping_locales(target: ProductGroup, payload: dict, now: datetime) -> None:
+    """폼에 적힌 국가만 반영·추가하고, 나머지 국가 로케일은 유지한다."""
     target.kr_name = payload["kr_name"]
     target.manual_updated_at = now
-    target.locales.clear()
-    target.locales.extend(
-        [
-            ProductLocale(
-                country_code=locale["country_code"],
-                name=locale["name"],
-                sku=locale["sku"],
+    target.updated_at = now
+
+    locales_map = _locales_map_by_country_sku(target)
+    for inc in payload["locales"]:
+        country_code = str(inc["country_code"])
+        sku = str(inc["sku"] or "")
+        lk = _locale_tuple_key(country_code, sku)
+        name = str(inc.get("name") or "").strip() or None
+        existing = locales_map.get(lk)
+        if existing is None:
+            pl = ProductLocale(
+                country_code=country_code,
+                name=name,
+                sku=sku,
                 updated_at=now,
             )
-            for locale in payload["locales"]
-        ]
-    )
+            target.locales.append(pl)
+            locales_map[lk] = pl
+            continue
+        if name:
+            existing.name = name
+        existing.updated_at = now
 
 
 def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | None:
@@ -664,81 +679,63 @@ def _find_matching_groups(
             sku_resolved_cc.add("KR")
             sku_resolved_cc.add("HK")
 
-    # 1) 대만: HK06019 / HK06019-02 → 동일 5자리 한국 코어 상품
-    #    코어 추출 불가 시 → 엑셀 us_name 과 DB US 로케일 상품명으로 한국 item 찾기
-    tw_cores: list[str] = []
-    has_tw_locale = False
-    tw_core_resolved = False
+    # 1) 대만·홍콩: HKS06130 등 → 5자리 코어로 한국 마스터 item 매칭 (우선).
+    #    코어 추출 불가(예: HK0LDHPC1) → 해당 문자열을 그대로 TW/HK SKU 로 두고 신규 item (us_name 으로 기존 item 강제 연결 안 함).
+    tw_hk_cores: list[str] = []
+    has_tw_hk_sku_locale = False
+    tw_hk_core_resolved = False
+    tw_hk_no_core_new_item = False
     if not hk_kr_locked:
         for loc in record["sku_locales"]:
-            if str(loc.get("country_code") or "").strip().upper() != "TW":
+            cc = str(loc.get("country_code") or "").strip().upper()
+            if cc not in ("TW", "HK"):
                 continue
-            has_tw_locale = True
+            if not str(loc.get("sku") or "").strip():
+                continue
+            has_tw_hk_sku_locale = True
             core = _tw_hk_five_digit_core_from_tw_sku(loc.get("sku"))
             if core:
-                tw_cores.append(core)
-    if not hk_kr_locked and tw_cores:
-        locked_tw: set[uuid.UUID] = set()
-        for core in tw_cores:
+                tw_hk_cores.append(core)
+    if not hk_kr_locked and tw_hk_cores:
+        locked_tw_hk: set[uuid.UUID] = set()
+        for core in tw_hk_cores:
             hits = kr_tw_core_index.get(core, set())
             if len(hits) > 1:
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        f"{row_label}: 대만 품번 `{core}` 에 해당하는 한국 SKU 를 가진 상품이 DB 에 여러 개입니다. "
+                        f"{row_label}: 대만/홍콩 품번에서 뽑은 5자리 `{core}` 에 해당하는 한국 SKU 를 가진 상품이 DB 에 여러 개입니다. "
                         "한국 마스터에서 해당 5자리를 유일하게 맞춘 뒤 다시 업로드하세요."
                     ),
                 )
             if len(hits) == 1:
-                locked_tw.add(next(iter(hits)))
-        if len(locked_tw) > 1:
+                locked_tw_hk.add(next(iter(hits)))
+        if len(locked_tw_hk) > 1:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"{row_label}: 같은 행의 대만 SKU 들이 서로 다른 한국 상품(5자리 코어)을 가리킵니다. "
-                    "한 행에는 동일 상품의 대만 코드만 넣어 주세요."
+                    f"{row_label}: 같은 행의 대만/홍콩 SKU 들이 서로 다른 한국 상품(5자리 코어)을 가리킵니다. "
+                    "한 행에는 동일 상품의 코드만 넣어 주세요."
                 ),
             )
-        if len(locked_tw) == 1:
-            matched_ids.add(next(iter(locked_tw)))
+        if len(locked_tw_hk) == 1:
+            matched_ids.add(next(iter(locked_tw_hk)))
             sku_resolved_cc.add("TW")
+            sku_resolved_cc.add("HK")
             sku_resolved_cc.add("KR")
-            tw_core_resolved = True
-    elif not hk_kr_locked and has_tw_locale:
-        us_for_tw = _normalize_mapping_name(record.get("match_us_name"))
-        if not us_for_tw or _is_placeholder_mapping_name(us_for_tw):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"{row_label}: 대만 `tw_sku` 에서 5자리 품번 규칙(예: HK+5자리)을 찾지 못했습니다. "
-                    "같은 행에 `us_name`(미국 상품명)을 넣어 기존 상품과 연결하거나, 품번 형식을 맞춰 주세요."
-                ),
-            )
-        tw_us_candidates = name_index.get(_index_key("US", _normalize_mapping_name_key(us_for_tw)), set())
-        if len(tw_us_candidates) > 1:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"{row_label}: 대만 행의 `us_name` `{us_for_tw}` 과 일치하는 US 상품명을 가진 기존 상품이 여러 개입니다. "
-                    "US 명을 유일하게 맞추거나 `kr_sku` 로 먼저 연결해 주세요."
-                ),
-            )
-        if len(tw_us_candidates) == 1:
-            _add_matched_group_id(
-                matched_ids,
-                next(iter(tw_us_candidates)),
-                row_label,
-                f"대만 SKU 에 코어가 없어 `us_name`={us_for_tw!r} 로 찾은 상품과",
-                group_index,
-                record,
-            )
-            sku_resolved_cc.add("TW")
-            sku_resolved_cc.add("KR")
+            tw_hk_core_resolved = True
+    elif not hk_kr_locked and has_tw_hk_sku_locale:
+        tw_hk_no_core_new_item = True
+        for loc in record["sku_locales"]:
+            cc = str(loc.get("country_code") or "").strip().upper()
+            if cc in ("TW", "HK") and str(loc.get("sku") or "").strip():
+                sku_resolved_cc.add(cc)
 
-    # 대만 SKU 가 5자리 코어로 이미 한국 item 에 고정된 경우, 같은 행의 kr_name / us_name / AE·AU·UK 이름 등으로
+    # 대만/홍콩 SKU 가 5자리 코어로 이미 한국 item 에 고정된 경우, 같은 행의 kr_name / us_name / AE·AU·UK 이름 등으로
     # 다른 item 을 끌어오면 서로 다른 상품 충돌이 나므로 아래 2)~4)·6) 이름 기반 단서는 생략한다.
+    # 코어 없이 신규 item 으로 가는 TW/HK 행도 이름 단서로 기존 item 에 붙이지 않는다.
     # 홍콩(kr_sku 앵커) 행도 동일하게 이름 기반 단서를 생략한다.
-    if not tw_core_resolved and not hk_kr_locked:
+    if not tw_hk_core_resolved and not hk_kr_locked and not tw_hk_no_core_new_item:
         # 2) 엑셀 kr_sku → DB 한국 마스터 앵커 (미국 파일 등)
         anchor_kr = str(record.get("anchor_kr_sku") or "").strip()
         if anchor_kr:
@@ -827,8 +824,8 @@ def _find_matching_groups(
                     record,
                 )
 
-    # 6) 국가별 상품명 (대만 5자리 코어로 item 이 확정된 행은 위에서 설명한 이유로 생략)
-    if not tw_core_resolved and not hk_kr_locked:
+    # 6) 국가별 상품명 (대만/홍콩 5자리 코어·신규-only 행은 위에서 설명한 이유로 생략)
+    if not tw_hk_core_resolved and not hk_kr_locked and not tw_hk_no_core_new_item:
         for locale in [*record["sku_locales"], *record["named_locales"]]:
             raw_nm = locale.get("name")
             if _is_placeholder_mapping_name(raw_nm):
@@ -938,9 +935,7 @@ def _apply_merge_record(
             target.locales.append(new_locale)
             locales_map[lk] = new_locale
             continue
-        if name:
-            existing.name = name
-        existing.updated_at = uploaded_at
+        # 이미 그룹에 (국가, SKU)가 있으면 업로드 행의 이름·시간은 반영하지 않음(신규 조합만 반영).
 
     for locale in record["named_locales"]:
         cc = str(locale["country_code"])
@@ -1094,7 +1089,7 @@ def upsert_product_sku_mapping(db: Session, payload: dict[str, object]) -> dict:
             ]
             db.add(target)
         else:
-            _upsert_group_locales(target, record, manual_updated_at)
+            _merge_manual_mapping_locales(target, record, manual_updated_at)
         db.commit()
         db.refresh(target)
     except Exception:
