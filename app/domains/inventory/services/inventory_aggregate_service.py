@@ -1,4 +1,5 @@
 import io
+import math
 import re
 from datetime import date, datetime
 
@@ -34,6 +35,7 @@ COLUMN_ALIASES = {
     "level": {"level"},
     "quantity": {"quantity", "재고", "수량", "재고수량", "정상재고", "normalstock"},
     "description": {"description", "상품명", "품명"},
+    "option": {"option", "options", "옵션", "상품옵션", "variant", "variants"},
     "supplier": {"supplier", "공급처", "vendor"},
     "limit": {"limit", "유통기한"},
     "expdt": {"expdt", "사용기한", "exp_date"},
@@ -41,6 +43,43 @@ COLUMN_ALIASES = {
 }
 
 LEVEL_NONE_SENTINEL = "__NONE__"
+
+_INVENTORY_OPTION_PLACEHOLDER_CF = frozenset(
+    {"nan", "none", "null", "#n/a", "n/a", "nat", "-", "undefined"}
+)
+
+
+def _normalize_inventory_text(value: object) -> str:
+    raw = str(value or "").strip()
+    return re.sub(r"\s+", " ", raw)
+
+
+def _is_inventory_option_placeholder(value: object) -> bool:
+    try:
+        if pd.isna(value):
+            return True
+    except TypeError:
+        pass
+    if isinstance(value, float) and math.isnan(value):
+        return True
+    s = str(value or "").strip().casefold()
+    if not s:
+        return True
+    return s in _INVENTORY_OPTION_PLACEHOLDER_CF
+
+
+def _append_option_to_inventory_description(description: object, option: object) -> str:
+    """SKU 매핑 `option` 열과 동일: 상품명이 있을 때만 뒤에 공백 + 옵션을 붙인다."""
+    base = _normalize_inventory_text(description)
+    if _is_inventory_option_placeholder(option):
+        return base
+    opt = _normalize_inventory_text(option)
+    if not opt:
+        return base
+    if not base:
+        return base
+    return f"{base} {opt}"
+
 
 COUNTRY_PATTERNS = {
     "KR": ["kr", "korea", "korean", "한국"],
@@ -51,6 +90,7 @@ COUNTRY_PATTERNS = {
     "AU": ["au", "australia", "호주", "sydney", "melbourne"],
     "UK": ["uk", "unitedkingdom", "britain", "england", "영국", "london"],
     "AE": ["ae", "uae", "dubai", "abudhabi", "아랍에미리트"],
+    "HK": ["hk", "hongkong", "hong kong", "香港", "홍콩"],
 }
 
 
@@ -188,6 +228,12 @@ def _read_inventory_bytes(filename: str, raw: bytes) -> pd.DataFrame:
         df["warehouse"] = pd.Series([None] * len(df), index=df.index, dtype="object")
     df["sku"] = df["itemno"].apply(_normalize_item_code)
     df["description"] = df["description"].fillna("").astype(str).str.strip()
+    if "option" in df.columns:
+        df["description"] = [
+            _append_option_to_inventory_description(d, o)
+            for d, o in zip(df["description"], df["option"])
+        ]
+        df = df.drop(columns=["option"])
     df["supplier"] = df["supplier"].fillna("").astype(str).str.strip()
     df["warehouse"] = df["warehouse"].apply(_nullable_string_like)
     return df

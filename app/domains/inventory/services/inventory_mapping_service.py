@@ -20,6 +20,7 @@ COUNTRY_FIELD_SPECS = [
     ("KR", "kr_name", "kr_sku"),
     ("US", "us_name", "us_sku"),
     ("TW", "tw_name", "tw_sku"),
+    ("HK", "hk_name", "hk_sku"),
     ("VN", "vn_name", "vn_sku"),
     ("SG", "sg_name", "sg_sku"),
     ("AU", "au_name", "au_sku"),
@@ -29,6 +30,9 @@ COUNTRY_FIELD_SPECS = [
 COUNTRY_ORDER = {country_code: index for index, (country_code, _, _) in enumerate(COUNTRY_FIELD_SPECS)}
 COUNTRY_CODES = [country_code for country_code, _, _ in COUNTRY_FIELD_SPECS]
 MAPPING_TEMPLATE_COLUMNS = [column for _, name_key, sku_key in COUNTRY_FIELD_SPECS for column in (name_key, sku_key)]
+OPTION_COLUMN_CANONICAL = "option"
+OPTION_HEADER_ALIASES = frozenset({"option", "options", "옵션", "상품옵션", "variant", "variants"})
+OPTIONAL_MAPPING_COLUMNS = [OPTION_COLUMN_CANONICAL]
 MAX_MAPPING_FILE_SIZE_BYTES = 2 * 1024 * 1024
 # AE/UK/AU 엑셀은 전용 name 열 대신 us_name 만 있는 경우가 많음
 MAPPING_NAME_FALLBACK_TO_US_NAME = frozenset({"AU", "UK", "AE"})
@@ -114,12 +118,15 @@ def _lookup_group_by_country_sku_variants(
 
 
 def _tw_hk_five_digit_core_from_tw_sku(tw_sku: object) -> str | None:
-    """HK06019-02 → 앞쪽 국가코드(영문) 뒤의 5자리 숫자 = 한국 SKU 코어."""
+    """대만 SKU 의 5자리 코어 = 한국 SKU 의 5자리 코어와 같으면 동일 상품.
+    HK06019 / HK06019-02 → 접두 영문 뒤 5자리 우선. 그 외는 한국 SKU 와 동일 규칙으로 추출."""
     s = _normalize_mapping_sku(tw_sku)
     if not s:
         return None
     m = re.match(r"^[A-Za-z]+(\d{5})(?:-.+)?$", s)
-    return m.group(1) if m else None
+    if m:
+        return m.group(1)
+    return _kr_five_digit_core_for_tw_match(tw_sku)
 
 
 def _kr_five_digit_core_for_tw_match(kr_sku: object) -> str | None:
@@ -155,6 +162,19 @@ def _resolve_row_localized_name(source: dict[str, object], country_code: str, na
     return ""
 
 
+def _append_option_to_product_name(name: object, option: object) -> str:
+    """엑셀 `option` 열 값을 상품명 뒤에 한 칸 띄워 붙인다. 상품명이 비어 있으면 옵션만으로 이름을 만들지 않는다."""
+    base = _normalize_mapping_name(name)
+    if _is_placeholder_mapping_name(option):
+        return base
+    opt = _normalize_mapping_name(option)
+    if not opt:
+        return base
+    if not base:
+        return base
+    return f"{base} {opt}"
+
+
 def _read_mapping_bytes(upload_file: UploadFile) -> tuple[bytes, int]:
     filename = str(upload_file.filename or "mapping.xlsx")
     if not filename.lower().endswith(".xlsx"):
@@ -175,7 +195,7 @@ def _read_mapping_bytes(upload_file: UploadFile) -> tuple[bytes, int]:
 
 
 def _read_mapping_frame(upload_file: UploadFile) -> pd.DataFrame:
-    """허용 컬럼만 사용하고, 나머지 열은 무시한다."""
+    """표준 매핑 컬럼과 선택적 `option` 열만 사용하고, 나머지 열은 무시한다."""
     raw, _ = _read_mapping_bytes(upload_file)
     filename = str(upload_file.filename or "mapping.xlsx")
     try:
@@ -190,12 +210,34 @@ def _read_mapping_frame(upload_file: UploadFile) -> pd.DataFrame:
             raise HTTPException(status_code=500, detail="매핑 템플릿 컬럼 정의가 서로 충돌합니다.")
         header_key_to_canonical[key] = canonical
 
+    option_header_keys = frozenset(_normalize_mapping_header(a) for a in OPTION_HEADER_ALIASES)
+
     series_by_canonical: dict[str, pd.Series] = {}
     matched_raw: dict[str, str] = {}
+    option_series: pd.Series | None = None
+    option_matched_raw = ""
 
     for col in df.columns:
         raw_label = str(col).strip()
         norm = _normalize_mapping_header(raw_label)
+        if norm in option_header_keys:
+            if option_series is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{filename}: `option` 열에 해당하는 헤더가 두 열 이상입니다 "
+                        f"(`{option_matched_raw}` 와 `{raw_label}`)."
+                    ),
+                )
+            col_slice = df[col]
+            if isinstance(col_slice, pd.DataFrame):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{filename}: 헤더 `{raw_label}` 열이 엑셀에서 중복되어 있습니다.",
+                )
+            option_series = col_slice.copy()
+            option_matched_raw = raw_label
+            continue
         if norm not in header_key_to_canonical:
             continue
         canonical = header_key_to_canonical[norm]
@@ -233,6 +275,9 @@ def _read_mapping_frame(upload_file: UploadFile) -> pd.DataFrame:
             aligned[canonical] = series_by_canonical[canonical]
         else:
             aligned[canonical] = pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
+    aligned[OPTION_COLUMN_CANONICAL] = (
+        option_series if option_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
+    )
     return pd.DataFrame(aligned)
 
 
@@ -262,8 +307,12 @@ def _load_product_groups(db: Session) -> list[ProductGroup]:
 
 def _build_mapping_group(source: dict[str, object], row_label: str) -> dict:
     locales: list[dict[str, str]] = []
+    opt_source = source.get(OPTION_COLUMN_CANONICAL)
     for country_code, name_key, sku_key in COUNTRY_FIELD_SPECS:
-        name = _resolve_row_localized_name(source, country_code, name_key)
+        name = _append_option_to_product_name(
+            _resolve_row_localized_name(source, country_code, name_key),
+            opt_source,
+        )
         sku = _normalize_mapping_sku(source.get(sku_key))
         if not name and not sku:
             continue
@@ -342,9 +391,13 @@ def _upsert_group_locales(target: ProductGroup, payload: dict, now: datetime) ->
 def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | None:
     sku_locales: list[dict[str, str | None]] = []
     named_locales: list[dict[str, str]] = []
+    opt_source = source.get(OPTION_COLUMN_CANONICAL)
 
     for country_code, name_key, sku_key in COUNTRY_FIELD_SPECS:
-        name = _resolve_row_localized_name(source, country_code, name_key)
+        name = _append_option_to_product_name(
+            _resolve_row_localized_name(source, country_code, name_key),
+            opt_source,
+        )
         sku = _normalize_mapping_sku(source.get(sku_key))
         if not name and not sku:
             continue
@@ -376,9 +429,11 @@ def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | Non
     anchor_kr_name = _normalize_mapping_name(source.get("kr_name"))
     if _is_placeholder_mapping_name(anchor_kr_name):
         anchor_kr_name = ""
+    anchor_kr_name = _append_option_to_product_name(anchor_kr_name, opt_source)
     match_us_name = _normalize_mapping_name(source.get("us_name"))
     if _is_placeholder_mapping_name(match_us_name):
         match_us_name = ""
+    match_us_name = _append_option_to_product_name(match_us_name, opt_source)
 
     return {
         "row_label": row_label,
@@ -496,7 +551,7 @@ def _group_conflict_summary(group_index: dict[uuid.UUID, ProductGroup], gid: uui
         return f"• item_id={gid} (메모리 인덱스에 없음 — 비정상)"
     kr = (group.kr_name or "").strip() or "(한국 대표명 없음)"
     lines: list[str] = [f"• item_id={group.id}", f"  한국 대표명(kr_name): {kr!r}"]
-    priority = ("KR", "TW", "US", "VN", "AE", "AU", "UK", "SG")
+    priority = ("KR", "TW", "HK", "US", "VN", "AE", "AU", "UK", "SG")
     for cc in priority:
         for loc in sorted(
             (x for x in group.locales if x.country_code == cc),
@@ -593,18 +648,36 @@ def _find_matching_groups(
     # 5)·6)에서 사용: 이 국가는 이미 SKU/코어 등으로 item 이 잠겼으면 상품명으로 다시 묶지 않음
     sku_resolved_cc: set[str] = set()
 
+    # 0) 홍콩 마스터 행: hk_sku + 엑셀 kr_sku 가 있으면 kr_sku 로 기존 item 을 찾고, 없으면 신규 item 만든 뒤 HK 매핑.
+    #    이 경우 TW/이름 단서로 다른 item 을 끌어오지 않는다.
+    hk_kr_locked = False
+    has_hk_sku = any(
+        str(loc.get("country_code") or "").strip().upper() == "HK" and str(loc.get("sku") or "").strip()
+        for loc in record["sku_locales"]
+    )
+    anchor_kr_for_hk = str(record.get("anchor_kr_sku") or "").strip()
+    if has_hk_sku and anchor_kr_for_hk:
+        hk_kr_locked = True
+        kr_hit_hk = _lookup_group_by_country_sku_variants(sku_index, "KR", anchor_kr_for_hk)
+        if kr_hit_hk is not None:
+            matched_ids.add(kr_hit_hk.id)
+            sku_resolved_cc.add("KR")
+            sku_resolved_cc.add("HK")
+
     # 1) 대만: HK06019 / HK06019-02 → 동일 5자리 한국 코어 상품
     #    코어 추출 불가 시 → 엑셀 us_name 과 DB US 로케일 상품명으로 한국 item 찾기
     tw_cores: list[str] = []
     has_tw_locale = False
-    for loc in record["sku_locales"]:
-        if str(loc.get("country_code") or "").strip().upper() != "TW":
-            continue
-        has_tw_locale = True
-        core = _tw_hk_five_digit_core_from_tw_sku(loc.get("sku"))
-        if core:
-            tw_cores.append(core)
-    if tw_cores:
+    tw_core_resolved = False
+    if not hk_kr_locked:
+        for loc in record["sku_locales"]:
+            if str(loc.get("country_code") or "").strip().upper() != "TW":
+                continue
+            has_tw_locale = True
+            core = _tw_hk_five_digit_core_from_tw_sku(loc.get("sku"))
+            if core:
+                tw_cores.append(core)
+    if not hk_kr_locked and tw_cores:
         locked_tw: set[uuid.UUID] = set()
         for core in tw_cores:
             hits = kr_tw_core_index.get(core, set())
@@ -630,7 +703,8 @@ def _find_matching_groups(
             matched_ids.add(next(iter(locked_tw)))
             sku_resolved_cc.add("TW")
             sku_resolved_cc.add("KR")
-    elif has_tw_locale:
+            tw_core_resolved = True
+    elif not hk_kr_locked and has_tw_locale:
         us_for_tw = _normalize_mapping_name(record.get("match_us_name"))
         if not us_for_tw or _is_placeholder_mapping_name(us_for_tw):
             raise HTTPException(
@@ -661,121 +735,130 @@ def _find_matching_groups(
             sku_resolved_cc.add("TW")
             sku_resolved_cc.add("KR")
 
-    # 2) 엑셀 kr_sku → DB 한국 마스터 앵커 (미국 파일 등)
-    anchor_kr = str(record.get("anchor_kr_sku") or "").strip()
-    if anchor_kr:
-        kr_hit = _lookup_group_by_country_sku_variants(sku_index, "KR", anchor_kr)
-        if kr_hit is not None:
-            sku_resolved_cc.add("KR")
-            _add_matched_group_id(
-                matched_ids,
-                kr_hit.id,
-                row_label,
-                f"엑셀 `kr_sku`={anchor_kr!r} 가 가리키는 상품과",
-                group_index,
-                record,
-            )
+    # 대만 SKU 가 5자리 코어로 이미 한국 item 에 고정된 경우, 같은 행의 kr_name / us_name / AE·AU·UK 이름 등으로
+    # 다른 item 을 끌어오면 서로 다른 상품 충돌이 나므로 아래 2)~4)·6) 이름 기반 단서는 생략한다.
+    # 홍콩(kr_sku 앵커) 행도 동일하게 이름 기반 단서를 생략한다.
+    if not tw_core_resolved and not hk_kr_locked:
+        # 2) 엑셀 kr_sku → DB 한국 마스터 앵커 (미국 파일 등)
+        anchor_kr = str(record.get("anchor_kr_sku") or "").strip()
+        if anchor_kr:
+            kr_hit = _lookup_group_by_country_sku_variants(sku_index, "KR", anchor_kr)
+            if kr_hit is not None:
+                sku_resolved_cc.add("KR")
+                _add_matched_group_id(
+                    matched_ids,
+                    kr_hit.id,
+                    row_label,
+                    f"엑셀 `kr_sku`={anchor_kr!r} 가 가리키는 상품과",
+                    group_index,
+                    record,
+                )
 
-    # 3) 베트남 등: kr_name 으로 한국 대표 상품명 매칭
-    anchor_name = _normalize_mapping_name(record.get("anchor_kr_name"))
-    has_vn = any(str(l.get("country_code") or "").upper() == "VN" for l in record["sku_locales"])
-    if anchor_name and not _is_placeholder_mapping_name(anchor_name) and has_vn and not anchor_kr:
-        name_hits = _groups_matching_kr_display_name(anchor_name, group_index)
-        if len(name_hits) > 1:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"{row_label}: `kr_name` `{anchor_name}` 과 일치하는 한국 상품이 여러 개입니다. "
-                    "`kr_sku` 로 구분하거나 마스터 상품명을 유일하게 맞춰 주세요."
-                ),
-            )
-        if len(name_hits) == 1:
-            sku_resolved_cc.add("KR")
-            _add_matched_group_id(
-                matched_ids,
-                name_hits[0].id,
-                row_label,
-                f"`kr_name`={anchor_name!r} 이 가리키는 상품과",
-                group_index,
-                record,
-            )
+        # 3) 베트남 등: kr_name 으로 한국 대표 상품명 매칭
+        anchor_name = _normalize_mapping_name(record.get("anchor_kr_name"))
+        has_vn = any(str(l.get("country_code") or "").upper() == "VN" for l in record["sku_locales"])
+        if anchor_name and not _is_placeholder_mapping_name(anchor_name) and has_vn and not anchor_kr:
+            name_hits = _groups_matching_kr_display_name(anchor_name, group_index)
+            if len(name_hits) > 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{row_label}: `kr_name` `{anchor_name}` 과 일치하는 한국 상품이 여러 개입니다. "
+                        "`kr_sku` 로 구분하거나 마스터 상품명을 유일하게 맞춰 주세요."
+                    ),
+                )
+            if len(name_hits) == 1:
+                sku_resolved_cc.add("KR")
+                _add_matched_group_id(
+                    matched_ids,
+                    name_hits[0].id,
+                    row_label,
+                    f"`kr_name`={anchor_name!r} 이 가리키는 상품과",
+                    group_index,
+                    record,
+                )
 
-    # 4) AE/AU/UK: us_name 으로 DB 의 US 로케일 상품명과 매칭
-    us_link = _normalize_mapping_name(record.get("match_us_name"))
-    overseas_us_name_cc = frozenset({"AE", "AU", "UK"})
-    needs_us_name = any(
-        str(l.get("country_code") or "").strip().upper() in overseas_us_name_cc for l in record["sku_locales"]
-    )
-    if us_link and not _is_placeholder_mapping_name(us_link) and needs_us_name:
-        candidate_ids = name_index.get(_index_key("US", _normalize_mapping_name_key(us_link)), set())
-        if len(candidate_ids) > 1:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"{row_label}: `us_name` `{us_link}` 과 일치하는 US 상품명을 가진 기존 상품이 여러 개입니다. "
-                    "US 명을 유일하게 맞추거나 `kr_sku` 로 먼저 연결해 주세요."
-                ),
-            )
-        if len(candidate_ids) == 1:
-            sku_resolved_cc.add("US")
-            _add_matched_group_id(
-                matched_ids,
-                next(iter(candidate_ids)),
-                row_label,
-                f"`us_name`={us_link!r} 이 가리키는 상품과",
-                group_index,
-                record,
-            )
+        # 4) AE/AU/UK: us_name 으로 DB 의 US 로케일 상품명과 매칭
+        us_link = _normalize_mapping_name(record.get("match_us_name"))
+        overseas_us_name_cc = frozenset({"AE", "AU", "UK"})
+        needs_us_name = any(
+            str(l.get("country_code") or "").strip().upper() in overseas_us_name_cc for l in record["sku_locales"]
+        )
+        if us_link and not _is_placeholder_mapping_name(us_link) and needs_us_name:
+            candidate_ids = name_index.get(_index_key("US", _normalize_mapping_name_key(us_link)), set())
+            if len(candidate_ids) > 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{row_label}: `us_name` `{us_link}` 과 일치하는 US 상품명을 가진 기존 상품이 여러 개입니다. "
+                        "US 명을 유일하게 맞추거나 `kr_sku` 로 먼저 연결해 주세요."
+                    ),
+                )
+            if len(candidate_ids) == 1:
+                sku_resolved_cc.add("US")
+                _add_matched_group_id(
+                    matched_ids,
+                    next(iter(candidate_ids)),
+                    row_label,
+                    f"`us_name`={us_link!r} 이 가리키는 상품과",
+                    group_index,
+                    record,
+                )
 
     # 5) 국가별 SKU 직접 일치
     #    이후 6)에서 같은 국가는 이름으로 다시 묶지 않음 — DB에 정품/증정 등 서로 다른 item 이
     #    동일 표시명(예: 대만 번체)을 쓰는 경우 SKU·대만 코어가 우선해야 함.
-    for locale in record["sku_locales"]:
-        cc = str(locale["country_code"] or "").strip().upper()
-        sku = str(locale["sku"] or "")
-        matched = _lookup_group_by_country_sku_variants(sku_index, cc, sku)
-        if matched is not None:
-            sku_resolved_cc.add(cc)
-            _add_matched_group_id(
-                matched_ids,
-                matched.id,
-                row_label,
-                f"{cc} SKU={sku!r} 로 DB 에서 직접 찾은 상품과",
-                group_index,
-                record,
-            )
-
-    # 6) 국가별 상품명
-    for locale in [*record["sku_locales"], *record["named_locales"]]:
-        raw_nm = locale.get("name")
-        if _is_placeholder_mapping_name(raw_nm):
-            continue
-        name = _normalize_mapping_name(raw_nm)
-        if not name:
-            continue
-        cc_nm = str(locale.get("country_code") or "").strip().upper()
-        if cc_nm in sku_resolved_cc:
-            continue
-        candidate_ids = name_index.get(_index_key(cc_nm, _normalize_mapping_name_key(name)), set())
-        if len(candidate_ids) <= 1:
-            for gid in candidate_ids:
+    #    홍콩 행이 kr_sku 미매칭으로 신규 item 을 만들 경로일 때는, 여기서 HK SKU 가 다른 item 에 붙어
+    #    잘못 합쳐지는 것을 막기 위해 5) 단계를 건너뛴다.
+    skip_direct_sku_lookup = hk_kr_locked and not matched_ids
+    if not skip_direct_sku_lookup:
+        for locale in record["sku_locales"]:
+            cc = str(locale["country_code"] or "").strip().upper()
+            sku = str(locale["sku"] or "")
+            matched = _lookup_group_by_country_sku_variants(sku_index, cc, sku)
+            if matched is not None:
+                sku_resolved_cc.add(cc)
                 _add_matched_group_id(
                     matched_ids,
-                    gid,
+                    matched.id,
                     row_label,
-                    f"{cc_nm} 상품명={name!r} 이 가리키는 상품과",
+                    f"{cc} SKU={sku!r} 로 DB 에서 직접 찾은 상품과",
                     group_index,
                     record,
                 )
-            continue
-        if matched_ids and matched_ids.intersection(candidate_ids):
-            continue
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"{row_label}: {cc_nm} 상품명 `{name}` 이 여러 상품과 연결되어 자동 병합할 수 없습니다."
-            ),
-        )
+
+    # 6) 국가별 상품명 (대만 5자리 코어로 item 이 확정된 행은 위에서 설명한 이유로 생략)
+    if not tw_core_resolved and not hk_kr_locked:
+        for locale in [*record["sku_locales"], *record["named_locales"]]:
+            raw_nm = locale.get("name")
+            if _is_placeholder_mapping_name(raw_nm):
+                continue
+            name = _normalize_mapping_name(raw_nm)
+            if not name:
+                continue
+            cc_nm = str(locale.get("country_code") or "").strip().upper()
+            if cc_nm in sku_resolved_cc:
+                continue
+            candidate_ids = name_index.get(_index_key(cc_nm, _normalize_mapping_name_key(name)), set())
+            if len(candidate_ids) <= 1:
+                for gid in candidate_ids:
+                    _add_matched_group_id(
+                        matched_ids,
+                        gid,
+                        row_label,
+                        f"{cc_nm} 상품명={name!r} 이 가리키는 상품과",
+                        group_index,
+                        record,
+                    )
+                continue
+            if matched_ids and matched_ids.intersection(candidate_ids):
+                continue
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"{row_label}: {cc_nm} 상품명 `{name}` 이 여러 상품과 연결되어 자동 병합할 수 없습니다."
+                ),
+            )
 
     return [group_index[gid] for gid in matched_ids if gid in group_index]
 
@@ -890,6 +973,7 @@ def get_product_sku_mapping_summary(db: Session) -> dict:
         "upload_updated_at": upload_updated_at.isoformat() if upload_updated_at else None,
         "manual_updated_at": manual_updated_at.isoformat() if manual_updated_at else None,
         "required_columns": MAPPING_TEMPLATE_COLUMNS,
+        "optional_columns": OPTIONAL_MAPPING_COLUMNS,
     }
 
 

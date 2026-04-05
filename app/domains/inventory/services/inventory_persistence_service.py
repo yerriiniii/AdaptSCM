@@ -19,9 +19,9 @@ from app.domains.inventory.services.inventory_aggregate_service import (
     _read_inventory_bytes,
     _read_inventory_file,
 )
-from app.domains.inventory.services.inventory_mapping_service import (
-    build_product_sku_mapping_lookups,
-    resolve_product_sku_mapping,
+from app.domains.inventory.services.inventory_item_mapping_resolve import (
+    attach_item_mapping_kr_to_inventory_rows,
+    validate_inventory_row_frame_item_mapping,
 )
 from app.shared.config import get_runtime_settings
 from app.shared.storage import create_presigned_upload_url, get_s3_client, is_s3_configured
@@ -327,7 +327,6 @@ def get_inventory_view(db: Session, country_code: str) -> dict:
     normalized_country = str(country_code or "").strip().upper()
     if not normalized_country:
         raise HTTPException(status_code=400, detail="country_code가 필요합니다.")
-    mapping_lookups = build_product_sku_mapping_lookups(db)
 
     rows = db.execute(
         select(
@@ -390,15 +389,7 @@ def get_inventory_view(db: Session, country_code: str) -> dict:
 
     dates = sorted(frame["date_key"].dropna().unique().tolist())
     result_rows = pivot.to_dict(orient="records")
-    for row in result_rows:
-        row.update(
-            resolve_product_sku_mapping(
-                mapping_lookups,
-                normalized_country,
-                row.get("sku"),
-                row.get("description"),
-            )
-        )
+    attach_item_mapping_kr_to_inventory_rows(db, normalized_country, result_rows)
     return {
         "summary": {"item_count": len(result_rows), "date_count": len(dates)},
         "countries": [normalized_country],
@@ -428,6 +419,7 @@ def persist_inventory_uploads(
     affected_scopes: set[tuple[str, date | None]] = set()
     aggregate_frames: list[pd.DataFrame] = []
     persisted_files: list[dict] = []
+    sku_allowlist_cache: dict[str, set[str]] = {}
 
     try:
         for idx, upload_file in enumerate(files):
@@ -453,6 +445,14 @@ def persist_inventory_uploads(
             df = _read_inventory_file(upload_file).copy()
             country_code = _resolve_country_code(df, upload_file, idx, file_countries)
             base_date = _resolve_base_date(df, upload_file, idx, file_dates, country_code)
+            row_frame = _build_row_frame(df)
+            validate_inventory_row_frame_item_mapping(
+                db,
+                row_frame,
+                country_code,
+                str(upload_file.filename or "파일"),
+                allowlist_cache=sku_allowlist_cache,
+            )
 
             stored_name = f"{uuid.uuid4()}{os.path.splitext(upload_file.filename or '')[1]}"
             s3_key = _build_s3_key(
@@ -620,6 +620,7 @@ def complete_inventory_direct_uploads(db: Session, files: list[dict]) -> list[di
     affected_scopes: set[tuple[str, date | None]] = set()
     aggregate_frames: list[pd.DataFrame] = []
     persisted_files: list[dict] = []
+    sku_allowlist_cache: dict[str, set[str]] = {}
 
     try:
         for file in files:
@@ -657,6 +658,14 @@ def complete_inventory_direct_uploads(db: Session, files: list[dict]) -> list[di
             response = s3_client.get_object(Bucket=settings.s3_bucket, Key=s3_key)
             raw_bytes = response["Body"].read()
             df = _read_inventory_bytes(original_name, raw_bytes).copy()
+            row_frame = _build_row_frame(df)
+            validate_inventory_row_frame_item_mapping(
+                db,
+                row_frame,
+                country_code,
+                original_name,
+                allowlist_cache=sku_allowlist_cache,
+            )
             base_date = base_date_override or _resolve_base_date(df, type("Tmp", (), {"filename": original_name})(), 0, None, country_code)
             persisted_file, aggregate_frame, affected_scope = _persist_dataframe(
                 db,

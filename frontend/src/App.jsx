@@ -4,12 +4,13 @@ import * as XLSX from "xlsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 const DEFAULT_DATE_RANGE = "10d";
-const OVERSEAS_UPLOAD_COUNTRIES = ["US", "TW", "VN", "SG", "AU", "UK", "AE"];
-const SETTINGS_COUNTRY_ORDER = ["KR", "US", "TW", "VN", "SG", "AU", "UK", "AE"];
+const OVERSEAS_UPLOAD_COUNTRIES = ["US", "TW", "HK", "VN", "SG", "AU", "UK", "AE"];
+const SETTINGS_COUNTRY_ORDER = ["KR", "US", "TW", "HK", "VN", "SG", "AU", "UK", "AE"];
 const SKU_MAPPING_FIELDS = [
   { code: "KR", label: "한국", nameKey: "kr_name", skuKey: "kr_sku" },
   { code: "US", label: "미국", nameKey: "us_name", skuKey: "us_sku" },
   { code: "TW", label: "대만", nameKey: "tw_name", skuKey: "tw_sku" },
+  { code: "HK", label: "홍콩", nameKey: "hk_name", skuKey: "hk_sku" },
   { code: "VN", label: "베트남", nameKey: "vn_name", skuKey: "vn_sku" },
   { code: "SG", label: "싱가포르", nameKey: "sg_name", skuKey: "sg_sku" },
   { code: "AU", label: "호주", nameKey: "au_name", skuKey: "au_sku" },
@@ -17,12 +18,14 @@ const SKU_MAPPING_FIELDS = [
   { code: "AE", label: "아랍에미리트", nameKey: "ae_name", skuKey: "ae_sku" },
 ];
 const SKU_MAPPING_TEMPLATE_COLUMNS = SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [nameKey, skuKey]);
-const EMPTY_SKU_MAPPING_FORM = Object.fromEntries(
-  SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [
+const SKU_MAPPING_OPTIONAL_COLUMNS = ["option"];
+const EMPTY_SKU_MAPPING_FORM = Object.fromEntries([
+  ...SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [
     [nameKey, ""],
     [skuKey, ""],
-  ])
-);
+  ]),
+  ["option", ""],
+]);
 const PRODUCT_MAPPING_SEARCH_CHIPS = SKU_MAPPING_FIELDS.map(({ code }) => code);
 function toFixed(value, digits = 2) {
   if (value === null || value === undefined) return "-";
@@ -52,6 +55,7 @@ function toPercent(value, digits = 1) {
 function detectCountry(name = "") {
   const n = name.toLowerCase();
   if (n.includes("tw") || n.includes("taiwan") || n.includes("대만")) return "TW";
+  if (n.includes("hongkong") || n.includes("hong kong") || n.includes("香港") || n.includes("홍콩")) return "HK";
   if (n.includes("us") || n.includes("usa") || n.includes("미국")) return "US";
   if (n.includes("vn") || n.includes("vietnam") || n.includes("베트남")) return "VN";
   if (n.includes("sg") || n.includes("singapore") || n.includes("싱가포르")) return "SG";
@@ -204,6 +208,7 @@ function getCompareIdentity(row) {
 function countryLabel(code = "KR") {
   if (code === "KR") return "한국";
   if (code === "TW") return "대만";
+  if (code === "HK") return "홍콩";
   if (code === "US") return "미국";
   if (code === "VN") return "베트남";
   if (code === "SG") return "싱가포르";
@@ -318,6 +323,7 @@ export default function App() {
     upload_updated_at: "",
     manual_updated_at: "",
     required_columns: SKU_MAPPING_TEMPLATE_COLUMNS,
+    optional_columns: SKU_MAPPING_OPTIONAL_COLUMNS,
   });
   const [mappingError, setMappingError] = useState("");
   const mappingErrorRef = useRef(null);
@@ -1129,6 +1135,9 @@ export default function App() {
       required_columns: Array.isArray(res?.data?.required_columns)
         ? res.data.required_columns
         : SKU_MAPPING_TEMPLATE_COLUMNS,
+      optional_columns: Array.isArray(res?.data?.optional_columns)
+        ? res.data.optional_columns
+        : SKU_MAPPING_OPTIONAL_COLUMNS,
     };
   }
 
@@ -1245,6 +1254,9 @@ export default function App() {
         required_columns: Array.isArray(res?.data?.required_columns)
           ? res.data.required_columns
           : SKU_MAPPING_TEMPLATE_COLUMNS,
+        optional_columns: Array.isArray(res?.data?.optional_columns)
+          ? res.data.optional_columns
+          : SKU_MAPPING_OPTIONAL_COLUMNS,
       });
       setMappingInputKey((prev) => prev + 1);
       await hydratePersistedState();
@@ -2080,6 +2092,15 @@ export default function App() {
               <ul className="cautionList">
                 <li>같은 이름의 파일은 중복 업로드되지 않습니다.</li>
                 <li>필수 컬럼명이나 날짜 형식이 다르면 업로드나 집계가 실패할 수 있습니다.</li>
+                <li>
+                  재고 파일에 선택 열 option(별칭: 옵션, variant 등)이 있으면 상품명(description) 뒤에 공백과 함께
+                  붙여 집계·저장합니다. SKU 매핑의 option 규칙과 같습니다.
+                </li>
+                <li>
+                  재고 파일의 각 SKU는 DB의 item_mapping에 해당 국가 코드로 미리 등록되어 있어야 업로드됩니다. 미등록 SKU가
+                  있으면 전체가 거절되며, 등록된 행이어도 같은 item에 한국(KR) SKU가 없으면 화면의 한국상품명 열은 하이픈(-)으로
+                  표시됩니다.
+                </li>
                 <li>재고 비교는 선택한 동일 기준일 데이터만 사용하며, 없는 값은 임의로 대체하지 않습니다.</li>
               </ul>
             </div>
@@ -2114,7 +2135,12 @@ export default function App() {
             <div className="cautionSection">
               <div className="cautionSectionTitle">SKU 관리</div>
               <ul className="cautionList">
-                <li>SKU 마스터 파일은 여러 개의 `.xlsx`를 올릴 수 있으며, 사용 가능한 alias 헤더는 `{SKU_MAPPING_TEMPLATE_COLUMNS.join("`, `")}` 입니다.</li>
+                <li>
+                  SKU 마스터는 여러 개의 .xlsx를 올릴 수 있으며, 필수 열은{" "}
+                  {SKU_MAPPING_TEMPLATE_COLUMNS.join(", ")} 입니다. 선택 열 option(별칭: 옵션, variant 등)이 있으면
+                  각 국가 상품명 뒤에 공백을 두고 붙여 저장합니다. 예: kr_name이 스타킹이고 option이 M이면 스타킹 M으로
+                  저장됩니다.
+                </li>
                 <li>파일마다 일부 국가 컬럼만 있어도 되지만, 각 행에는 최소 한 국가의 SKU 값이 필요합니다.</li>
                 <li>같은 국가의 같은 SKU가 다른 상품과 충돌하면 전체 업로드가 거절되며 아무 데이터도 반영되지 않습니다.</li>
                 <li>원본 파일은 저장하지 않고, 읽은 매핑 데이터만 DB에 반영합니다.</li>
@@ -2329,6 +2355,26 @@ export default function App() {
                         </div>
                       </div>
                     ))}
+                    <div className="skuManualRow">
+                      <div className="skuManualCountryCell">
+                        <span className="skuManualCountryLabel">옵션</span>
+                      </div>
+                      <div className="skuManualInputCell">
+                        <input
+                          type="text"
+                          value={manualMappingForm.option}
+                          onChange={(e) =>
+                            setManualMappingForm((prev) => ({ ...prev, option: e.target.value }))
+                          }
+                          placeholder="비우면 생략 · 위 상품명들 뒤에 공백과 함께 붙음"
+                        />
+                      </div>
+                      <div className="skuManualInputCell" aria-hidden="true">
+                        <span className="skuManualCountryLabel" style={{ opacity: 0.45 }}>
+                          —
+                        </span>
+                      </div>
+                    </div>
                   </div>
                   <div className="skuManualActions">
                     <div className="skuManageMeta">

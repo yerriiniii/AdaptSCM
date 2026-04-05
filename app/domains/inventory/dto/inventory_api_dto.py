@@ -58,6 +58,7 @@ class InventorySkuMappingSummaryResponse(BaseModel):
     upload_updated_at: str | None = None
     manual_updated_at: str | None = None
     required_columns: list[str] = Field(default_factory=list)
+    optional_columns: list[str] = Field(default_factory=list)
 
 
 class InventorySkuMappingUploadResponse(InventorySkuMappingSummaryResponse):
@@ -74,10 +75,13 @@ class InventorySkuMappingLocaleResponse(BaseModel):
 class InventorySkuMappingUpsertRequest(BaseModel):
     kr_name: str
     kr_sku: str
+    option: str | None = None
     us_name: str | None = None
     us_sku: str | None = None
     tw_name: str | None = None
     tw_sku: str | None = None
+    hk_name: str | None = None
+    hk_sku: str | None = None
     vn_name: str | None = None
     vn_sku: str | None = None
     sg_name: str | None = None
