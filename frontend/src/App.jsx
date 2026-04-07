@@ -18,15 +18,212 @@ const SKU_MAPPING_FIELDS = [
   { code: "AE", label: "아랍에미리트", nameKey: "ae_name", skuKey: "ae_sku" },
 ];
 const SKU_MAPPING_TEMPLATE_COLUMNS = SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [nameKey, skuKey]);
-const SKU_MAPPING_OPTIONAL_COLUMNS = ["option"];
+const SKU_MAPPING_OPTIONAL_COLUMNS = ["option", "brand"];
 const EMPTY_SKU_MAPPING_FORM = Object.fromEntries([
   ...SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [
     [nameKey, ""],
     [skuKey, ""],
   ]),
+  ["brand", ""],
   ["option", ""],
 ]);
 const PRODUCT_MAPPING_SEARCH_CHIPS = SKU_MAPPING_FIELDS.map(({ code }) => code);
+const SKU_MAPPING_OVERSEAS_FIELDS = SKU_MAPPING_FIELDS.filter(({ code }) => code !== "KR");
+
+/** 수기 입력 브랜드 드롭다운 (순서 유지) */
+const MANUAL_BRAND_PRESETS = Object.freeze([
+  "8APM",
+  "95PROBLEM",
+  "cs",
+  "SC08",
+  "글라센",
+  "뉴트리스토리",
+  "데이알",
+  "듀오렉신",
+  "랍셍스",
+  "레이어",
+  "레이어옵티컬",
+  "리이오",
+  "림트",
+  "마시밀레",
+  "매그드레인",
+  "먼로우",
+  "블랙홀",
+  "슈럭",
+  "스칸디대디",
+  "스킨빌더스",
+  "알브단스",
+  "에스마켓",
+  "에이페",
+  "엠마녹스",
+  "오브제",
+  "옵스테드",
+  "자연미식",
+  "컬러풀선데이",
+  "클릭앤블락",
+  "페닐롭",
+  "페트리스",
+  "푸드올로지",
+  "풀리",
+  "플릭",
+  "필린",
+]);
+
+function normalizeManualBrandSearch(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+function ManualBrandCombobox({ value, onChange, disabled }) {
+  const rootRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const customInputRef = useRef(null);
+  const presetSet = useMemo(() => new Set(MANUAL_BRAND_PRESETS), []);
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  /** 빈 칸에서 「직접 입력」으로 들어온 상태(값을 지워도 목록으로 보내기 전까지 유지) */
+  const [customMode, setCustomMode] = useState(() => Boolean(value && !presetSet.has(value)));
+  /** 직접 입력 중에도 프리셋 목록 UI로 전환 */
+  const [pickFromListUi, setPickFromListUi] = useState(false);
+
+  const isPresetValue = Boolean(value && presetSet.has(value));
+  const showCustomRow =
+    !pickFromListUi && (customMode || (Boolean(value) && !presetSet.has(value)));
+
+  useEffect(() => {
+    if (isPresetValue) {
+      setCustomMode(false);
+      setPickFromListUi(false);
+    }
+  }, [isPresetValue]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) searchInputRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (showCustomRow && customMode) customInputRef.current?.focus();
+  }, [showCustomRow, customMode]);
+
+  const filteredPresets = useMemo(() => {
+    const q = normalizeManualBrandSearch(search);
+    if (!q) return [...MANUAL_BRAND_PRESETS];
+    return MANUAL_BRAND_PRESETS.filter((b) => normalizeManualBrandSearch(b).includes(q));
+  }, [search]);
+
+  if (showCustomRow) {
+    return (
+      <div className="manualBrandCombobox manualBrandComboboxCustom" ref={rootRef}>
+        <div className="manualBrandCustomRow">
+          <input
+            ref={customInputRef}
+            type="text"
+            className="manualBrandCustomInput"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={disabled}
+            placeholder="브랜드 직접 입력"
+            autoComplete="off"
+          />
+          <button
+            type="button"
+            className="manualBrandToPresetsBtn"
+            disabled={disabled}
+            onClick={() => setPickFromListUi(true)}
+          >
+            목록에서 선택
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`manualBrandCombobox${open ? " manualBrandComboboxOpen" : ""}`} ref={rootRef}>
+      <button
+        type="button"
+        className="manualBrandTrigger"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        <span className={`manualBrandTriggerText${value ? "" : " isPlaceholder"}`}>
+          {value || "브랜드 선택"}
+        </span>
+        <span className="manualBrandChevron" aria-hidden="true">
+          ▼
+        </span>
+      </button>
+      {open ? (
+        <div className="manualBrandPopover" role="listbox">
+          <input
+            ref={searchInputRef}
+            type="text"
+            className="manualBrandSearch"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="검색…"
+            autoComplete="off"
+            onMouseDown={(e) => e.stopPropagation()}
+          />
+          <ul className="manualBrandList">
+            {filteredPresets.length ? (
+              filteredPresets.map((b) => (
+                <li key={b}>
+                  <button
+                    type="button"
+                    className="manualBrandOption"
+                    onClick={() => {
+                      onChange(b);
+                      setOpen(false);
+                      setSearch("");
+                      setCustomMode(false);
+                      setPickFromListUi(false);
+                    }}
+                  >
+                    {b}
+                  </button>
+                </li>
+              ))
+            ) : (
+              <li className="manualBrandListEmpty">일치하는 브랜드가 없습니다.</li>
+            )}
+          </ul>
+          <button
+            type="button"
+            className="manualBrandOption manualBrandOptionDirect"
+            onClick={() => {
+              setOpen(false);
+              setSearch("");
+              setPickFromListUi(false);
+              setCustomMode(true);
+              const keepCustom = Boolean(value && !presetSet.has(value));
+              if (!keepCustom) onChange("");
+            }}
+          >
+            직접 입력…
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function toFixed(value, digits = 2) {
   if (value === null || value === undefined) return "-";
   const parsed = Number(value);
@@ -333,6 +530,7 @@ export default function App() {
   const [mappingError, setMappingError] = useState("");
   const mappingErrorRef = useRef(null);
   const [manualMappingForm, setManualMappingForm] = useState({ ...EMPTY_SKU_MAPPING_FORM });
+  const [manualSkuFormKey, setManualSkuFormKey] = useState(0);
   const [mappingInputKey, setMappingInputKey] = useState(0);
   const [skuManageMode, setSkuManageMode] = useState("UPLOAD");
 
@@ -1290,8 +1488,21 @@ export default function App() {
       const payload = Object.fromEntries(
         Object.entries(manualMappingForm).map(([key, value]) => [key, String(value || "").trim()])
       );
+      if (!payload.kr_sku) {
+        window.alert("한국 SKU를 입력해 주세요.");
+        return;
+      }
+      if (!payload.kr_name) {
+        window.alert("한국 상품명을 입력해 주세요.");
+        return;
+      }
+      if (!payload.brand) {
+        window.alert("브랜드를 선택하거나 직접 입력해 주세요.");
+        return;
+      }
       await axios.post(`${API_BASE}/api/inventory/mappings/item`, payload);
       setManualMappingForm({ ...EMPTY_SKU_MAPPING_FORM });
+      setManualSkuFormKey((k) => k + 1);
       await hydratePersistedState();
       window.alert("SKU 정보를 저장했습니다.");
     } catch (err) {
@@ -1306,6 +1517,7 @@ export default function App() {
 
   function resetManualSkuMappingForm() {
     setManualMappingForm({ ...EMPTY_SKU_MAPPING_FORM });
+    setManualSkuFormKey((k) => k + 1);
   }
 
   async function deleteFileEntry(entry) {
@@ -2133,15 +2345,17 @@ export default function App() {
               <ul className="cautionList">
                 <li>
                   SKU 마스터는 여러 개의 .xlsx를 올릴 수 있으며, 필수 열은{" "}
-                  {SKU_MAPPING_TEMPLATE_COLUMNS.join(", ")} 입니다. 선택 열 option(별칭: 옵션, variant 등)이 있으면
-                  각 국가 상품명 뒤에 공백을 두고 붙여 저장합니다. 예: kr_name이 스타킹이고 option이 M이면 스타킹 M으로
-                  저장됩니다.
+                  {SKU_MAPPING_TEMPLATE_COLUMNS.join(", ")} 입니다. 선택 열은{" "}
+                  <code>option</code>(별칭: 옵션, variant 등)와 <code>brand</code>(또는 <code>브랜드</code>)입니다. option이
+                  있으면 각 국가 상품명 뒤에 공백을 두고 붙여 저장합니다. 기존 item에만 매칭되는 행은 브랜드 열이 없거나 비어
+                  있어도 되며 그때는 <code>item.brand</code>를 바꾸지 않습니다. DB에 없어 신규 item으로 생기는 행은 브랜드 값이
+                  필수입니다.
                 </li>
                 <li>파일마다 일부 국가 컬럼만 있어도 되지만, 각 행에는 최소 한 국가의 SKU 값이 필요합니다.</li>
                 <li>같은 국가의 같은 SKU가 다른 상품과 충돌하면 전체 업로드가 거절되며 아무 데이터도 반영되지 않습니다.</li>
                 <li>원본 파일은 저장하지 않고, 읽은 매핑 데이터만 DB에 반영합니다.</li>
                 <li>파일 업로드는 기존 매핑을 지우지 않고 병합 업데이트하며, 수기 입력은 한국(`KR`) 상품명과 SKU가 필수입니다.</li>
-                <li>파일 업로드가 어려우면 아래 수기 입력 영역에서 국가별 상품명과 SKU를 직접 저장할 수 있습니다.</li>
+                <li>파일 업로드가 어려우면 아래 수기 입력 영역에서 국가별 상품명·SKU와 브랜드를 직접 저장할 수 있습니다.</li>
               </ul>
             </div>
 
@@ -2294,13 +2508,7 @@ export default function App() {
                 </div>
               ) : (
                 <div className="skuManualCard skuManageSinglePanel">
-                  <div className="skuManualHead">
-                    <div>
-                      <div className="skuManualTitle">국가별 상품명 &amp; SKU 입력</div>
-                      <div className="skuManualSubtitle">
-                        입력된 항목만 저장됩니다. 비워두면 해당 국가는 제외됩니다.
-                      </div>
-                    </div>
+                  <div className="skuManualHead skuManualHeadCompact">
                     <div className="skuManualHeadActions">
                       <button type="button" className="ghost" disabled={settingsMutating} onClick={resetManualSkuMappingForm}>
                         초기화
@@ -2310,58 +2518,119 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-                  <div className="skuManualTable">
-                    <div className="skuManualTableHead">
-                      <div>국가</div>
-                      <div>상품명</div>
-                      <div>SKU</div>
-                    </div>
-                    {SKU_MAPPING_FIELDS.map((field) => (
-                      <div key={field.code} className="skuManualRow">
-                        <div className="skuManualCountryCell">
-                          <span className="skuManualCountryLabel">{field.label}</span>
-                        </div>
-                        <div className="skuManualInputCell">
-                          <input
-                            type="text"
-                            value={manualMappingForm[field.nameKey]}
-                            onChange={(e) =>
-                              setManualMappingForm((prev) => ({ ...prev, [field.nameKey]: e.target.value }))
-                            }
-                            placeholder={`${field.label} 상품명${field.code === "KR" ? "" : ""}`}
-                          />
-                        </div>
-                        <div className="skuManualInputCell">
-                          <input
-                            type="text"
-                            value={manualMappingForm[field.skuKey]}
-                            onChange={(e) =>
-                              setManualMappingForm((prev) => ({ ...prev, [field.skuKey]: e.target.value }))
-                            }
-                            placeholder={`${field.code} SKU`}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                    <div className="skuManualRow">
-                      <div className="skuManualCountryCell">
-                        <span className="skuManualCountryLabel">옵션</span>
-                      </div>
-                      <div className="skuManualInputCell">
-                        <input
-                          type="text"
-                          value={manualMappingForm.option}
-                          onChange={(e) =>
-                            setManualMappingForm((prev) => ({ ...prev, option: e.target.value }))
-                          }
-                          placeholder="비우면 생략 · 위 상품명들 뒤에 공백과 함께 붙음"
-                        />
-                      </div>
-                      <div className="skuManualInputCell" aria-hidden="true">
-                        <span className="skuManualCountryLabel" style={{ opacity: 0.45 }}>
-                          —
+
+                  <div className="skuManualSection skuManualSectionKr">
+                    <div className="skuManualBlock">
+                      <p className="skuManualNoticeHint">
+                        한국&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;브랜드, SKU, 상품명 필수
+                      </p>
+                      <div className="skuManualKrGrid">
+                      <label className="skuManualKrField">
+                        <span className="skuManualKrFieldHead">
+                          브랜드 <abbr title="필수">*</abbr>
                         </span>
+                        <div className="skuManualKrFieldBody">
+                          <ManualBrandCombobox
+                            key={manualSkuFormKey}
+                            value={manualMappingForm.brand}
+                            onChange={(next) =>
+                              setManualMappingForm((prev) => ({ ...prev, brand: next }))
+                            }
+                            disabled={settingsMutating}
+                          />
+                        </div>
+                      </label>
+                      <label className="skuManualKrField">
+                        <span className="skuManualKrFieldHead">
+                          한국 SKU <abbr title="필수">*</abbr>
+                        </span>
+                        <div className="skuManualKrFieldBody">
+                          <input
+                            type="text"
+                            value={manualMappingForm.kr_sku}
+                            onChange={(e) =>
+                              setManualMappingForm((prev) => ({ ...prev, kr_sku: e.target.value }))
+                            }
+                            placeholder="한국 SKU"
+                            autoComplete="off"
+                          />
+                        </div>
+                      </label>
+                      <label className="skuManualKrField">
+                        <span className="skuManualKrFieldHead">
+                          한국 상품명 <abbr title="필수">*</abbr>
+                        </span>
+                        <div className="skuManualKrFieldBody">
+                          <input
+                            type="text"
+                            value={manualMappingForm.kr_name}
+                            onChange={(e) =>
+                              setManualMappingForm((prev) => ({ ...prev, kr_name: e.target.value }))
+                            }
+                            placeholder="한국 상품명"
+                            autoComplete="off"
+                          />
+                        </div>
+                      </label>
+                      <label className="skuManualKrField">
+                        <span className="skuManualKrFieldHead">옵션</span>
+                        <div className="skuManualKrFieldBody">
+                          <input
+                            type="text"
+                            value={manualMappingForm.option}
+                            onChange={(e) =>
+                              setManualMappingForm((prev) => ({ ...prev, option: e.target.value }))
+                            }
+                            placeholder="예: S / M / 13호 아이보리"
+                            autoComplete="off"
+                          />
+                        </div>
+                      </label>
+                    </div>
+                    </div>
+                  </div>
+
+                  <div className="skuManualSection skuManualSectionOverseas">
+                    <div className="skuManualBlock">
+                      <p className="skuManualNoticeHint">
+                        해외&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;선택. 비우면 해당 국가 제외
+                      </p>
+                      <div className="skuManualTable skuManualTableOverseas">
+                      <div className="skuManualTableHead">
+                        <div>국가</div>
+                        <div>SKU</div>
+                        <div>상품명</div>
                       </div>
+                      {SKU_MAPPING_OVERSEAS_FIELDS.map((field) => (
+                        <div key={field.code} className="skuManualRow">
+                          <div className="skuManualCountryCell">
+                            <span className="skuManualCountryLabel">{field.label}</span>
+                          </div>
+                          <div className="skuManualInputCell">
+                            <input
+                              type="text"
+                              value={manualMappingForm[field.skuKey]}
+                              onChange={(e) =>
+                                setManualMappingForm((prev) => ({ ...prev, [field.skuKey]: e.target.value }))
+                              }
+                              placeholder={`${field.label} SKU`}
+                              autoComplete="off"
+                            />
+                          </div>
+                          <div className="skuManualInputCell">
+                            <input
+                              type="text"
+                              value={manualMappingForm[field.nameKey]}
+                              onChange={(e) =>
+                                setManualMappingForm((prev) => ({ ...prev, [field.nameKey]: e.target.value }))
+                              }
+                              placeholder={`${field.label} 상품명`}
+                              autoComplete="off"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                     </div>
                   </div>
                   <div className="skuManualActions">
@@ -2425,6 +2694,9 @@ export default function App() {
                   <article key={row._id} className="productMappingItemCard">
                     <div className="productMappingItemHead">
                       <div className="productMappingItemTitle">{row.kr_name || "상품명 없음"}</div>
+                      {row.brand ? (
+                        <div className="productMappingItemBrand">브랜드: {row.brand}</div>
+                      ) : null}
                       <div className="productMappingItemMeta">{row._countries.length}개 국가</div>
                     </div>
                     <div className="productMappingCountryList">

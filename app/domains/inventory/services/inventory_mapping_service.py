@@ -32,7 +32,9 @@ COUNTRY_CODES = [country_code for country_code, _, _ in COUNTRY_FIELD_SPECS]
 MAPPING_TEMPLATE_COLUMNS = [column for _, name_key, sku_key in COUNTRY_FIELD_SPECS for column in (name_key, sku_key)]
 OPTION_COLUMN_CANONICAL = "option"
 OPTION_HEADER_ALIASES = frozenset({"option", "options", "옵션", "상품옵션", "variant", "variants"})
-OPTIONAL_MAPPING_COLUMNS = [OPTION_COLUMN_CANONICAL]
+BRAND_COLUMN_CANONICAL = "brand"
+BRAND_HEADER_ALIASES = frozenset({"brand", "브랜드"})
+OPTIONAL_MAPPING_COLUMNS = [OPTION_COLUMN_CANONICAL, BRAND_COLUMN_CANONICAL]
 MAX_MAPPING_FILE_SIZE_BYTES = 2 * 1024 * 1024
 # AE/UK/AU 엑셀은 전용 name 열 대신 us_name 만 있는 경우가 많음
 MAPPING_NAME_FALLBACK_TO_US_NAME = frozenset({"AU", "UK", "AE"})
@@ -196,7 +198,7 @@ def _read_mapping_bytes(upload_file: UploadFile) -> tuple[bytes, int]:
 
 
 def _read_mapping_frame(upload_file: UploadFile) -> pd.DataFrame:
-    """표준 매핑 컬럼과 선택적 `option` 열만 사용하고, 나머지 열은 무시한다."""
+    """표준 매핑 컬럼 + 선택 `brand`·`option` 만 사용하고, 나머지 열은 무시한다."""
     raw, _ = _read_mapping_bytes(upload_file)
     filename = str(upload_file.filename or "mapping.xlsx")
     try:
@@ -212,15 +214,36 @@ def _read_mapping_frame(upload_file: UploadFile) -> pd.DataFrame:
         header_key_to_canonical[key] = canonical
 
     option_header_keys = frozenset(_normalize_mapping_header(a) for a in OPTION_HEADER_ALIASES)
+    brand_header_keys = frozenset(_normalize_mapping_header(a) for a in BRAND_HEADER_ALIASES)
 
     series_by_canonical: dict[str, pd.Series] = {}
     matched_raw: dict[str, str] = {}
     option_series: pd.Series | None = None
     option_matched_raw = ""
+    brand_series: pd.Series | None = None
+    brand_matched_raw = ""
 
     for col in df.columns:
         raw_label = str(col).strip()
         norm = _normalize_mapping_header(raw_label)
+        if norm in brand_header_keys:
+            if brand_series is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{filename}: 브랜드 열(`brand` / `브랜드`)이 두 개 이상입니다 "
+                        f"(`{brand_matched_raw}` 와 `{raw_label}`)."
+                    ),
+                )
+            col_slice = df[col]
+            if isinstance(col_slice, pd.DataFrame):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{filename}: 헤더 `{raw_label}` 열이 엑셀에서 중복되어 있습니다.",
+                )
+            brand_series = col_slice.copy()
+            brand_matched_raw = raw_label
+            continue
         if norm in option_header_keys:
             if option_series is not None:
                 raise HTTPException(
@@ -279,7 +302,22 @@ def _read_mapping_frame(upload_file: UploadFile) -> pd.DataFrame:
     aligned[OPTION_COLUMN_CANONICAL] = (
         option_series if option_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
     )
+    aligned[BRAND_COLUMN_CANONICAL] = (
+        brand_series if brand_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
+    )
     return pd.DataFrame(aligned)
+
+
+def _normalize_brand_cell(value: object) -> str:
+    try:
+        if pd.isna(value):
+            return ""
+    except TypeError:
+        pass
+    if isinstance(value, float) and math.isnan(value):
+        return ""
+    s = re.sub(r"\s+", " ", str(value or "").strip())
+    return s[:255]
 
 
 def _mapping_item_payload(group: ProductGroup) -> dict:
@@ -287,6 +325,7 @@ def _mapping_item_payload(group: ProductGroup) -> dict:
     return {
         "group_id": str(group.id),
         "kr_name": group.kr_name,
+        "brand": group.brand,
         "locales": [
             {
                 "country_code": locale.country_code,
@@ -328,9 +367,13 @@ def _build_mapping_group(source: dict[str, object], row_label: str) -> dict:
     kr_locale = next((locale for locale in locales if locale["country_code"] == "KR"), None)
     if kr_locale is None:
         raise HTTPException(status_code=400, detail=f"{row_label}: KR 상품명과 KR SKU는 필수입니다.")
+    brand = _normalize_brand_cell(source.get(BRAND_COLUMN_CANONICAL))
+    if not brand:
+        raise HTTPException(status_code=400, detail=f"{row_label}: brand(또는 브랜드) 값은 필수입니다.")
     return {
         "kr_name": kr_locale["name"],
         "locales": locales,
+        "brand": brand,
     }
 
 
@@ -378,6 +421,7 @@ def _validate_group_conflicts(groups: list[ProductGroup], payload: dict, exclude
 def _merge_manual_mapping_locales(target: ProductGroup, payload: dict, now: datetime) -> None:
     """폼에 적힌 국가만 반영·추가하고, 나머지 국가 로케일은 유지한다."""
     target.kr_name = payload["kr_name"]
+    target.brand = _normalize_brand_cell(payload.get("brand"))
     target.manual_updated_at = now
     target.updated_at = now
 
@@ -450,6 +494,8 @@ def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | Non
         match_us_name = ""
     match_us_name = _append_option_to_product_name(match_us_name, opt_source)
 
+    brand = _normalize_brand_cell(source.get(BRAND_COLUMN_CANONICAL))
+
     return {
         "row_label": row_label,
         "kr_name": anchor_kr_name,
@@ -459,6 +505,7 @@ def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | Non
         "anchor_kr_sku": anchor_kr_sku,
         "anchor_kr_name": anchor_kr_name,
         "match_us_name": match_us_name,
+        "brand": brand,
     }
 
 
@@ -950,6 +997,9 @@ def _apply_merge_record(
         target.kr_name = kr_rep
     elif not str(target.kr_name or "").strip():
         target.kr_name = record["fallback_name"]
+    brand_val = _normalize_brand_cell(record.get("brand"))
+    if brand_val:
+        target.brand = brand_val
     target.upload_updated_at = uploaded_at
     target.updated_at = uploaded_at
 
@@ -1007,9 +1057,19 @@ def merge_product_sku_mappings(db: Session, upload_files: list[UploadFile]) -> d
                     row_label=str(record["row_label"]),
                 )
             else:
+                new_brand = _normalize_brand_cell(record.get("brand"))
+                if not new_brand:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"{record['row_label']}: DB에 없는 신규 상품(item)을 추가할 때는 "
+                            f"`brand` 또는 `브랜드` 열에 값이 필요합니다."
+                        ),
+                    )
                 target = ProductGroup(
                     id=uuid.uuid4(),
                     kr_name=str(record["kr_name"] or record["fallback_name"]),
+                    brand=new_brand,
                     upload_updated_at=uploaded_at,
                     manual_updated_at=None,
                     updated_at=uploaded_at,
@@ -1074,6 +1134,7 @@ def upsert_product_sku_mapping(db: Session, payload: dict[str, object]) -> dict:
         if target is None:
             target = ProductGroup(
                 kr_name=record["kr_name"],
+                brand=record["brand"],
                 upload_updated_at=None,
                 manual_updated_at=manual_updated_at,
                 updated_at=manual_updated_at,

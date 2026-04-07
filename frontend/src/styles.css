@@ -265,6 +265,10 @@ body {
   margin-top: 18px;
 }
 
+.skuManageContent.manual-only {
+  margin-top: 6px;
+}
+
 .skuManageTabs {
   display: flex;
   gap: 28px;
@@ -350,6 +354,17 @@ body {
   color: #64748b;
 }
 
+.skuManualInputCellSpan2 {
+  grid-column: 2 / -1;
+}
+
+.productMappingItemBrand {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin-top: 4px;
+}
+
 .skuUploadBadge {
   width: 84px;
   height: 84px;
@@ -371,7 +386,7 @@ body {
   border: 0;
   border-radius: 0;
   background: #ffffff;
-  padding: 20px 0 19px;
+  padding: 8px 0 19px;
   min-height: 0;
   height: auto;
   display: flex;
@@ -385,27 +400,347 @@ body {
   gap: 12px;
 }
 
+.skuManualHeadCompact {
+  justify-content: flex-end;
+  padding-bottom: 6px;
+}
+
 .skuManualHeadActions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.skuManualTitle {
-  font-size: 15px;
-  font-weight: 700;
-  color: #1f2937;
+.skuManualSection {
+  margin-top: 0;
 }
 
-.skuManualSubtitle {
-  margin-top: 6px;
-  font-size: 11px;
-  color: #94a3b8;
+.skuManualSectionKr {
+  padding-top: 0;
+  padding-bottom: 24px;
+}
+
+.skuManualSectionOverseas {
+  margin-top: 0;
+  padding-top: 8px;
+}
+
+.skuManualBlock {
+  width: 100%;
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.skuManualBlock .skuManualNoticeHint {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1.5;
+  color: #6b7280;
+  text-align: left;
+}
+
+.skuManualKrGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+  align-items: start;
+  width: 100%;
+}
+
+/* 한국 입력: 해외 표 헤더와 동일 톤의 머리줄 + 테두리 박스 */
+.skuManualKrField {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  min-width: 0;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+/* 브랜드 콤보: 드롭다운이 박스 밖으로 나가야 하므로 잘림 방지 */
+.skuManualKrField:has(.manualBrandCombobox) {
+  overflow: visible;
+}
+
+.skuManualKrFieldHead {
+  background: #f8fafc;
+  border-bottom: 1px solid #eef2f7;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748b;
+  text-align: center;
+}
+
+.skuManualKrFieldHead abbr {
+  text-decoration: none;
+  color: #ef4444;
+  font-weight: 700;
+  font-size: 1.12em;
+  vertical-align: baseline;
+}
+
+.skuManualKrFieldBody {
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.skuManualKrFieldBody input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+}
+
+.skuManualKrFieldBody input[type="text"]:focus {
+  outline: none;
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.45);
+}
+
+.skuManualKrFieldBody .manualBrandTrigger,
+.skuManualKrFieldBody .manualBrandCustomInput {
+  border-radius: 8px;
+}
+
+/* 브랜드 검색 드롭다운 (수기) */
+.manualBrandCombobox {
+  position: relative;
+  width: 100%;
+  z-index: 0;
+}
+
+.manualBrandCombobox.manualBrandComboboxOpen {
+  z-index: 50;
+}
+
+.manualBrandTrigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+  height: auto;
+  min-height: 48px;
+  padding: 12px 36px 12px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #0f172a;
+  background: #fff;
+  /* filterBar 전역 button(#e3e8f0)과 구분 없이 수기 입력칸과 동일 */
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  outline: none;
+}
+
+/* 수기 매핑 텍스트 입력과 동일한 기본/포커스 윤곽 (한국 필드는 아래에서 radius 8px) */
+.manualBrandTrigger:focus {
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.45);
+}
+
+.manualBrandTrigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.manualBrandTriggerText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  color: #0f172a;
+}
+
+.manualBrandTriggerText.isPlaceholder {
+  color: #94a3b8;
+}
+
+.manualBrandChevron {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: #64748b;
+  pointer-events: none;
+}
+
+.manualBrandComboboxOpen .manualBrandTrigger {
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.45);
+}
+
+.manualBrandPopover {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  max-height: min(320px, 55vh);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+
+.manualBrandSearch {
+  flex-shrink: 0;
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 13px;
+  border: 0;
+  border-bottom: 1px solid #f1f5f9;
+  outline: none;
+}
+
+.manualBrandSearch:focus {
+  outline: 1px solid #e8ecf1;
+  outline-offset: 0;
+  box-shadow: none;
+  border-bottom: 1px solid #eceff4;
+}
+
+.manualBrandSearch::placeholder {
+  color: #94a3b8;
+}
+
+.manualBrandList {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.manualBrandList li {
+  margin: 0;
+  padding: 0;
+}
+
+.manualBrandOption {
+  display: block;
+  width: 100%;
+  padding: 9px 14px;
+  text-align: left;
+  font-size: 14px;
+  color: #334155;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.manualBrandOption:hover {
+  background: #f8fafc;
+}
+
+.manualBrandOptionDirect {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 14px 14px;
+  border-top: 1px solid #f1f5f9;
+  color: #0c7350;
+  font-weight: 400;
+  text-align: left;
+}
+
+.manualBrandOptionDirect:hover {
+  background: #f8fafc;
+  color: #0a5c42;
+}
+
+.manualBrandListEmpty {
+  padding: 12px 14px;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.manualBrandComboboxCustom {
+  width: 100%;
+}
+
+.manualBrandCustomRow {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+}
+
+.manualBrandCustomRow .manualBrandCustomInput {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.manualBrandToPresetsBtn {
+  flex-shrink: 0;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 48px;
+  height: auto;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.manualBrandToPresetsBtn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.manualBrandToPresetsBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.manualBrandCustomInput {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
 }
 
 .skuManualTable {
-  margin-top: 18px;
+  margin-top: 0;
   border: 1px solid #eef2f7;
   border-radius: 12px;
   overflow: hidden;
@@ -420,10 +755,44 @@ body {
   padding: 10px 14px;
 }
 
+.skuManualTableOverseas > .skuManualTableHead,
+.skuManualTableOverseas > .skuManualRow {
+  grid-template-columns: 108px minmax(0, 1fr) minmax(0, 1.25fr);
+}
+
+.skuManualTableOverseas input[type="text"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+}
+
+.skuManualTableOverseas input[type="text"]:focus {
+  outline: none;
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.45);
+}
+
+.skuManualTableOverseas {
+  width: 100%;
+}
+
+.skuManualTableOverseas > .skuManualTableHead > div:nth-child(2),
+.skuManualTableOverseas > .skuManualTableHead > div:nth-child(3) {
+  text-align: center;
+}
+
 .skuManualTableHead {
   background: #f8fafc;
   border-bottom: 1px solid #eef2f7;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   color: #64748b;
 }
@@ -473,7 +842,7 @@ body {
 
 .skuManualActions {
   margin-top: auto;
-  padding-top: 10px;
+  padding-top: 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1770,6 +2139,11 @@ th {
     grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1fr);
   }
 
+  .skuManualTableOverseas > .skuManualTableHead,
+  .skuManualTableOverseas > .skuManualRow {
+    grid-template-columns: 100px minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+
   .trendSummaryGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1796,6 +2170,10 @@ th {
 
   .skuManualTableHead {
     display: none;
+  }
+
+  .skuManualKrGrid {
+    grid-template-columns: 1fr;
   }
 
   .skuManualRow {

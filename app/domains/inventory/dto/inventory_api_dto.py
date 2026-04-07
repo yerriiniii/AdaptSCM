@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+import re
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class InventoryAggregateResponse(BaseModel):
@@ -75,6 +77,7 @@ class InventorySkuMappingLocaleResponse(BaseModel):
 class InventorySkuMappingUpsertRequest(BaseModel):
     kr_name: str
     kr_sku: str
+    brand: str = Field(..., max_length=255)
     option: str | None = None
     us_name: str | None = None
     us_sku: str | None = None
@@ -93,10 +96,19 @@ class InventorySkuMappingUpsertRequest(BaseModel):
     ae_name: str | None = None
     ae_sku: str | None = None
 
+    @field_validator("brand")
+    @classmethod
+    def normalize_brand(cls, v: object) -> str:
+        s = re.sub(r"\s+", " ", str(v or "").strip())[:255]
+        if not s:
+            raise ValueError("브랜드는 필수입니다.")
+        return s
+
 
 class InventorySkuMappingItemResponse(BaseModel):
     group_id: str
     kr_name: str
+    brand: str | None = None
     locales: list[InventorySkuMappingLocaleResponse] = Field(default_factory=list)
 
 

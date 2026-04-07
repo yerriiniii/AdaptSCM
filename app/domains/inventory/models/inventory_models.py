@@ -94,6 +94,7 @@ class ProductGroup(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid_value)
     kr_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    brand: Mapped[str | None] = mapped_column(String(255), nullable=True)
     upload_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     manual_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(

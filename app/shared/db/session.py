@@ -29,6 +29,9 @@ def _ensure_inventory_columns(engine: Engine) -> None:
             "sku": "VARCHAR(255)",
             "warehouse": "VARCHAR(255)",
         },
+        "item": {
+            "brand": "VARCHAR(255)",
+        },
     }
 
     with engine.begin() as connection:
