@@ -27,6 +27,21 @@ const EMPTY_SKU_MAPPING_FORM = Object.fromEntries([
   ["brand", ""],
   ["option", ""],
 ]);
+
+const EMPTY_PURCHASE_ORDER_FORM = {
+  order_date: "",
+  erp_po_number: "",
+  product_type_preset: "본품",
+  product_type_custom: "",
+  sku: "",
+  brand: "",
+  product_name: "",
+  manufacturer: "",
+  total_quantity: "",
+  delivery_available_date: "",
+  expected_inbound_date: "",
+};
+
 const PRODUCT_MAPPING_SEARCH_CHIPS = SKU_MAPPING_FIELDS.map(({ code }) => code);
 const SKU_MAPPING_OVERSEAS_FIELDS = SKU_MAPPING_FIELDS.filter(({ code }) => code !== "KR");
 
@@ -559,6 +574,13 @@ export default function App() {
   const [manualSkuFormKey, setManualSkuFormKey] = useState(0);
   const [mappingInputKey, setMappingInputKey] = useState(0);
   const [skuManageMode, setSkuManageMode] = useState("UPLOAD");
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [purchaseOrdersLoading, setPurchaseOrdersLoading] = useState(false);
+  const [purchaseOrderError, setPurchaseOrderError] = useState("");
+  const [purchaseOrderSuccess, setPurchaseOrderSuccess] = useState("");
+  const [poForm, setPoForm] = useState({ ...EMPTY_PURCHASE_ORDER_FORM });
+  const [skuResolveHint, setSkuResolveHint] = useState("");
+  const [inboundDrafts, setInboundDrafts] = useState({});
 
   useEffect(() => {
     if (!mappingError) return;
@@ -629,7 +651,9 @@ export default function App() {
   const isSettingsScope = countryTabMode === "SETTINGS";
   const isSkuMappingScope = countryTabMode === "SKU_MAPPING";
   const isProductSearchScope = countryTabMode === "PRODUCT_SEARCH";
-  const isInventoryAdminScope = isSettingsScope || isSkuMappingScope || isProductSearchScope;
+  const isPurchaseOrderScope = countryTabMode === "PURCHASE_ORDERS";
+  const isInventoryAdminScope =
+    isSettingsScope || isSkuMappingScope || isProductSearchScope || isPurchaseOrderScope;
   const inventoryStickyWidth = useMemo(() => {
     if (isKRScope) return 680;
     if (isOverseasScope) return showKrCompare ? 960 : 852;
@@ -1384,6 +1408,112 @@ export default function App() {
     return Array.isArray(res?.data?.items) ? res.data.items : [];
   }
 
+  async function fetchPurchaseOrdersList() {
+    const res = await axios.get(`${API_BASE}/api/inventory/purchase-orders`);
+    setPurchaseOrders(Array.isArray(res?.data?.items) ? res.data.items : []);
+  }
+
+  async function resolvePurchaseOrderSku() {
+    const sku = String(poForm.sku || "").trim();
+    if (!sku) {
+      setSkuResolveHint("");
+      return;
+    }
+    try {
+      const res = await axios.get(`${API_BASE}/api/inventory/purchase-orders/sku-hint`, {
+        params: { sku },
+      });
+      const d = res?.data || {};
+      if (d.matched) {
+        setPoForm((p) => ({
+          ...p,
+          brand: d.brand != null ? String(d.brand) : "",
+          product_name: d.product_name != null ? String(d.product_name) : "",
+        }));
+        setSkuResolveHint("");
+      } else {
+        setSkuResolveHint(String(d.message || "등록된 상품코드가 없습니다."));
+      }
+    } catch (err) {
+      const det = err?.response?.data?.detail;
+      setSkuResolveHint(Array.isArray(det) ? det.join("\n") : det || "상품코드 조회 중 오류");
+    }
+  }
+
+  async function submitPurchaseOrder() {
+    setPurchaseOrderError("");
+    setPurchaseOrderSuccess("");
+    const pt =
+      poForm.product_type_preset === "본품"
+        ? "본품"
+        : String(poForm.product_type_custom || "").trim() || "직접입력";
+    const qtyRaw = String(poForm.total_quantity || "").replace(/,/g, "").trim();
+    if (!poForm.order_date || !String(poForm.erp_po_number || "").trim()) {
+      setPurchaseOrderError("발주일자와 ERP PO 번호는 필수입니다.");
+      return;
+    }
+    if (!String(poForm.sku || "").trim()) {
+      setPurchaseOrderError("상품코드(SKU)는 필수입니다.");
+      return;
+    }
+    if (!qtyRaw || Number.isNaN(Number(qtyRaw))) {
+      setPurchaseOrderError("총 발주수량을 올바른 숫자로 입력하세요.");
+      return;
+    }
+    try {
+      await axios.post(`${API_BASE}/api/inventory/purchase-orders`, {
+        order_date: poForm.order_date,
+        erp_po_number: String(poForm.erp_po_number || "").trim(),
+        product_type: pt,
+        sku: String(poForm.sku || "").trim(),
+        brand: String(poForm.brand || "").trim(),
+        product_name: String(poForm.product_name || "").trim(),
+        manufacturer: String(poForm.manufacturer || "").trim(),
+        total_quantity: Number(qtyRaw),
+        delivery_available_date: poForm.delivery_available_date || null,
+        expected_inbound_date: poForm.expected_inbound_date || null,
+      });
+      setPurchaseOrderSuccess("발주가 저장되었습니다.");
+      setPoForm({ ...EMPTY_PURCHASE_ORDER_FORM });
+      setSkuResolveHint("");
+      await fetchPurchaseOrdersList();
+    } catch (err) {
+      const det = err?.response?.data?.detail;
+      setPurchaseOrderError(Array.isArray(det) ? det.join("\n") : det || err?.message || "저장 실패");
+    }
+  }
+
+  async function submitInboundLine(orderId) {
+    const d = inboundDrafts[orderId] || {
+      actual_inbound_date: "",
+      quantity: "",
+      inbound_status: "O",
+    };
+    setPurchaseOrderError("");
+    setPurchaseOrderSuccess("");
+    const qRaw = String(d.quantity || "").replace(/,/g, "").trim();
+    if (!qRaw || Number.isNaN(Number(qRaw))) {
+      setPurchaseOrderError("입고수량을 올바른 숫자로 입력하세요.");
+      return;
+    }
+    try {
+      await axios.post(`${API_BASE}/api/inventory/purchase-orders/${orderId}/inbounds`, {
+        actual_inbound_date: d.actual_inbound_date || null,
+        quantity: Number(qRaw),
+        inbound_status: d.inbound_status || "O",
+      });
+      setInboundDrafts((p) => ({
+        ...p,
+        [orderId]: { actual_inbound_date: "", quantity: "", inbound_status: "O" },
+      }));
+      setPurchaseOrderSuccess("입고 차수가 추가되었습니다.");
+      await fetchPurchaseOrdersList();
+    } catch (err) {
+      const det = err?.response?.data?.detail;
+      setPurchaseOrderError(Array.isArray(det) ? det.join("\n") : det || err?.message || "입고 저장 실패");
+    }
+  }
+
   async function fetchPersistedScopeView(countryCode) {
     const res = await axios.get(`${API_BASE}/api/inventory/view`, {
       params: { country_code: countryCode },
@@ -1448,6 +1578,25 @@ export default function App() {
       return [...serverEntries, ...localOnlyEntries];
     });
   }
+
+  useEffect(() => {
+    if (!isPurchaseOrderScope) return;
+    const run = async () => {
+      setPurchaseOrdersLoading(true);
+      setPurchaseOrderError("");
+      try {
+        await fetchPurchaseOrdersList();
+      } catch (err) {
+        const det = err?.response?.data?.detail;
+        setPurchaseOrderError(
+          Array.isArray(det) ? det.join("\n") : det || formatPersistedLoadError(err, API_BASE)
+        );
+      } finally {
+        setPurchaseOrdersLoading(false);
+      }
+    };
+    run();
+  }, [isPurchaseOrderScope]);
 
   useEffect(() => {
     if (!isProductSearchScope) return;
@@ -1755,6 +1904,12 @@ export default function App() {
             onClick={() => setCountryTabMode("COMPARE")}
           >
             재고 비교
+          </button>
+          <button
+            className={`tab ${countryTabMode === "PURCHASE_ORDERS" ? "active" : ""}`}
+            onClick={() => setCountryTabMode("PURCHASE_ORDERS")}
+          >
+            발주 기록
           </button>
           <button
             className={`tab ${countryTabMode === "PRODUCT_SEARCH" ? "active" : ""}`}
@@ -2308,6 +2463,265 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {isPurchaseOrderScope && (
+        <section className="settingsPane settingsCard purchaseOrderSection">
+          {purchaseOrderError ? <pre className="error purchaseOrderError">{purchaseOrderError}</pre> : null}
+          {purchaseOrderSuccess ? <div className="purchaseOrderSuccess">{purchaseOrderSuccess}</div> : null}
+
+          <div className="poFormCard">
+            <h3 className="purchaseOrderSubTitle">새 발주 등록</h3>
+            <div className="poFormGrid">
+              <label className="poField">
+                <span>발주일자</span>
+                <input
+                  type="date"
+                  value={poForm.order_date}
+                  onChange={(e) => setPoForm((p) => ({ ...p, order_date: e.target.value }))}
+                />
+              </label>
+              <label className="poField">
+                <span>ERP PO 번호</span>
+                <input
+                  type="text"
+                  value={poForm.erp_po_number}
+                  onChange={(e) => setPoForm((p) => ({ ...p, erp_po_number: e.target.value }))}
+                  placeholder="예: PO2511000012"
+                  autoComplete="off"
+                />
+              </label>
+              <label className="poField">
+                <span>상품유형</span>
+                <select
+                  value={poForm.product_type_preset}
+                  onChange={(e) =>
+                    setPoForm((p) => ({ ...p, product_type_preset: e.target.value }))
+                  }
+                >
+                  <option value="본품">본품</option>
+                  <option value="직접 입력">직접 입력</option>
+                </select>
+                {poForm.product_type_preset === "직접 입력" ? (
+                  <input
+                    type="text"
+                    className="poFieldInlineInput"
+                    value={poForm.product_type_custom}
+                    onChange={(e) => setPoForm((p) => ({ ...p, product_type_custom: e.target.value }))}
+                    placeholder="유형 직접 입력"
+                    autoComplete="off"
+                  />
+                ) : null}
+              </label>
+              <label className="poField">
+                <span>상품코드(SKU)</span>
+                <input
+                  type="text"
+                  value={poForm.sku}
+                  onChange={(e) => {
+                    setPoForm((p) => ({ ...p, sku: e.target.value }));
+                    setSkuResolveHint("");
+                  }}
+                  onBlur={() => resolvePurchaseOrderSku()}
+                  placeholder="입력하면 자동으로 브랜드와 상품명이 입력됩니다"
+                  autoComplete="off"
+                />
+                {skuResolveHint ? <small className="poSkuHint">{skuResolveHint}</small> : null}
+              </label>
+              <label className="poField">
+                <span>브랜드</span>
+                <input
+                  type="text"
+                  value={poForm.brand}
+                  onChange={(e) => setPoForm((p) => ({ ...p, brand: e.target.value }))}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="poField">
+                <span>상품명</span>
+                <input
+                  type="text"
+                  value={poForm.product_name}
+                  onChange={(e) => setPoForm((p) => ({ ...p, product_name: e.target.value }))}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="poField">
+                <span>제조사</span>
+                <input
+                  type="text"
+                  value={poForm.manufacturer}
+                  onChange={(e) => setPoForm((p) => ({ ...p, manufacturer: e.target.value }))}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="poField">
+                <span>총 발주수량</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={poForm.total_quantity}
+                  onChange={(e) => setPoForm((p) => ({ ...p, total_quantity: e.target.value }))}
+                />
+              </label>
+              <label className="poField">
+                <span>납품가능일</span>
+                <input
+                  type="date"
+                  value={poForm.delivery_available_date}
+                  onChange={(e) => setPoForm((p) => ({ ...p, delivery_available_date: e.target.value }))}
+                />
+              </label>
+              <label className="poField">
+                <span>입고예정일</span>
+                <input
+                  type="date"
+                  value={poForm.expected_inbound_date}
+                  onChange={(e) => setPoForm((p) => ({ ...p, expected_inbound_date: e.target.value }))}
+                />
+              </label>
+            </div>
+            <div className="poFormActions">
+              <button type="button" className="primary" onClick={() => submitPurchaseOrder()}>
+                발주 저장
+              </button>
+            </div>
+          </div>
+
+          <div className="poFormCard poSavedOrdersPanel">
+            <h3 className="purchaseOrderSubTitle">저장된 발주</h3>
+            {purchaseOrdersLoading ? (
+              <div className="searchEmptyState">불러오는 중…</div>
+            ) : !purchaseOrders.length ? (
+              <div className="searchEmptyState">등록된 발주가 없습니다.</div>
+            ) : (
+              <div className="purchaseOrderList">
+                {purchaseOrders.map((po) => {
+                const draft = inboundDrafts[po.id] || {
+                  actual_inbound_date: "",
+                  quantity: "",
+                  inbound_status: "O",
+                };
+                return (
+                  <article key={po.id} className="purchaseOrderCard">
+                    <div className="poCardHead">
+                      <div className="poCardPo">{po.erp_po_number}</div>
+                      <div className="poCardMeta">
+                        발주일 {po.order_date || "—"} · SKU {po.sku || "—"}
+                      </div>
+                    </div>
+                    <dl className="poCardDl">
+                      <div>
+                        <dt>상품유형</dt>
+                        <dd>{po.product_type || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>브랜드</dt>
+                        <dd>{po.brand || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>상품명</dt>
+                        <dd>{po.product_name || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>제조사</dt>
+                        <dd>{po.manufacturer || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>총 발주수량</dt>
+                        <dd>{po.total_quantity != null ? String(po.total_quantity) : "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>납품가능일</dt>
+                        <dd>{po.delivery_available_date || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>입고예정일</dt>
+                        <dd>{po.expected_inbound_date || "—"}</dd>
+                      </div>
+                    </dl>
+                    <div className="poInboundBlock">
+                      <h4 className="poInboundTitle">입고 차수</h4>
+                      <table className="poInboundTable">
+                        <thead>
+                          <tr>
+                            <th>입고코드</th>
+                            <th>실제입고일</th>
+                            <th>입고수량</th>
+                            <th>입고여부</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(po.inbound_lines || []).length ? (
+                            po.inbound_lines.map((line) => (
+                              <tr key={line.id}>
+                                <td className="poRefCell">{line.ref_code}</td>
+                                <td>{line.actual_inbound_date || "—"}</td>
+                                <td>{line.quantity != null ? String(line.quantity) : "—"}</td>
+                                <td>{line.inbound_status}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={4} className="poInboundEmpty">
+                                아직 입고 차수가 없습니다. 아래에서 추가하세요.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                      <div className="poInboundAdd">
+                        <input
+                          type="date"
+                          aria-label={`실제입고일 (${po.erp_po_number})`}
+                          value={draft.actual_inbound_date}
+                          onChange={(e) =>
+                            setInboundDrafts((p) => ({
+                              ...p,
+                              [po.id]: { ...draft, actual_inbound_date: e.target.value },
+                            }))
+                          }
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          placeholder="입고수량"
+                          aria-label="입고수량"
+                          value={draft.quantity}
+                          onChange={(e) =>
+                            setInboundDrafts((p) => ({
+                              ...p,
+                              [po.id]: { ...draft, quantity: e.target.value },
+                            }))
+                          }
+                        />
+                        <select
+                          aria-label="입고여부"
+                          value={draft.inbound_status}
+                          onChange={(e) =>
+                            setInboundDrafts((p) => ({
+                              ...p,
+                              [po.id]: { ...draft, inbound_status: e.target.value },
+                            }))
+                          }
+                        >
+                          <option value="O">O</option>
+                          <option value="X">X</option>
+                        </select>
+                        <button type="button" className="ghost" onClick={() => submitInboundLine(po.id)}>
+                          차수 추가
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
       )}
 
       {showCautionModal && (

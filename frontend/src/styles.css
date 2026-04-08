@@ -2316,5 +2316,224 @@ th {
   .cautionModalHeader {
     flex-direction: column;
   }
+
+  .poFormGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .poFieldSpan2 {
+    grid-column: span 1;
+  }
+
+  .poInboundAdd {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* 발주 기록 탭 */
+.purchaseOrderSection {
+  width: 100%;
+  margin: 12px 0 24px;
+  padding: 18px 18px 24px;
+  border: 1px solid #e5e9f0;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.purchaseOrderSubTitle {
+  margin: 20px 0 12px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.purchaseOrderError {
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+  font-size: 13px;
+}
+
+.purchaseOrderSuccess {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eef8f4;
+  border: 1px solid #c5e8d8;
+  color: #0f5132;
+  font-size: 14px;
+}
+
+.poFormCard {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+/* 저장된 발주: 새 발주 등록과 동일한 poFormCard 기준선(제목·목록·빈 상태) */
+.poFormCard.poSavedOrdersPanel {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.poFormCard.poSavedOrdersPanel > .purchaseOrderSubTitle:first-child {
+  margin-top: 12px;
+}
+
+.poFormGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+
+.poField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.poField > span {
+  font-weight: 600;
+}
+
+.poField input,
+.poField select {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.poFieldSpan2 {
+  grid-column: span 2;
+}
+
+.poFieldInlineInput {
+  margin-top: 6px;
+}
+
+.poSkuHint {
+  display: block;
+  margin-top: 4px;
+  color: #b45309;
+  font-size: 12px;
+}
+
+.poFormActions {
+  margin-top: 14px;
+}
+
+.purchaseOrderList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.purchaseOrderCard {
+  border: 1px solid #e5e9f0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: #fafbfc;
+}
+
+.poCardHead {
+  margin-bottom: 10px;
+}
+
+.poCardPo {
+  font-size: 17px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.poCardMeta {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.poCardDl {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px 14px;
+  margin: 0 0 14px;
+  font-size: 13px;
+}
+
+.poCardDl dt {
+  margin: 0;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.poCardDl dd {
+  margin: 2px 0 0;
+  color: #1f2937;
+}
+
+.poInboundBlock {
+  border-top: 1px solid #e5e9f0;
+  padding-top: 12px;
+}
+
+.poInboundTitle {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #374151;
+}
+
+.poInboundTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.poInboundTable th,
+.poInboundTable td {
+  border: 1px solid #e5e9f0;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.poInboundTable th {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+.poRefCell {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.poInboundEmpty {
+  color: #6b7280;
+  text-align: center;
+}
+
+.poInboundAdd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.poInboundAdd input[type="date"],
+.poInboundAdd input[type="number"],
+.poInboundAdd select {
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.poInboundAdd input[type="number"] {
+  width: 120px;
 }
 
