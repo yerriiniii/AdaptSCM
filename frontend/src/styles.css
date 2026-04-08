@@ -358,11 +358,36 @@ body {
   grid-column: 2 / -1;
 }
 
-.productMappingItemBrand {
-  font-size: 13px;
-  font-weight: 600;
-  color: #64748b;
-  margin-top: 4px;
+.productMappingItemTitle {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 0 8px;
+  min-width: 0;
+}
+
+.productMappingItemBrandPart {
+  font-size: 16px;
+  font-weight: 700;
+  color: #065f46;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.productMappingItemNamePart {
+  font-size: 16px;
+  font-weight: 700;
+  color: #065f46;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.productMappingItemTitleSep {
+  color: #475569;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 
 .skuUploadBadge {
@@ -1070,22 +1095,8 @@ body {
   border-radius: 14px;
   background: #ffffff;
   overflow: hidden;
-}
-
-.productMappingItemHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid #eef3f8;
-  background: #fbfdff;
-}
-
-.productMappingItemTitle {
-  font-size: 16px;
-  font-weight: 700;
-  color: #475569;
+  /* 헤더 연두 밴드 상단 라운딩과 동기 */
+  --product-mapping-card-radius: 14px;
 }
 
 .productMappingItemMeta {
@@ -1094,40 +1105,126 @@ body {
   white-space: nowrap;
 }
 
-.productMappingCountryList {
-  display: flex;
-  flex-direction: column;
+/* 헤더(브랜드 | 그룹명)와 국가 행을 한 그리드로 — 구분선 | 세로 정렬 */
+.productMappingAlignGrid {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) 0.55rem minmax(0, 1fr) max-content;
+  /* column-gap 은 헤더 연두 셀 사이에 부모(흰) 배경이 비침 → 0 + 셀 안 패딩으로 간격 */
+  column-gap: 0;
+  align-items: center;
+  row-gap: 0;
+  padding: 0 14px 10px;
+  background: #ffffff;
+  font-size: 15px;
+  line-height: 1.45;
 }
 
-.productMappingCountryRow {
+/* 한 줄 전체 연두 + 열 정렬은 부모와 동일(subgrid) — gap 도 컨테이너 배경색 */
+.productMappingGridHeadBand {
+  grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 70px minmax(0, 1fr) 140px;
-  gap: 14px;
+  grid-template-columns: subgrid;
+  column-gap: 0.35rem;
   align-items: center;
-  padding: 12px 14px;
+  background: #edf8f2;
+  border-bottom: 1px solid #b9e5d3;
+  /* alignGrid 좌우 패딩(14px)까지 칠해 둥근 모서리 안까지 연두 */
+  margin-left: -14px;
+  margin-right: -14px;
+  width: calc(100% + 28px);
+  box-sizing: border-box;
+  padding: 12px 14px 11px;
+  border-top-left-radius: calc(var(--product-mapping-card-radius) - 1px);
+  border-top-right-radius: calc(var(--product-mapping-card-radius) - 1px);
+}
+
+.productMappingGridHeadBrand,
+.productMappingGridHeadPipe,
+.productMappingGridHeadName,
+.productMappingGridHeadMeta {
+  background: transparent;
+  padding: 0;
+}
+
+.productMappingGridHeadMeta {
+  justify-self: end;
+}
+
+.productMappingGridRowRule {
+  grid-column: 1 / -1;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
   border-top: 1px solid #f1f5f9;
 }
 
-.productMappingCountryRow:first-child {
-  border-top: 0;
+.productMappingGridCountryPrefix {
+  padding: 10px 0.35rem 10px 0;
+  background: #ffffff;
 }
 
-.productMappingCountryLabel {
+.productMappingGridCountryPipe {
+  padding: 10px 0.175rem;
+  background: #ffffff;
+}
+
+.productMappingGridCountryName {
+  padding: 10px 0.35rem 10px 0.175rem;
+  background: #ffffff;
+}
+
+.productMappingGridCountrySku {
+  padding: 10px 0 10px 0.35rem;
+  background: #ffffff;
+}
+
+.productMappingCountryPrefix {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 0.35rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.productMappingCountryLocaleName {
   font-weight: 600;
   color: #475569;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.productMappingPipe {
+  color: #475569;
+  font-weight: 700;
+  justify-self: center;
+  text-align: center;
+}
+
+.productMappingGridHeadName {
+  min-width: 0;
 }
 
 .productMappingCountryCode {
   color: #111827;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
-.productMappingCountryBody,
-.productMappingCountrySku {
-  min-width: 0;
+.productMappingCountrySkuInline {
+  font-size: 14px;
+  font-weight: 700;
+  color: #64748b;
+  text-align: right;
+  justify-self: end;
+  word-break: break-all;
+  line-height: 1.4;
+  max-width: 100%;
 }
 
 .productMappingMiniLabel {
@@ -1137,9 +1234,11 @@ body {
 }
 
 .productMappingCountryName {
-  font-size: 16px;
   color: #334155;
-  word-break: break-word;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .productMappingSkuValue {
@@ -1263,13 +1362,35 @@ textarea:focus {
     width: 100%;
   }
 
-  .productMappingCountryRow {
-    grid-template-columns: 1fr;
-    gap: 8px;
+  .productMappingAlignGrid {
+    padding: 0 12px 10px;
+    grid-template-columns: minmax(0, max-content) 0.5rem minmax(0, 1fr) minmax(0, 34vw);
   }
 
-  .productMappingSkuValue {
-    text-align: left;
+  .productMappingGridHeadBand {
+    column-gap: 0.3rem;
+    margin-left: -12px;
+    margin-right: -12px;
+    width: calc(100% + 24px);
+    padding: 12px 12px 11px;
+  }
+
+  .productMappingGridCountryPrefix {
+    padding-right: 0.3rem;
+  }
+
+  .productMappingGridCountryPipe {
+    padding-left: 0.15rem;
+    padding-right: 0.15rem;
+  }
+
+  .productMappingGridCountryName {
+    padding-right: 0.3rem;
+    padding-left: 0.15rem;
+  }
+
+  .productMappingGridCountrySku {
+    padding-left: 0.3rem;
   }
 }
 

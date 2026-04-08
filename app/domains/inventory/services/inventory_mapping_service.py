@@ -1163,18 +1163,26 @@ def upsert_product_sku_mapping(db: Session, payload: dict[str, object]) -> dict:
 def list_product_sku_mappings(db: Session, query: str | None = None, limit: int = 100) -> list[dict]:
     rows = _load_product_groups(db)
     needle = str(query or "").strip().casefold()
+    cap = max(1, limit)
+
+    if not needle:
+        # 검색 전: 국가(로케일) 수가 많은 그룹부터 — 단순 kr_name 순 slice 만 하면 다국적 그룹이 limit 밖으로 밀림
+        ordered = sorted(
+            rows,
+            key=lambda g: (-len(g.locales or []), str(g.kr_name or "").casefold()),
+        )
+        return [_mapping_item_payload(g) for g in ordered[:cap]]
+
     items: list[dict] = []
     for group in rows:
-        item = _mapping_item_payload(group)
-        if needle:
-            haystack_parts = [group.kr_name]
-            for locale in group.locales:
-                haystack_parts.extend([locale.country_code, locale.name or "", locale.sku])
-            haystack = " ".join(haystack_parts).casefold()
-            if needle not in haystack:
-                continue
-        items.append(item)
-        if len(items) >= max(1, limit):
+        haystack_parts = [group.kr_name]
+        for locale in group.locales:
+            haystack_parts.extend([locale.country_code, locale.name or "", locale.sku])
+        haystack = " ".join(haystack_parts).casefold()
+        if needle not in haystack:
+            continue
+        items.append(_mapping_item_payload(group))
+        if len(items) >= cap:
             break
     return items
 

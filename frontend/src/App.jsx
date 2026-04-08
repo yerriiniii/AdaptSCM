@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
 
@@ -424,14 +424,17 @@ function getProductMappingCountries(row = {}) {
   const locales = Array.isArray(row?.locales) ? row.locales : [];
   return locales
     .map((locale) => {
-      const code = String(locale?.country_code || "").trim().toUpperCase();
-      const sku = String(locale?.sku || "").trim();
-      if (!code || !sku) return null;
+      const code = String(locale?.country_code || locale?.countryCode || "").trim().toUpperCase();
+      const sku = String(locale?.sku ?? "").trim();
+      const name = String(locale?.name ?? "").trim();
+      if (!code) return null;
+      // SKU 없이 이름만 있는 로케일도 표시(백엔드·데이터에 따라 빈 SKU가 올 수 있음)
+      if (!sku && !name) return null;
       return {
         code,
         label: countryLabel(code),
-        sku,
-        description: String(locale?.name || "").trim() || "-",
+        sku: sku || "—",
+        description: name || "—",
       };
     })
     .filter(Boolean);
@@ -556,17 +559,24 @@ export default function App() {
     compareFilter: 0,
     topScroll: 0,
   });
-  const productMappingCards = useMemo(
-    () =>
-      mappingRows
-        .map((row, idx) => ({
-          ...row,
-          _id: row.group_id || `${row.kr_name || "mapping"}-${idx}`,
-          _countries: getProductMappingCountries(row),
-        }))
-        .filter((row) => row._countries.length > 0),
-    [mappingRows]
-  );
+  const productMappingCards = useMemo(() => {
+    const cards = mappingRows
+      .map((row, idx) => ({
+        ...row,
+        _id: row.group_id || `${row.kr_name || "mapping"}-${idx}`,
+        _countries: getProductMappingCountries(row),
+      }))
+      .filter((row) => row._countries.length > 0);
+    // 검색 전에만: 국가가 많은 그룹 우선(백엔드도 동일 정렬). 검색 중에는 API 응답 순서 유지
+    if (!mappingSearchKeyword.trim()) {
+      cards.sort((a, b) => {
+        const byLen = b._countries.length - a._countries.length;
+        if (byLen !== 0) return byLen;
+        return String(a.kr_name || "").localeCompare(String(b.kr_name || ""), "ko");
+      });
+    }
+    return cards;
+  }, [mappingRows, mappingSearchKeyword]);
 
   function matchesCountryScope(code) {
     const country = String(code || "KR");
@@ -2666,7 +2676,9 @@ export default function App() {
                 ))}
               </div>
               <div className="productMappingHeroTitle">어느 국가든 상품명이나 SKU를 검색하세요</div>
-              <div className="productMappingHeroSubtitle">모든 국가별 동일한 상품을 한 눈에 확인할 수 있어요</div>
+              <div className="productMappingHeroSubtitle">
+                카드 상단은 한국 상품명 기준 제목입니다. 아래 국가 줄은 DB에 SKU·상품명이 함께 등록된 로케일만 보입니다.
+              </div>
               <div className="productMappingSearchRow">
                 <div className="searchWrap productMappingSearchWrap">
                   <span className="searchIcon" aria-hidden="true">
@@ -2692,29 +2704,45 @@ export default function App() {
               <div className="productMappingList">
                 {productMappingCards.map((row) => (
                   <article key={row._id} className="productMappingItemCard">
-                    <div className="productMappingItemHead">
-                      <div className="productMappingItemTitle">{row.kr_name || "상품명 없음"}</div>
-                      {row.brand ? (
-                        <div className="productMappingItemBrand">브랜드: {row.brand}</div>
-                      ) : null}
-                      <div className="productMappingItemMeta">{row._countries.length}개 국가</div>
-                    </div>
-                    <div className="productMappingCountryList">
-                      {row._countries.map((country) => (
-                        <div key={`${row._id}-${country.code}`} className="productMappingCountryRow">
-                          <div className="productMappingCountryLabel">
-                            <span className="productMappingCountryCode">{country.code}</span>
-                            <span>{country.label}</span>
-                          </div>
-                          <div className="productMappingCountryBody">
-                            <div className="productMappingMiniLabel">상품명</div>
-                            <div className="productMappingCountryName">{country.description}</div>
-                          </div>
-                          <div className="productMappingCountrySku">
-                            <div className="productMappingMiniLabel">SKU</div>
-                            <div className="productMappingSkuValue">{country.sku}</div>
-                          </div>
+                    <div
+                      className="productMappingAlignGrid"
+                      title={`${row.brand || "—"} | ${row.kr_name || "상품명 없음"}`}
+                    >
+                      <div className="productMappingGridHeadBand">
+                        <div className="productMappingItemBrandPart productMappingGridHeadBrand">
+                          {row.brand || "—"}
                         </div>
+                        <span className="productMappingPipe productMappingGridHeadPipe" aria-hidden="true">
+                          |
+                        </span>
+                        <div className="productMappingItemNamePart productMappingGridHeadName">
+                          {row.kr_name || "상품명 없음"}
+                        </div>
+                        <div className="productMappingItemMeta productMappingGridHeadMeta">
+                          {row._countries.length}개 국가
+                        </div>
+                      </div>
+                      {row._countries.map((country, countryIdx) => (
+                        <Fragment key={`${row._id}-${country.code}`}>
+                          {countryIdx > 0 ? (
+                            <div className="productMappingGridRowRule" aria-hidden="true" />
+                          ) : null}
+                          <div className="productMappingCountryPrefix productMappingGridCountryPrefix">
+                            <span className="productMappingCountryCode">{country.code}</span>
+                            <span className="productMappingCountryLocaleName" title={country.label}>
+                              {country.label}
+                            </span>
+                          </div>
+                          <span className="productMappingPipe productMappingGridCountryPipe" aria-hidden="true">
+                            |
+                          </span>
+                          <span className="productMappingCountryName productMappingGridCountryName" title={country.description}>
+                            {country.description}
+                          </span>
+                          <span className="productMappingCountrySkuInline productMappingGridCountrySku" title={country.sku}>
+                            {country.sku}
+                          </span>
+                        </Fragment>
                       ))}
                     </div>
                   </article>
