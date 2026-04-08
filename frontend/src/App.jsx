@@ -445,6 +445,29 @@ function getLatestDateKey(dateKeys = []) {
   return [...dateKeys].sort().at(-1) || "";
 }
 
+/** hydratePersistedState 실패 시 — 네트워크/DB/500 구분에 도움 */
+function formatPersistedLoadError(err, apiBase) {
+  const detail = err?.response?.data?.detail;
+  const fromApi = Array.isArray(detail) ? detail.join("\n") : detail != null ? String(detail) : "";
+  const status = err?.response?.status;
+  const code = err?.code;
+  const message = String(err?.message || "");
+
+  if (code === "ERR_NETWORK" || message === "Network Error") {
+    return [
+      "백엔드 API에 연결할 수 없습니다.",
+      `요청 기준 URL: ${apiBase}`,
+      "백엔드(uvicorn) 실행 여부, VITE_API_BASE_URL, 방화벽·VPN을 확인하세요.",
+    ].join("\n");
+  }
+
+  if (fromApi) return fromApi;
+  const parts = [];
+  if (status) parts.push(`HTTP ${status}`);
+  if (message) parts.push(message);
+  return parts.filter(Boolean).join(" · ") || "저장된 데이터를 불러오는 중 오류";
+}
+
 function buildTrendData(row, dateColumns = []) {
   if (!row || !dateColumns.length) return null;
 
@@ -648,8 +671,7 @@ export default function App() {
       try {
         await hydratePersistedState();
       } catch (err) {
-        const detail = err?.response?.data?.detail;
-        setInventoryError(Array.isArray(detail) ? detail.join("\n") : detail || "저장된 데이터를 불러오는 중 오류");
+        setInventoryError(formatPersistedLoadError(err, API_BASE));
       }
     };
     run();
