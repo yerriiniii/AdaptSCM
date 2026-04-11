@@ -165,6 +165,27 @@ class PurchaseInboundCreateRequest(BaseModel):
     inbound_status: str = "O"
 
 
+class PurchaseOrderInboundLineUpdate(BaseModel):
+    id: str
+    actual_inbound_date: str | None = None
+    quantity: float | str
+    inbound_status: str = "O"
+
+
+class PurchaseOrderUpdateRequest(BaseModel):
+    order_date: str
+    erp_po_number: str
+    product_type: str = "본품"
+    sku: str
+    brand: str = ""
+    product_name: str = ""
+    manufacturer: str = ""
+    total_quantity: float | str
+    delivery_available_date: str | None = None
+    expected_inbound_date: str | None = None
+    inbound_lines: list[PurchaseOrderInboundLineUpdate] | None = None
+
+
 class SkuLookupForPurchaseResponse(BaseModel):
     matched: bool
     brand: str = ""

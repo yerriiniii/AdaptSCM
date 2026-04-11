@@ -436,6 +436,20 @@ body {
   gap: 8px;
 }
 
+/* 수기 헤더의 저장·초기화와 발주 탭「발주 저장」동일 크기(높이·패딩) */
+.skuManualHeadActions > .primary,
+.skuManualHeadActions > .ghost {
+  box-sizing: border-box;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.15;
+  flex-shrink: 0;
+}
+
 .skuManualSection {
   margin-top: 0;
 }
@@ -492,8 +506,8 @@ body {
 }
 
 .skuManualKrFieldHead {
-  background: #f8fafc;
-  border-bottom: 1px solid #eef2f7;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
   padding: 10px 14px;
   font-size: 13px;
   font-weight: 700;
@@ -529,6 +543,74 @@ body {
 }
 
 .skuManualKrFieldBody input[type="text"]:focus {
+  outline: none;
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.45);
+}
+
+.skuManualKrFieldBody.poExpectedInboundBody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.skuManualKrFieldBody.poExpectedInboundBody input[type="date"] {
+  flex: 1 1 180px;
+  width: auto;
+  max-width: 100%;
+}
+
+.skuManualKrFieldBody.poExpectedInboundBody input[type="date"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #f8fafc;
+}
+
+.poExpectedInboundTbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.poExpectedInboundTbd input[type="checkbox"] {
+  width: auto;
+  min-height: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.skuManualKrFieldBody input[type="date"],
+.skuManualKrFieldBody input[type="number"],
+.skuManualKrFieldBody select {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font-family: inherit;
+}
+
+.skuManualKrFieldBody select {
+  cursor: pointer;
+}
+
+.skuManualKrFieldBody input[type="date"]:focus,
+.skuManualKrFieldBody input[type="number"]:focus,
+.skuManualKrFieldBody select:focus {
   outline: none;
   border-color: #94a3b8;
   box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.45);
@@ -815,8 +897,8 @@ body {
 }
 
 .skuManualTableHead {
-  background: #f8fafc;
-  border-bottom: 1px solid #eef2f7;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
   font-size: 13px;
   font-weight: 700;
   color: #64748b;
@@ -1170,7 +1252,7 @@ body {
 }
 
 .productMappingGridCountryName {
-  padding: 10px 0.35rem 10px 0.175rem;
+  padding: 10px 0.35rem 10px 0.45rem;
   background: #ffffff;
 }
 
@@ -1200,13 +1282,14 @@ body {
 
 .productMappingPipe {
   color: #475569;
-  font-weight: 700;
+  font-weight: 500;
   justify-self: center;
   text-align: center;
 }
 
 .productMappingGridHeadName {
   min-width: 0;
+  padding-left: 0.45rem;
 }
 
 .productMappingCountryCode {
@@ -1218,7 +1301,7 @@ body {
 
 .productMappingCountrySkuInline {
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
   color: #64748b;
   text-align: right;
   justify-self: end;
@@ -1386,7 +1469,7 @@ textarea:focus {
 
   .productMappingGridCountryName {
     padding-right: 0.3rem;
-    padding-left: 0.15rem;
+    padding-left: 0.35rem;
   }
 
   .productMappingGridCountrySku {
@@ -2317,17 +2400,13 @@ th {
     flex-direction: column;
   }
 
-  .poFormGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .poFieldSpan2 {
-    grid-column: span 1;
-  }
-
-  .poInboundAdd {
+  .poInboundNewActions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .poInboundAddBtn {
+    width: 100%;
   }
 }
 
@@ -2341,11 +2420,37 @@ th {
   background: #ffffff;
 }
 
+.poSubTabsBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0 0 16px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.poSubTab {
+  height: 36px;
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+.poRegisterPanel {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
 .purchaseOrderSubTitle {
   margin: 20px 0 12px;
   font-size: 16px;
   font-weight: 700;
   color: #1f2937;
+}
+
+/* 발주 탭 소제목: SKU 수기「한국 | 브랜드…」안내와 동일 톤 */
+.purchaseOrderSection .purchaseOrderSubTitle {
+  color: #6b7280;
 }
 
 .purchaseOrderError {
@@ -2370,6 +2475,42 @@ th {
   border-bottom: 1px solid #eef2f7;
 }
 
+.poFormCardHeadRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.poRegisterHeadRow {
+  justify-content: flex-end;
+}
+
+.poFormCardTitle {
+  margin: 0;
+}
+
+.poFormCard .poFormManualSection.skuManualSectionKr {
+  padding-top: 8px;
+  padding-bottom: 0;
+}
+
+.poKrFieldBodyStack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skuManualKrFieldBody .poSkuHint {
+  display: block;
+  margin: 0;
+  text-align: left;
+  line-height: 1.45;
+  color: #b45309;
+  font-size: 12px;
+}
+
 /* 저장된 발주: 새 발주 등록과 동일한 poFormCard 기준선(제목·목록·빈 상태) */
 .poFormCard.poSavedOrdersPanel {
   border-bottom: none;
@@ -2381,50 +2522,219 @@ th {
   margin-top: 12px;
 }
 
-.poFormGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 16px;
+.poSavedFilterBar {
+  margin-bottom: 14px;
 }
 
-.poField {
+.poSavedFilterBar .searchWrap {
+  flex: 1 1 260px;
+  min-width: 0;
+  max-width: 420px;
+}
+
+.poSavedFilterSearch {
+  min-width: 0;
+  width: 100%;
+}
+
+.poCardHeroBand {
+  background: #ffffff;
+  border-bottom: none;
+  padding: 0 0 10px;
+  border-radius: 11px 11px 0 0;
+  margin: 0;
+}
+
+/* 저장된 발주: ERP PO·발주일·SKU + 액션 — 연두 밴드 (본문과 구분) */
+.poCardErpBand {
+  background: #edf8f2;
+  border-bottom: 1px solid #b9e5d3;
+  padding: 12px 16px 12px;
+  border-top-left-radius: 11px;
+  border-top-right-radius: 11px;
+}
+
+.poCardErpBand .poCardMeta.poCardMetaLg {
+  margin-top: 2px;
+  padding-top: 2px; /* 구분선 제거 전(선 1px + 패딩 10px)과 동일한 시각 간격 */
+}
+
+.poCardHeroBand .poCardSkuHint {
+  margin: 8px 16px 0;
+}
+
+.poCardDetailWrap {
+  padding: 22px 16px 16px;
+  background: #ffffff;
+  border-radius: 0 0 11px 11px;
+}
+
+.poCardHeadTop {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  color: #374151;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.poField > span {
-  font-weight: 600;
+.poCardPoBlock {
+  flex: 1 1 200px;
+  min-width: 0;
 }
 
-.poField input,
-.poField select {
-  height: 38px;
-  padding: 0 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
+.poCardErpInput {
+  box-sizing: border-box;
+  width: 100%;
+  font-size: 19px;
+  font-weight: 700;
+  color: #111827;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.poCardErpInput::placeholder {
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.poCardErpInput:focus {
+  outline: 2px solid #94a3b8;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.poCardHeroBand .poCardPo {
+  font-size: 19px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.3;
+}
+
+.poCardHeadActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.poCardMetaLg {
+  margin-top: 2px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.poCardMetaLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 20px;
+}
+
+.poCardMetaItem {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.poCardMetaK {
+  font-weight: 700;
+  color: #64748b;
   font-size: 14px;
 }
 
-.poFieldSpan2 {
-  grid-column: span 2;
+.poCardMetaV {
+  font-weight: 700;
+  color: #64748b;
+  font-size: 14px;
 }
 
-.poFieldInlineInput {
-  margin-top: 6px;
+.poCardMetaEditRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: flex-end;
 }
 
-.poSkuHint {
+.poCardMetaField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.poCardMetaLabel {
+  font-size: 13px;
+  font-weight: 400;
+  color: #64748b;
+}
+
+.poCardMetaInput {
+  box-sizing: border-box;
+  min-width: 140px;
+  min-height: 38px;
+  padding: 6px 10px;
+  font-size: 14px;
+  font-weight: 400;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #64748b;
+}
+
+.poCardMetaInput:focus {
+  outline: none;
+  border-color: #64748b;
+  background: #fff;
+}
+
+.poCardSkuHint {
   display: block;
-  margin-top: 4px;
-  color: #b45309;
-  font-size: 12px;
+  margin-top: 8px;
 }
 
-.poFormActions {
-  margin-top: 14px;
+.poCardDlEdit .poCardDdInput,
+.poCardDlEdit .poCardDdInputDate {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 36px;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.poCardDlEdit dd {
+  min-width: 0;
+}
+
+.poCardExpectedInbound {
+  width: 100%;
+}
+
+.poInboundRefReadonly {
+  color: #475569;
+  vertical-align: middle;
+}
+
+.poRefPreviewTag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+.poInboundStatusSelectFull {
+  width: 100%;
+  max-width: 100%;
 }
 
 .purchaseOrderList {
@@ -2436,12 +2746,9 @@ th {
 .purchaseOrderCard {
   border: 1px solid #e5e9f0;
   border-radius: 12px;
-  padding: 14px 16px;
-  background: #fafbfc;
-}
-
-.poCardHead {
-  margin-bottom: 10px;
+  padding: 0;
+  overflow: visible;
+  background: #ffffff;
 }
 
 .poCardPo {
@@ -2456,23 +2763,68 @@ th {
   color: #6b7280;
 }
 
-.poCardDl {
+.poCardMeta.poCardMetaLg {
+  margin-top: 2px;
+  color: #64748b;
+}
+
+/* 상품유형·제조사 등: 촘촘한 그리드 + 라벨·값 보통 굵기 */
+.poCardDl.poCardDlFields {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 8px 14px;
-  margin: 0 0 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin: 0 0 12px;
+  padding: 0;
   font-size: 13px;
+  border: none;
+  background: transparent;
 }
 
-.poCardDl dt {
+@media (max-width: 1000px) {
+  .poCardDl.poCardDlFields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .poCardDl.poCardDlFields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.poCardDl.poCardDlFields > div {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 0;
+  border-left: 2px solid #cbd5e1;
+  padding-left: 10px;
+}
+
+.poCardDl.poCardDlFields dt {
+  display: block;
   margin: 0;
-  font-weight: 600;
-  color: #6b7280;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  color: #64748b;
+  background: none;
 }
 
-.poCardDl dd {
-  margin: 2px 0 0;
-  color: #1f2937;
+.poCardDl.poCardDlFields dd {
+  display: block;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+  color: #111827;
+  background: none;
+  word-break: break-word;
 }
 
 .poInboundBlock {
@@ -2501,8 +2853,9 @@ th {
 }
 
 .poInboundTable th {
-  background: #f3f4f6;
+  background: #f1f5f9;
   font-weight: 600;
+  color: #64748b;
 }
 
 .poRefCell {
@@ -2515,25 +2868,78 @@ th {
   text-align: center;
 }
 
-.poInboundAdd {
+.poInboundTfoot {
+  background: #f8fafc;
+}
+
+.poInboundTfoot td {
+  vertical-align: middle;
+}
+
+.poInboundNewRow td {
+  border-top: 2px solid #dbe4ef;
+}
+
+.poInboundNewCodeCell {
+  min-width: 120px;
+}
+
+.poInboundNewBadge {
+  display: block;
+  font-weight: 700;
+  color: #374151;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.poInboundNewHint {
+  display: block;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #6b7280;
+}
+
+.poInboundCellControl {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #111827;
+  background: #fff;
+}
+
+.poInboundCellControl:focus {
+  outline: none;
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.4);
+}
+
+.poInboundNewActionsCell {
+  min-width: 200px;
+}
+
+.poInboundNewActions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  margin-top: 10px;
 }
 
-.poInboundAdd input[type="date"],
-.poInboundAdd input[type="number"],
-.poInboundAdd select {
-  height: 36px;
-  padding: 0 8px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
+.poInboundStatusSelect {
+  flex: 1 1 120px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.poInboundAddBtn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-height: 38px;
+  padding: 0 14px;
   font-size: 13px;
-}
-
-.poInboundAdd input[type="number"] {
-  width: 120px;
 }
 

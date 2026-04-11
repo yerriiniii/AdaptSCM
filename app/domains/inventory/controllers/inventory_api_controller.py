@@ -19,6 +19,7 @@ from app.domains.inventory.dto.inventory_api_dto import (
     PurchaseOrderCreateRequest,
     PurchaseOrderListResponse,
     PurchaseOrderResponse,
+    PurchaseOrderUpdateRequest,
     SkuLookupForPurchaseResponse,
 )
 from app.domains.inventory.services.inventory_mapping_service import (
@@ -48,6 +49,7 @@ from app.domains.inventory.services.purchase_order_service import (
     create_purchase_order,
     list_purchase_orders,
     purchase_order_to_dict,
+    update_purchase_order,
 )
 from app.shared.config import get_runtime_settings
 from app.shared.db import get_db_session
@@ -213,6 +215,27 @@ def purchase_orders_create(
     _require_db_configured()
     po = create_purchase_order(db, payload.model_dump())
     stmt = select(PurchaseOrderModel).where(PurchaseOrderModel.id == po.id).options(selectinload(PurchaseOrderModel.inbound_lines))
+    po2 = db.scalars(stmt).unique().first()
+    return PurchaseOrderResponse(**purchase_order_to_dict(po2 or po))
+
+
+@router.patch("/purchase-orders/{order_id}", response_model=PurchaseOrderResponse)
+def purchase_orders_update(
+    order_id: str,
+    payload: PurchaseOrderUpdateRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> PurchaseOrderResponse:
+    _require_db_configured()
+    try:
+        oid = uuid.UUID(order_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="order_id 형식이 올바르지 않습니다.") from exc
+    po = update_purchase_order(db, oid, payload.model_dump())
+    stmt = (
+        select(PurchaseOrderModel)
+        .where(PurchaseOrderModel.id == po.id)
+        .options(selectinload(PurchaseOrderModel.inbound_lines))
+    )
     po2 = db.scalars(stmt).unique().first()
     return PurchaseOrderResponse(**purchase_order_to_dict(po2 or po))
 

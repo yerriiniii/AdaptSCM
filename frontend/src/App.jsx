@@ -28,6 +28,13 @@ const EMPTY_SKU_MAPPING_FORM = Object.fromEntries([
   ["option", ""],
 ]);
 
+/** 저장된 발주 수정 시 상품유형 → 프리셋/직접입력 */
+function purchaseOrderProductTypeToFields(productType) {
+  const t = String(productType || "").trim();
+  if (t === "본품" || t === "") return { preset: "본품", custom: "" };
+  return { preset: "직접 입력", custom: t };
+}
+
 const EMPTY_PURCHASE_ORDER_FORM = {
   order_date: "",
   erp_po_number: "",
@@ -40,6 +47,7 @@ const EMPTY_PURCHASE_ORDER_FORM = {
   total_quantity: "",
   delivery_available_date: "",
   expected_inbound_date: "",
+  expected_inbound_tbd: false,
 };
 
 const PRODUCT_MAPPING_SEARCH_CHIPS = SKU_MAPPING_FIELDS.map(({ code }) => code);
@@ -229,6 +237,103 @@ function ManualBrandCombobox({ value, onChange, disabled }) {
               setCustomMode(true);
               const keepCustom = Boolean(value && !presetSet.has(value));
               if (!keepCustom) onChange("");
+            }}
+          >
+            직접 입력…
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** 발주 상품유형: SKU 수기 브랜드와 동일(목록 ▼ ↔ 직접입력 칸 + 목록에서 선택) */
+function PurchaseProductTypeField({ preset, custom, onPresetChange, onCustomChange }) {
+  const rootRef = useRef(null);
+  const customInputRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const isDirectMode = preset === "직접 입력";
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  useEffect(() => {
+    if (isDirectMode) customInputRef.current?.focus();
+  }, [isDirectMode]);
+
+  if (isDirectMode) {
+    return (
+      <div className="manualBrandCombobox manualBrandComboboxCustom" ref={rootRef}>
+        <div className="manualBrandCustomRow">
+          <input
+            ref={customInputRef}
+            type="text"
+            className="manualBrandCustomInput"
+            value={custom}
+            onChange={(e) => onCustomChange(e.target.value)}
+            placeholder="유형 직접 입력"
+            autoComplete="off"
+          />
+          <button
+            type="button"
+            className="manualBrandToPresetsBtn"
+            onClick={() => {
+              onPresetChange("본품");
+              onCustomChange("");
+            }}
+          >
+            목록에서 선택
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`manualBrandCombobox${open ? " manualBrandComboboxOpen" : ""}`} ref={rootRef}>
+      <button
+        type="button"
+        className="manualBrandTrigger"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        <span className="manualBrandTriggerText">{preset}</span>
+        <span className="manualBrandChevron" aria-hidden="true">
+          ▼
+        </span>
+      </button>
+      {open ? (
+        <div className="manualBrandPopover poProductTypePopover" role="listbox">
+          <ul className="manualBrandList">
+            <li>
+              <button
+                type="button"
+                className="manualBrandOption"
+                onClick={() => {
+                  onPresetChange("본품");
+                  onCustomChange("");
+                  setOpen(false);
+                }}
+              >
+                본품
+              </button>
+            </li>
+          </ul>
+          <button
+            type="button"
+            className="manualBrandOption manualBrandOptionDirect"
+            onClick={() => {
+              onPresetChange("직접 입력");
+              setOpen(false);
             }}
           >
             직접 입력…
@@ -581,6 +686,40 @@ export default function App() {
   const [poForm, setPoForm] = useState({ ...EMPTY_PURCHASE_ORDER_FORM });
   const [skuResolveHint, setSkuResolveHint] = useState("");
   const [inboundDrafts, setInboundDrafts] = useState({});
+  /** 발주 기록 탭 내부: 새 등록 | 저장된 목록 */
+  const [purchaseOrderSubTab, setPurchaseOrderSubTab] = useState("register");
+  const [savedPoSearch, setSavedPoSearch] = useState("");
+  /** 저장된 발주: 발주일 기준 기간 (전체 | 1·3개월 | 1년) */
+  const [savedPoDateRange, setSavedPoDateRange] = useState("all");
+  const [editingPoId, setEditingPoId] = useState(null);
+  const [poEditDraft, setPoEditDraft] = useState(null);
+
+  const filteredPurchaseOrders = useMemo(() => {
+    let rows = purchaseOrders;
+    const q = savedPoSearch.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter((po) => {
+        const erp = String(po.erp_po_number || "").toLowerCase();
+        const name = String(po.product_name || "").toLowerCase();
+        return erp.includes(q) || name.includes(q);
+      });
+    }
+    if (savedPoDateRange !== "all") {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const cutoff = new Date(now);
+      if (savedPoDateRange === "1m") cutoff.setMonth(cutoff.getMonth() - 1);
+      else if (savedPoDateRange === "3m") cutoff.setMonth(cutoff.getMonth() - 3);
+      else if (savedPoDateRange === "1y") cutoff.setFullYear(cutoff.getFullYear() - 1);
+      rows = rows.filter((po) => {
+        const od = po.order_date;
+        if (!od) return false;
+        const d = new Date(`${String(od).slice(0, 10)}T12:00:00`);
+        return !Number.isNaN(d.getTime()) && d >= cutoff;
+      });
+    }
+    return rows;
+  }, [purchaseOrders, savedPoSearch, savedPoDateRange]);
 
   useEffect(() => {
     if (!mappingError) return;
@@ -1471,11 +1610,12 @@ export default function App() {
         manufacturer: String(poForm.manufacturer || "").trim(),
         total_quantity: Number(qtyRaw),
         delivery_available_date: poForm.delivery_available_date || null,
-        expected_inbound_date: poForm.expected_inbound_date || null,
+        expected_inbound_date: poForm.expected_inbound_tbd ? null : poForm.expected_inbound_date || null,
       });
       setPurchaseOrderSuccess("발주가 저장되었습니다.");
       setPoForm({ ...EMPTY_PURCHASE_ORDER_FORM });
       setSkuResolveHint("");
+      setPurchaseOrderSubTab("saved");
       await fetchPurchaseOrdersList();
     } catch (err) {
       const det = err?.response?.data?.detail;
@@ -1497,7 +1637,7 @@ export default function App() {
       return;
     }
     try {
-      await axios.post(`${API_BASE}/api/inventory/purchase-orders/${orderId}/inbounds`, {
+      const res = await axios.post(`${API_BASE}/api/inventory/purchase-orders/${orderId}/inbounds`, {
         actual_inbound_date: d.actual_inbound_date || null,
         quantity: Number(qRaw),
         inbound_status: d.inbound_status || "O",
@@ -1506,11 +1646,158 @@ export default function App() {
         ...p,
         [orderId]: { actual_inbound_date: "", quantity: "", inbound_status: "O" },
       }));
+      const newLine = res?.data;
+      if (newLine && editingPoId === orderId) {
+        setPoEditDraft((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            lines: [
+              ...prev.lines,
+              {
+                id: String(newLine.id),
+                line_no: newLine.line_no,
+                ref_code: newLine.ref_code,
+                actual_inbound_date: newLine.actual_inbound_date || "",
+                quantity: newLine.quantity != null ? String(newLine.quantity) : "",
+                inbound_status: newLine.inbound_status || "O",
+              },
+            ],
+          };
+        });
+      }
       setPurchaseOrderSuccess("입고 차수가 추가되었습니다.");
       await fetchPurchaseOrdersList();
     } catch (err) {
       const det = err?.response?.data?.detail;
       setPurchaseOrderError(Array.isArray(det) ? det.join("\n") : det || err?.message || "입고 저장 실패");
+    }
+  }
+
+  function startPoEdit(po) {
+    const { preset, custom } = purchaseOrderProductTypeToFields(po.product_type);
+    setEditingPoId(po.id);
+    setPoEditDraft({
+      order_date: po.order_date || "",
+      erp_po_number: po.erp_po_number || "",
+      product_type_preset: preset,
+      product_type_custom: custom,
+      sku: po.sku || "",
+      brand: po.brand || "",
+      product_name: po.product_name || "",
+      manufacturer: po.manufacturer || "",
+      total_quantity: po.total_quantity != null ? String(po.total_quantity) : "",
+      delivery_available_date: po.delivery_available_date || "",
+      expected_inbound_date: po.expected_inbound_date || "",
+      expected_inbound_tbd: !po.expected_inbound_date,
+      skuResolveHint: "",
+      lines: (po.inbound_lines || []).map((l) => ({
+        id: l.id,
+        line_no: l.line_no,
+        ref_code: l.ref_code,
+        actual_inbound_date: l.actual_inbound_date || "",
+        quantity: l.quantity != null ? String(l.quantity) : "",
+        inbound_status: l.inbound_status || "O",
+      })),
+    });
+  }
+
+  function cancelPoEdit() {
+    setEditingPoId(null);
+    setPoEditDraft(null);
+  }
+
+  async function resolvePoEditSku() {
+    if (!poEditDraft) return;
+    const sku = String(poEditDraft.sku || "").trim();
+    if (!sku) {
+      setPoEditDraft((p) => (p ? { ...p, skuResolveHint: "" } : p));
+      return;
+    }
+    try {
+      const res = await axios.get(`${API_BASE}/api/inventory/purchase-orders/sku-hint`, {
+        params: { sku },
+      });
+      const d = res?.data || {};
+      if (d.matched) {
+        setPoEditDraft((p) =>
+          p
+            ? {
+                ...p,
+                brand: d.brand != null ? String(d.brand) : p.brand,
+                product_name: d.product_name != null ? String(d.product_name) : p.product_name,
+                skuResolveHint: "",
+              }
+            : p
+        );
+      } else {
+        setPoEditDraft((p) =>
+          p ? { ...p, skuResolveHint: String(d.message || "등록된 상품코드가 없습니다.") } : p
+        );
+      }
+    } catch (err) {
+      const det = err?.response?.data?.detail;
+      setPoEditDraft((p) =>
+        p ? { ...p, skuResolveHint: Array.isArray(det) ? det.join("\n") : det || "상품코드 조회 중 오류" } : p
+      );
+    }
+  }
+
+  async function submitPoEditSave() {
+    if (!editingPoId || !poEditDraft) return;
+    setPurchaseOrderError("");
+    setPurchaseOrderSuccess("");
+    const d = poEditDraft;
+    const pt =
+      d.product_type_preset === "본품"
+        ? "본품"
+        : String(d.product_type_custom || "").trim() || "직접입력";
+    const qtyRaw = String(d.total_quantity || "").replace(/,/g, "").trim();
+    if (!d.order_date || !String(d.erp_po_number || "").trim()) {
+      setPurchaseOrderError("발주일자와 ERP PO 번호는 필수입니다.");
+      return;
+    }
+    if (!String(d.sku || "").trim()) {
+      setPurchaseOrderError("상품코드(SKU)는 필수입니다.");
+      return;
+    }
+    if (!qtyRaw || Number.isNaN(Number(qtyRaw))) {
+      setPurchaseOrderError("총 발주수량을 올바른 숫자로 입력하세요.");
+      return;
+    }
+    for (const ln of d.lines) {
+      const lq = String(ln.quantity || "").replace(/,/g, "").trim();
+      if (!lq || Number.isNaN(Number(lq))) {
+        setPurchaseOrderError("입고 차수의 수량을 모두 올바른 숫자로 입력하세요.");
+        return;
+      }
+    }
+    try {
+      await axios.patch(`${API_BASE}/api/inventory/purchase-orders/${editingPoId}`, {
+        order_date: d.order_date,
+        erp_po_number: String(d.erp_po_number || "").trim(),
+        product_type: pt,
+        sku: String(d.sku || "").trim(),
+        brand: String(d.brand || "").trim(),
+        product_name: String(d.product_name || "").trim(),
+        manufacturer: String(d.manufacturer || "").trim(),
+        total_quantity: Number(qtyRaw),
+        delivery_available_date: d.delivery_available_date || null,
+        expected_inbound_date: d.expected_inbound_tbd ? null : d.expected_inbound_date || null,
+        inbound_lines: d.lines.map((ln) => ({
+          id: ln.id,
+          actual_inbound_date: ln.actual_inbound_date || null,
+          quantity: Number(String(ln.quantity || "").replace(/,/g, "")),
+          inbound_status: ln.inbound_status || "O",
+        })),
+      });
+      setPurchaseOrderSuccess("발주가 수정되었습니다.");
+      setEditingPoId(null);
+      setPoEditDraft(null);
+      await fetchPurchaseOrdersList();
+    } catch (err) {
+      const det = err?.response?.data?.detail;
+      setPurchaseOrderError(Array.isArray(det) ? det.join("\n") : det || err?.message || "수정 실패");
     }
   }
 
@@ -2470,250 +2757,692 @@ export default function App() {
           {purchaseOrderError ? <pre className="error purchaseOrderError">{purchaseOrderError}</pre> : null}
           {purchaseOrderSuccess ? <div className="purchaseOrderSuccess">{purchaseOrderSuccess}</div> : null}
 
-          <div className="poFormCard">
-            <h3 className="purchaseOrderSubTitle">새 발주 등록</h3>
-            <div className="poFormGrid">
-              <label className="poField">
-                <span>발주일자</span>
-                <input
-                  type="date"
-                  value={poForm.order_date}
-                  onChange={(e) => setPoForm((p) => ({ ...p, order_date: e.target.value }))}
-                />
-              </label>
-              <label className="poField">
-                <span>ERP PO 번호</span>
-                <input
-                  type="text"
-                  value={poForm.erp_po_number}
-                  onChange={(e) => setPoForm((p) => ({ ...p, erp_po_number: e.target.value }))}
-                  placeholder="예: PO2511000012"
-                  autoComplete="off"
-                />
-              </label>
-              <label className="poField">
-                <span>상품유형</span>
-                <select
-                  value={poForm.product_type_preset}
-                  onChange={(e) =>
-                    setPoForm((p) => ({ ...p, product_type_preset: e.target.value }))
-                  }
-                >
-                  <option value="본품">본품</option>
-                  <option value="직접 입력">직접 입력</option>
-                </select>
-                {poForm.product_type_preset === "직접 입력" ? (
-                  <input
-                    type="text"
-                    className="poFieldInlineInput"
-                    value={poForm.product_type_custom}
-                    onChange={(e) => setPoForm((p) => ({ ...p, product_type_custom: e.target.value }))}
-                    placeholder="유형 직접 입력"
-                    autoComplete="off"
-                  />
-                ) : null}
-              </label>
-              <label className="poField">
-                <span>상품코드(SKU)</span>
-                <input
-                  type="text"
-                  value={poForm.sku}
-                  onChange={(e) => {
-                    setPoForm((p) => ({ ...p, sku: e.target.value }));
-                    setSkuResolveHint("");
-                  }}
-                  onBlur={() => resolvePurchaseOrderSku()}
-                  placeholder="입력하면 자동으로 브랜드와 상품명이 입력됩니다"
-                  autoComplete="off"
-                />
-                {skuResolveHint ? <small className="poSkuHint">{skuResolveHint}</small> : null}
-              </label>
-              <label className="poField">
-                <span>브랜드</span>
-                <input
-                  type="text"
-                  value={poForm.brand}
-                  onChange={(e) => setPoForm((p) => ({ ...p, brand: e.target.value }))}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="poField">
-                <span>상품명</span>
-                <input
-                  type="text"
-                  value={poForm.product_name}
-                  onChange={(e) => setPoForm((p) => ({ ...p, product_name: e.target.value }))}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="poField">
-                <span>제조사</span>
-                <input
-                  type="text"
-                  value={poForm.manufacturer}
-                  onChange={(e) => setPoForm((p) => ({ ...p, manufacturer: e.target.value }))}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="poField">
-                <span>총 발주수량</span>
-                <input
-                  type="number"
-                  min={0}
-                  step="any"
-                  value={poForm.total_quantity}
-                  onChange={(e) => setPoForm((p) => ({ ...p, total_quantity: e.target.value }))}
-                />
-              </label>
-              <label className="poField">
-                <span>납품가능일</span>
-                <input
-                  type="date"
-                  value={poForm.delivery_available_date}
-                  onChange={(e) => setPoForm((p) => ({ ...p, delivery_available_date: e.target.value }))}
-                />
-              </label>
-              <label className="poField">
-                <span>입고예정일</span>
-                <input
-                  type="date"
-                  value={poForm.expected_inbound_date}
-                  onChange={(e) => setPoForm((p) => ({ ...p, expected_inbound_date: e.target.value }))}
-                />
-              </label>
-            </div>
-            <div className="poFormActions">
-              <button type="button" className="primary" onClick={() => submitPurchaseOrder()}>
-                발주 저장
-              </button>
-            </div>
+          <div className="poSubTabsBar" role="tablist" aria-label="발주 하위 메뉴">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={purchaseOrderSubTab === "register"}
+              className={`tab poSubTab ${purchaseOrderSubTab === "register" ? "active" : ""}`}
+              onClick={() => setPurchaseOrderSubTab("register")}
+            >
+              새 발주 등록
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={purchaseOrderSubTab === "saved"}
+              className={`tab poSubTab ${purchaseOrderSubTab === "saved" ? "active" : ""}`}
+              onClick={() => setPurchaseOrderSubTab("saved")}
+            >
+              저장된 발주
+            </button>
           </div>
 
+          {purchaseOrderSubTab === "register" ? (
+          <div className="poFormCard poRegisterPanel">
+            <div className="poFormCardHeadRow poRegisterHeadRow">
+              <div className="skuManualHeadActions">
+                <button type="button" className="primary" onClick={() => submitPurchaseOrder()}>
+                  발주 저장
+                </button>
+              </div>
+            </div>
+            <div className="skuManualSection skuManualSectionKr poFormManualSection">
+              <div className="skuManualBlock">
+                <div className="skuManualKrGrid">
+                  <label className="skuManualKrField">
+                    <span className="skuManualKrFieldHead">발주일자</span>
+                    <div className="skuManualKrFieldBody">
+                      <input
+                        type="date"
+                        value={poForm.order_date}
+                        onChange={(e) => setPoForm((p) => ({ ...p, order_date: e.target.value }))}
+                      />
+                    </div>
+                  </label>
+                  <label className="skuManualKrField">
+                    <span className="skuManualKrFieldHead">ERP PO 번호</span>
+                    <div className="skuManualKrFieldBody">
+                      <input
+                        type="text"
+                        value={poForm.erp_po_number}
+                        onChange={(e) => setPoForm((p) => ({ ...p, erp_po_number: e.target.value }))}
+                        placeholder="예: PO2511000012"
+                        autoComplete="off"
+                      />
+                    </div>
+                  </label>
+                  <label className="skuManualKrField">
+                    <span className="skuManualKrFieldHead">상품유형</span>
+                    <div className="skuManualKrFieldBody">
+                      <PurchaseProductTypeField
+                        preset={poForm.product_type_preset}
+                        custom={poForm.product_type_custom}
+                        onPresetChange={(v) => setPoForm((p) => ({ ...p, product_type_preset: v }))}
+                        onCustomChange={(v) => setPoForm((p) => ({ ...p, product_type_custom: v }))}
+                      />
+                    </div>
+                  </label>
+                  <label className="skuManualKrField">
+                    <span className="skuManualKrFieldHead">상품코드(SKU)</span>
+                    <div className="skuManualKrFieldBody poKrFieldBodyStack">
+                      <input
+                        type="text"
+                        value={poForm.sku}
+                        onChange={(e) => {
+                          setPoForm((p) => ({ ...p, sku: e.target.value }));
+                          setSkuResolveHint("");
+                        }}
+                        onBlur={() => resolvePurchaseOrderSku()}
+                        placeholder="입력하면 자동으로 브랜드와 상품명이 입력됩니다"
+                        autoComplete="off"
+                      />
+                      {skuResolveHint ? <small className="poSkuHint">{skuResolveHint}</small> : null}
+                    </div>
+                  </label>
+                  <label className="skuManualKrField">
+                    <span className="skuManualKrFieldHead">브랜드</span>
+                    <div className="skuManualKrFieldBody">
+                      <input
+                        type="text"
+                        value={poForm.brand}
+                        onChange={(e) => setPoForm((p) => ({ ...p, brand: e.target.value }))}
+                        autoComplete="off"
+                      />
+                    </div>
+                  </label>
+                  <label className="skuManualKrField">
+                    <span className="skuManualKrFieldHead">상품명</span>
+                    <div className="skuManualKrFieldBody">
+                      <input
+                        type="text"
+                        value={poForm.product_name}
+                        onChange={(e) => setPoForm((p) => ({ ...p, product_name: e.target.value }))}
+                        autoComplete="off"
+                      />
+                    </div>
+                  </label>
+                  <label className="skuManualKrField">
+                    <span className="skuManualKrFieldHead">제조사</span>
+                    <div className="skuManualKrFieldBody">
+                      <input
+                        type="text"
+                        value={poForm.manufacturer}
+                        onChange={(e) => setPoForm((p) => ({ ...p, manufacturer: e.target.value }))}
+                        autoComplete="off"
+                      />
+                    </div>
+                  </label>
+                  <label className="skuManualKrField">
+                    <span className="skuManualKrFieldHead">총 발주수량</span>
+                    <div className="skuManualKrFieldBody">
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={poForm.total_quantity}
+                        onChange={(e) => setPoForm((p) => ({ ...p, total_quantity: e.target.value }))}
+                      />
+                    </div>
+                  </label>
+                  <label className="skuManualKrField">
+                    <span className="skuManualKrFieldHead">납품가능일</span>
+                    <div className="skuManualKrFieldBody">
+                      <input
+                        type="date"
+                        value={poForm.delivery_available_date}
+                        onChange={(e) => setPoForm((p) => ({ ...p, delivery_available_date: e.target.value }))}
+                      />
+                    </div>
+                  </label>
+                  <div className="skuManualKrField">
+                    <span className="skuManualKrFieldHead">입고예정일</span>
+                    <div className="skuManualKrFieldBody poExpectedInboundBody">
+                      <input
+                        type="date"
+                        disabled={poForm.expected_inbound_tbd}
+                        value={poForm.expected_inbound_tbd ? "" : poForm.expected_inbound_date}
+                        onChange={(e) =>
+                          setPoForm((p) => ({
+                            ...p,
+                            expected_inbound_date: e.target.value,
+                            expected_inbound_tbd: false,
+                          }))
+                        }
+                      />
+                      <label className="poExpectedInboundTbd">
+                        <input
+                          type="checkbox"
+                          checked={poForm.expected_inbound_tbd}
+                          onChange={(e) => {
+                            const tbd = e.target.checked;
+                            setPoForm((p) => ({
+                              ...p,
+                              expected_inbound_tbd: tbd,
+                              expected_inbound_date: tbd ? "" : p.expected_inbound_date,
+                            }));
+                          }}
+                        />
+                        미정
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          ) : null}
+
+          {purchaseOrderSubTab === "saved" ? (
           <div className="poFormCard poSavedOrdersPanel">
-            <h3 className="purchaseOrderSubTitle">저장된 발주</h3>
+            <div className="filterBar poSavedFilterBar">
+              <div className="searchWrap">
+                <span className="searchIcon" aria-hidden="true">
+                  🔍
+                </span>
+                <input
+                  className="searchInput poSavedFilterSearch"
+                  type="search"
+                  placeholder="ERP PO 또는 상품명 검색..."
+                  value={savedPoSearch}
+                  onChange={(e) => setSavedPoSearch(e.target.value)}
+                  aria-label="저장된 발주 검색 (ERP PO 또는 상품명)"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="datePresetBox" role="group" aria-label="발주일 기준 기간">
+                <button
+                  type="button"
+                  className={savedPoDateRange === "all" ? "preset active" : "preset"}
+                  onClick={() => setSavedPoDateRange("all")}
+                >
+                  전체
+                </button>
+                <button
+                  type="button"
+                  className={savedPoDateRange === "1m" ? "preset active" : "preset"}
+                  onClick={() => setSavedPoDateRange("1m")}
+                >
+                  1개월
+                </button>
+                <button
+                  type="button"
+                  className={savedPoDateRange === "3m" ? "preset active" : "preset"}
+                  onClick={() => setSavedPoDateRange("3m")}
+                >
+                  3개월
+                </button>
+                <button
+                  type="button"
+                  className={savedPoDateRange === "1y" ? "preset active" : "preset"}
+                  onClick={() => setSavedPoDateRange("1y")}
+                >
+                  1년
+                </button>
+              </div>
+              <button
+                type="button"
+                className="ghost resetBtn"
+                onClick={() => {
+                  setSavedPoSearch("");
+                  setSavedPoDateRange("all");
+                }}
+              >
+                필터 초기화
+              </button>
+            </div>
             {purchaseOrdersLoading ? (
               <div className="searchEmptyState">불러오는 중…</div>
             ) : !purchaseOrders.length ? (
               <div className="searchEmptyState">등록된 발주가 없습니다.</div>
+            ) : !filteredPurchaseOrders.length ? (
+              <div className="searchEmptyState">검색·기간 조건에 맞는 발주가 없습니다.</div>
             ) : (
               <div className="purchaseOrderList">
-                {purchaseOrders.map((po) => {
+                {filteredPurchaseOrders.map((po) => {
+                const isEditing = editingPoId === po.id;
+                const d = isEditing ? poEditDraft : null;
                 const draft = inboundDrafts[po.id] || {
                   actual_inbound_date: "",
                   quantity: "",
                   inbound_status: "O",
                 };
+                const displayLines = isEditing && d ? d.lines : po.inbound_lines || [];
+                const erpLabel = isEditing && d ? d.erp_po_number || po.erp_po_number : po.erp_po_number;
                 return (
                   <article key={po.id} className="purchaseOrderCard">
-                    <div className="poCardHead">
-                      <div className="poCardPo">{po.erp_po_number}</div>
-                      <div className="poCardMeta">
-                        발주일 {po.order_date || "—"} · SKU {po.sku || "—"}
+                    <div className="poCardHeroBand">
+                      <div className="poCardErpBand">
+                        <div className="poCardHeadTop">
+                          <div className="poCardPoBlock">
+                            {isEditing && d ? (
+                              <input
+                                type="text"
+                                className="poCardErpInput"
+                                value={d.erp_po_number}
+                                onChange={(e) =>
+                                  setPoEditDraft((p) => (p ? { ...p, erp_po_number: e.target.value } : p))
+                                }
+                                placeholder="ERP PO 번호"
+                                autoComplete="off"
+                                aria-label="ERP PO 번호"
+                              />
+                            ) : (
+                              <div className="poCardPo">{po.erp_po_number}</div>
+                            )}
+                          </div>
+                          <div className="poCardHeadActions">
+                            {isEditing && d ? (
+                              <>
+                                <button type="button" className="primary" onClick={() => submitPoEditSave()}>
+                                  저장
+                                </button>
+                                <button type="button" className="ghost" onClick={() => cancelPoEdit()}>
+                                  취소
+                                </button>
+                              </>
+                            ) : (
+                              <button type="button" className="ghost" onClick={() => startPoEdit(po)}>
+                                수정
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="poCardMeta poCardMetaLg">
+                          {isEditing && d ? (
+                            <div className="poCardMetaEditRow">
+                              <label className="poCardMetaField">
+                                <span className="poCardMetaLabel">발주일</span>
+                                <input
+                                  type="date"
+                                  className="poCardMetaInput"
+                                  value={d.order_date}
+                                  onChange={(e) =>
+                                    setPoEditDraft((p) => (p ? { ...p, order_date: e.target.value } : p))
+                                  }
+                                />
+                              </label>
+                              <label className="poCardMetaField">
+                                <span className="poCardMetaLabel">SKU</span>
+                                <input
+                                  type="text"
+                                  className="poCardMetaInput"
+                                  value={d.sku}
+                                  onChange={(e) =>
+                                    setPoEditDraft((p) =>
+                                      p ? { ...p, sku: e.target.value, skuResolveHint: "" } : p
+                                    )
+                                  }
+                                  onBlur={() => resolvePoEditSku()}
+                                  autoComplete="off"
+                                />
+                              </label>
+                            </div>
+                          ) : (
+                            <div className="poCardMetaLine">
+                              <span className="poCardMetaItem">
+                                <span className="poCardMetaK">발주일</span>{" "}
+                                <span className="poCardMetaV">{po.order_date || "—"}</span>
+                              </span>
+                              <span className="poCardMetaItem">
+                                <span className="poCardMetaK">SKU</span>{" "}
+                                <span className="poCardMetaV">{po.sku || "—"}</span>
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
+                      {isEditing && d?.skuResolveHint ? (
+                        <small className="poSkuHint poCardSkuHint">{d.skuResolveHint}</small>
+                      ) : null}
                     </div>
-                    <dl className="poCardDl">
-                      <div>
-                        <dt>상품유형</dt>
-                        <dd>{po.product_type || "—"}</dd>
-                      </div>
-                      <div>
-                        <dt>브랜드</dt>
-                        <dd>{po.brand || "—"}</dd>
-                      </div>
-                      <div>
-                        <dt>상품명</dt>
-                        <dd>{po.product_name || "—"}</dd>
-                      </div>
-                      <div>
-                        <dt>제조사</dt>
-                        <dd>{po.manufacturer || "—"}</dd>
-                      </div>
-                      <div>
-                        <dt>총 발주수량</dt>
-                        <dd>{po.total_quantity != null ? String(po.total_quantity) : "—"}</dd>
-                      </div>
-                      <div>
-                        <dt>납품가능일</dt>
-                        <dd>{po.delivery_available_date || "—"}</dd>
-                      </div>
-                      <div>
-                        <dt>입고예정일</dt>
-                        <dd>{po.expected_inbound_date || "—"}</dd>
-                      </div>
-                    </dl>
+                    <div className="poCardDetailWrap">
+                    {isEditing && d ? (
+                      <dl className="poCardDl poCardDlEdit poCardDlFields">
+                        <div>
+                          <dt>상품유형</dt>
+                          <dd>
+                            <PurchaseProductTypeField
+                              preset={d.product_type_preset}
+                              custom={d.product_type_custom}
+                              onPresetChange={(v) =>
+                                setPoEditDraft((p) => (p ? { ...p, product_type_preset: v } : p))
+                              }
+                              onCustomChange={(v) =>
+                                setPoEditDraft((p) => (p ? { ...p, product_type_custom: v } : p))
+                              }
+                            />
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>브랜드</dt>
+                          <dd>
+                            <input
+                              type="text"
+                              className="poCardDdInput"
+                              value={d.brand}
+                              onChange={(e) =>
+                                setPoEditDraft((p) => (p ? { ...p, brand: e.target.value } : p))
+                              }
+                              autoComplete="off"
+                            />
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>상품명</dt>
+                          <dd>
+                            <input
+                              type="text"
+                              className="poCardDdInput"
+                              value={d.product_name}
+                              onChange={(e) =>
+                                setPoEditDraft((p) => (p ? { ...p, product_name: e.target.value } : p))
+                              }
+                              autoComplete="off"
+                            />
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>제조사</dt>
+                          <dd>
+                            <input
+                              type="text"
+                              className="poCardDdInput"
+                              value={d.manufacturer}
+                              onChange={(e) =>
+                                setPoEditDraft((p) => (p ? { ...p, manufacturer: e.target.value } : p))
+                              }
+                              autoComplete="off"
+                            />
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>총 발주수량</dt>
+                          <dd>
+                            <input
+                              type="number"
+                              className="poCardDdInput"
+                              min={0}
+                              step="any"
+                              value={d.total_quantity}
+                              onChange={(e) =>
+                                setPoEditDraft((p) => (p ? { ...p, total_quantity: e.target.value } : p))
+                              }
+                            />
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>납품가능일</dt>
+                          <dd>
+                            <input
+                              type="date"
+                              className="poCardDdInput"
+                              value={d.delivery_available_date}
+                              onChange={(e) =>
+                                setPoEditDraft((p) =>
+                                  p ? { ...p, delivery_available_date: e.target.value } : p
+                                )
+                              }
+                            />
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>입고예정일</dt>
+                          <dd>
+                            <div className="poExpectedInboundBody poCardExpectedInbound">
+                              <input
+                                type="date"
+                                className="poCardDdInput poCardDdInputDate"
+                                disabled={d.expected_inbound_tbd}
+                                value={d.expected_inbound_tbd ? "" : d.expected_inbound_date}
+                                onChange={(e) =>
+                                  setPoEditDraft((p) =>
+                                    p
+                                      ? {
+                                          ...p,
+                                          expected_inbound_date: e.target.value,
+                                          expected_inbound_tbd: false,
+                                        }
+                                      : p
+                                  )
+                                }
+                              />
+                              <label className="poExpectedInboundTbd">
+                                <input
+                                  type="checkbox"
+                                  checked={d.expected_inbound_tbd}
+                                  onChange={(e) => {
+                                    const tbd = e.target.checked;
+                                    setPoEditDraft((p) =>
+                                      p
+                                        ? {
+                                            ...p,
+                                            expected_inbound_tbd: tbd,
+                                            expected_inbound_date: tbd ? "" : p.expected_inbound_date,
+                                          }
+                                        : p
+                                    );
+                                  }}
+                                />
+                                미정
+                              </label>
+                            </div>
+                          </dd>
+                        </div>
+                      </dl>
+                    ) : (
+                      <dl className="poCardDl poCardDlFields">
+                        <div>
+                          <dt>상품유형</dt>
+                          <dd>{po.product_type || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt>브랜드</dt>
+                          <dd>{po.brand || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt>상품명</dt>
+                          <dd>{po.product_name || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt>제조사</dt>
+                          <dd>{po.manufacturer || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt>총 발주수량</dt>
+                          <dd>{po.total_quantity != null ? String(po.total_quantity) : "—"}</dd>
+                        </div>
+                        <div>
+                          <dt>납품가능일</dt>
+                          <dd>{po.delivery_available_date || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt>입고예정일</dt>
+                          <dd>{po.expected_inbound_date || "미정"}</dd>
+                        </div>
+                      </dl>
+                    )}
                     <div className="poInboundBlock">
                       <h4 className="poInboundTitle">입고 차수</h4>
                       <table className="poInboundTable">
                         <thead>
                           <tr>
-                            <th>입고코드</th>
+                            <th>ERP PO 차수</th>
                             <th>실제입고일</th>
                             <th>입고수량</th>
                             <th>입고여부</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {(po.inbound_lines || []).length ? (
-                            po.inbound_lines.map((line) => (
-                              <tr key={line.id}>
-                                <td className="poRefCell">{line.ref_code}</td>
-                                <td>{line.actual_inbound_date || "—"}</td>
-                                <td>{line.quantity != null ? String(line.quantity) : "—"}</td>
-                                <td>{line.inbound_status}</td>
-                              </tr>
-                            ))
-                          ) : (
+                          {!displayLines.length ? (
                             <tr>
                               <td colSpan={4} className="poInboundEmpty">
-                                아직 입고 차수가 없습니다. 아래에서 추가하세요.
+                                아직 등록된 입고 차수가 없습니다. 표 맨 아래 행에 입력해 추가하세요.
                               </td>
                             </tr>
+                          ) : (
+                            displayLines.map((line) =>
+                              isEditing && d ? (
+                                <tr key={line.id}>
+                                  <td
+                                    className="poRefCell poInboundRefReadonly"
+                                    title="ERP PO 차수는 직접 수정할 수 없습니다. ERP PO 번호를 바꾼 뒤 저장하면 코드가 맞춰 자동 반영됩니다."
+                                  >
+                                    {String(d.erp_po_number || "").trim() ===
+                                    String(po.erp_po_number || "").trim()
+                                      ? line.ref_code
+                                      : `${String(d.erp_po_number || "").trim() || "…"}_${line.line_no}`}
+                                    {String(d.erp_po_number || "").trim() !==
+                                    String(po.erp_po_number || "").trim() ? (
+                                      <span className="poRefPreviewTag">미리보기</span>
+                                    ) : null}
+                                  </td>
+                                  <td>
+                                    <input
+                                      type="date"
+                                      className="poInboundCellControl"
+                                      aria-label={`실제입고일 — ${erpLabel}`}
+                                      value={line.actual_inbound_date}
+                                      onChange={(e) => {
+                                        const v = e.target.value;
+                                        setPoEditDraft((prev) =>
+                                          prev
+                                            ? {
+                                                ...prev,
+                                                lines: prev.lines.map((x) =>
+                                                  x.id === line.id ? { ...x, actual_inbound_date: v } : x
+                                                ),
+                                              }
+                                            : prev
+                                        );
+                                      }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <input
+                                      type="number"
+                                      className="poInboundCellControl"
+                                      min={0}
+                                      step="any"
+                                      placeholder="입고수량"
+                                      aria-label={`입고수량 — ${erpLabel}`}
+                                      value={line.quantity}
+                                      onChange={(e) => {
+                                        const v = e.target.value;
+                                        setPoEditDraft((prev) =>
+                                          prev
+                                            ? {
+                                                ...prev,
+                                                lines: prev.lines.map((x) =>
+                                                  x.id === line.id ? { ...x, quantity: v } : x
+                                                ),
+                                              }
+                                            : prev
+                                        );
+                                      }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <select
+                                      className="poInboundCellControl poInboundStatusSelect poInboundStatusSelectFull"
+                                      aria-label={`입고여부 — ${erpLabel}`}
+                                      value={line.inbound_status}
+                                      onChange={(e) => {
+                                        const v = e.target.value;
+                                        setPoEditDraft((prev) =>
+                                          prev
+                                            ? {
+                                                ...prev,
+                                                lines: prev.lines.map((x) =>
+                                                  x.id === line.id ? { ...x, inbound_status: v } : x
+                                                ),
+                                              }
+                                            : prev
+                                        );
+                                      }}
+                                    >
+                                      <option value="O">O (입고)</option>
+                                      <option value="X">X (미입고)</option>
+                                    </select>
+                                  </td>
+                                </tr>
+                              ) : (
+                                <tr key={line.id}>
+                                  <td className="poRefCell">{line.ref_code}</td>
+                                  <td>{line.actual_inbound_date || "—"}</td>
+                                  <td>{line.quantity != null ? String(line.quantity) : "—"}</td>
+                                  <td>{line.inbound_status}</td>
+                                </tr>
+                              )
+                            )
                           )}
                         </tbody>
+                        <tfoot className="poInboundTfoot">
+                          <tr className="poInboundNewRow">
+                            <td className="poInboundNewCodeCell">
+                              <span className="poInboundNewBadge">새 차수</span>
+                              <span className="poInboundNewHint">ERP PO 차수는 저장 시 자동 부여</span>
+                            </td>
+                            <td>
+                              <input
+                                type="date"
+                                className="poInboundCellControl"
+                                aria-label={`실제입고일 — ${erpLabel}`}
+                                value={draft.actual_inbound_date}
+                                onChange={(e) =>
+                                  setInboundDrafts((p) => ({
+                                    ...p,
+                                    [po.id]: { ...draft, actual_inbound_date: e.target.value },
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                className="poInboundCellControl"
+                                min={0}
+                                step="any"
+                                placeholder="입고수량"
+                                aria-label={`입고수량 — ${erpLabel}`}
+                                value={draft.quantity}
+                                onChange={(e) =>
+                                  setInboundDrafts((p) => ({
+                                    ...p,
+                                    [po.id]: { ...draft, quantity: e.target.value },
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="poInboundNewActionsCell">
+                              <div className="poInboundNewActions">
+                                <select
+                                  className="poInboundCellControl poInboundStatusSelect"
+                                  aria-label={`입고여부 — ${erpLabel}`}
+                                  value={draft.inbound_status}
+                                  onChange={(e) =>
+                                    setInboundDrafts((p) => ({
+                                      ...p,
+                                      [po.id]: { ...draft, inbound_status: e.target.value },
+                                    }))
+                                  }
+                                >
+                                  <option value="O">O (입고)</option>
+                                  <option value="X">X (미입고)</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  className="primary poInboundAddBtn"
+                                  onClick={() => submitInboundLine(po.id)}
+                                >
+                                  차수 추가
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        </tfoot>
                       </table>
-                      <div className="poInboundAdd">
-                        <input
-                          type="date"
-                          aria-label={`실제입고일 (${po.erp_po_number})`}
-                          value={draft.actual_inbound_date}
-                          onChange={(e) =>
-                            setInboundDrafts((p) => ({
-                              ...p,
-                              [po.id]: { ...draft, actual_inbound_date: e.target.value },
-                            }))
-                          }
-                        />
-                        <input
-                          type="number"
-                          min={0}
-                          step="any"
-                          placeholder="입고수량"
-                          aria-label="입고수량"
-                          value={draft.quantity}
-                          onChange={(e) =>
-                            setInboundDrafts((p) => ({
-                              ...p,
-                              [po.id]: { ...draft, quantity: e.target.value },
-                            }))
-                          }
-                        />
-                        <select
-                          aria-label="입고여부"
-                          value={draft.inbound_status}
-                          onChange={(e) =>
-                            setInboundDrafts((p) => ({
-                              ...p,
-                              [po.id]: { ...draft, inbound_status: e.target.value },
-                            }))
-                          }
-                        >
-                          <option value="O">O</option>
-                          <option value="X">X</option>
-                        </select>
-                        <button type="button" className="ghost" onClick={() => submitInboundLine(po.id)}>
-                          차수 추가
-                        </button>
-                      </div>
+                    </div>
                     </div>
                   </article>
                 );
@@ -2721,6 +3450,7 @@ export default function App() {
               </div>
             )}
           </div>
+          ) : null}
         </section>
       )}
 
@@ -3153,9 +3883,6 @@ export default function App() {
                         </span>
                         <div className="productMappingItemNamePart productMappingGridHeadName">
                           {row.kr_name || "상품명 없음"}
-                        </div>
-                        <div className="productMappingItemMeta productMappingGridHeadMeta">
-                          {row._countries.length}개 국가
                         </div>
                       </div>
                       {row._countries.map((country, countryIdx) => (

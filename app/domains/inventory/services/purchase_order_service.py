@@ -59,7 +59,7 @@ def create_purchase_order(db: Session, payload: dict) -> PurchaseOrder:
         raise HTTPException(status_code=400, detail="ERP PO 번호는 필수입니다.")
     existing = db.scalar(select(PurchaseOrder.id).where(PurchaseOrder.erp_po_number == erp))
     if existing:
-        raise HTTPException(status_code=409, detail=f"동일한 ERP PO 번호가 이미 있습니다: {erp}")
+        raise HTTPException(status_code=409, detail="이미 저장된 발주 기록입니다.")
 
     sku = str(payload.get("sku") or "").strip()
     if not sku:
@@ -117,6 +117,73 @@ def add_inbound_line(db: Session, order_id: uuid.UUID, payload: dict) -> Purchas
     db.commit()
     db.refresh(line)
     return line
+
+
+def update_purchase_order(db: Session, order_id: uuid.UUID, payload: dict) -> PurchaseOrder:
+    po = get_purchase_order(db, order_id)
+    if po is None:
+        raise HTTPException(status_code=404, detail="발주를 찾을 수 없습니다.")
+
+    new_erp = str(payload.get("erp_po_number") or "").strip()
+    if not new_erp:
+        raise HTTPException(status_code=400, detail="ERP PO 번호는 필수입니다.")
+
+    conflict = db.scalar(
+        select(PurchaseOrder.id).where(
+            PurchaseOrder.erp_po_number == new_erp,
+            PurchaseOrder.id != order_id,
+        )
+    )
+    if conflict:
+        raise HTTPException(status_code=409, detail="이미 저장된 발주 기록입니다.")
+
+    sku = str(payload.get("sku") or "").strip()
+    if not sku:
+        raise HTTPException(status_code=400, detail="상품코드(SKU)는 필수입니다.")
+
+    order_date = _parse_date(payload.get("order_date"), "발주일자")
+    if order_date is None:
+        raise HTTPException(status_code=400, detail="발주일자는 필수입니다.")
+
+    total_q = _parse_decimal(payload.get("total_quantity"), "총 발주수량")
+
+    old_erp = po.erp_po_number
+    po.order_date = order_date
+    po.erp_po_number = new_erp
+    po.product_type = str(payload.get("product_type") or "").strip() or "본품"
+    po.sku = sku
+    po.brand = str(payload.get("brand") or "").strip()
+    po.product_name = str(payload.get("product_name") or "").strip()
+    po.manufacturer = str(payload.get("manufacturer") or "").strip()
+    po.total_quantity = float(total_q)
+    po.delivery_available_date = _parse_date(payload.get("delivery_available_date"), "납품가능일")
+    po.expected_inbound_date = _parse_date(payload.get("expected_inbound_date"), "입고예정일")
+
+    if old_erp != new_erp:
+        for line in po.inbound_lines or []:
+            line.ref_code = f"{new_erp}_{line.line_no}"
+
+    line_updates = payload.get("inbound_lines")
+    if line_updates is not None:
+        by_id = {str(l.id): l for l in (po.inbound_lines or [])}
+        for item in line_updates:
+            lid = str(item.get("id") or "").strip()
+            if not lid:
+                raise HTTPException(status_code=400, detail="입고 차수 id가 없습니다.")
+            line = by_id.get(lid)
+            if line is None:
+                raise HTTPException(status_code=400, detail=f"입고 차수를 찾을 수 없습니다: {lid}")
+            qty = _parse_decimal(item.get("quantity"), "입고수량")
+            status = str(item.get("inbound_status") or "O").strip().upper()
+            if status not in ("O", "X"):
+                raise HTTPException(status_code=400, detail="입고여부는 O 또는 X 여야 합니다.")
+            line.actual_inbound_date = _parse_date(item.get("actual_inbound_date"), "실제입고일")
+            line.quantity = float(qty)
+            line.inbound_status = status
+
+    db.commit()
+    db.refresh(po)
+    return po
 
 
 def purchase_order_to_dict(po: PurchaseOrder) -> dict:
