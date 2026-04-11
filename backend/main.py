@@ -1,5 +1,9 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
 
 from app.domains.inventory.controllers.inventory_api_controller import (
     router as inventory_router,
@@ -15,6 +19,21 @@ from app.shared.storage import is_s3_configured
 
 settings = get_runtime_settings()
 app = FastAPI(title="Inventory Aggregate API", version="0.1.0")
+_log = logging.getLogger(__name__)
+
+
+@app.exception_handler(OperationalError)
+async def database_operational_error_handler(request: Request, exc: OperationalError) -> JSONResponse:
+    """DNS 실패·DB 다운 등 연결 불가 시 500 대신 503과 안내."""
+    _log.warning("Database operational error on %s: %s", request.url.path, exc)
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "데이터베이스에 연결할 수 없습니다. PC 인터넷·DNS와 DATABASE_URL(호스트 이름)을 확인하세요. "
+            "Supabase를 쓰는 경우 프로젝트가 일시 중지되었거나 호스트가 바뀌지 않았는지도 확인하세요.",
+        },
+    )
+
 
 app.add_middleware(
     CORSMiddleware,

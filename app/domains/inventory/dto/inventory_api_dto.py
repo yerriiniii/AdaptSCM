@@ -115,3 +115,80 @@ class InventorySkuMappingItemResponse(BaseModel):
 class InventorySkuMappingListResponse(BaseModel):
     items: list[InventorySkuMappingItemResponse] = Field(default_factory=list)
 
+
+class PurchaseInboundLineResponse(BaseModel):
+    id: str
+    line_no: int
+    ref_code: str
+    actual_inbound_date: str | None = None
+    quantity: float
+    inbound_status: str
+    created_at: str | None = None
+
+
+class PurchaseOrderResponse(BaseModel):
+    id: str
+    order_date: str | None = None
+    erp_po_number: str
+    product_type: str
+    sku: str
+    brand: str
+    product_name: str
+    manufacturer: str
+    total_quantity: float
+    delivery_available_date: str | None = None
+    expected_inbound_date: str | None = None
+    created_at: str | None = None
+    inbound_lines: list[PurchaseInboundLineResponse] = Field(default_factory=list)
+
+
+class PurchaseOrderListResponse(BaseModel):
+    items: list[PurchaseOrderResponse] = Field(default_factory=list)
+
+
+class PurchaseOrderCreateRequest(BaseModel):
+    order_date: str
+    erp_po_number: str
+    product_type: str = "본품"
+    sku: str
+    brand: str = ""
+    product_name: str = ""
+    manufacturer: str = ""
+    total_quantity: float | str
+    delivery_available_date: str | None = None
+    expected_inbound_date: str | None = None
+
+
+class PurchaseInboundCreateRequest(BaseModel):
+    actual_inbound_date: str | None = None
+    quantity: float | str
+    inbound_status: str = "O"
+
+
+class PurchaseOrderInboundLineUpdate(BaseModel):
+    id: str
+    actual_inbound_date: str | None = None
+    quantity: float | str
+    inbound_status: str = "O"
+
+
+class PurchaseOrderUpdateRequest(BaseModel):
+    order_date: str
+    erp_po_number: str
+    product_type: str = "본품"
+    sku: str
+    brand: str = ""
+    product_name: str = ""
+    manufacturer: str = ""
+    total_quantity: float | str
+    delivery_available_date: str | None = None
+    expected_inbound_date: str | None = None
+    inbound_lines: list[PurchaseOrderInboundLineUpdate] | None = None
+
+
+class SkuLookupForPurchaseResponse(BaseModel):
+    matched: bool
+    brand: str = ""
+    product_name: str = ""
+    message: str = ""
+

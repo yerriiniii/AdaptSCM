@@ -1,5 +1,8 @@
-from fastapi import APIRouter, Body, Depends, File, Form, Query, UploadFile
-from sqlalchemy.orm import Session
+import uuid
+
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
 
 from app.domains.inventory.dto.inventory_api_dto import (
     InventoryAggregateResponse,
@@ -11,11 +14,19 @@ from app.domains.inventory.dto.inventory_api_dto import (
     InventorySkuMappingSummaryResponse,
     InventorySkuMappingUpsertRequest,
     InventorySkuMappingUploadResponse,
+    PurchaseInboundCreateRequest,
+    PurchaseInboundLineResponse,
+    PurchaseOrderCreateRequest,
+    PurchaseOrderListResponse,
+    PurchaseOrderResponse,
+    PurchaseOrderUpdateRequest,
+    SkuLookupForPurchaseResponse,
 )
 from app.domains.inventory.services.inventory_mapping_service import (
     clear_product_sku_mappings,
     get_product_sku_mapping_summary,
     list_product_sku_mappings,
+    lookup_product_by_any_country_sku,
     merge_product_sku_mappings,
     upsert_product_sku_mapping,
 )
@@ -32,6 +43,15 @@ from app.domains.inventory.services.inventory_persistence_service import (
     prepare_inventory_direct_uploads,
     persist_inventory_uploads,
 )
+from app.domains.inventory.models.inventory_models import PurchaseOrder as PurchaseOrderModel
+from app.domains.inventory.services.purchase_order_service import (
+    add_inbound_line,
+    create_purchase_order,
+    list_purchase_orders,
+    purchase_order_to_dict,
+    update_purchase_order,
+)
+from app.shared.config import get_runtime_settings
 from app.shared.db import get_db_session
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
@@ -166,4 +186,79 @@ def remove_inventory_files(
     db: Session = Depends(get_db_session),
 ) -> dict:
     return delete_inventory_files(db=db, country_code=country_code)
+
+
+def _require_db_configured() -> None:
+    if not get_runtime_settings().database_enabled:
+        raise HTTPException(status_code=503, detail="DATABASE_URL이 설정되지 않았습니다.")
+
+
+@router.get("/purchase-orders/sku-hint", response_model=SkuLookupForPurchaseResponse)
+def purchase_order_sku_hint(sku: str = Query(..., min_length=1), db: Session = Depends(get_db_session)) -> SkuLookupForPurchaseResponse:
+    _require_db_configured()
+    data = lookup_product_by_any_country_sku(db, sku)
+    return SkuLookupForPurchaseResponse(**data)
+
+
+@router.get("/purchase-orders", response_model=PurchaseOrderListResponse)
+def purchase_orders_list(db: Session = Depends(get_db_session)) -> PurchaseOrderListResponse:
+    _require_db_configured()
+    rows = list_purchase_orders(db)
+    return PurchaseOrderListResponse(items=[PurchaseOrderResponse(**purchase_order_to_dict(po)) for po in rows])
+
+
+@router.post("/purchase-orders", response_model=PurchaseOrderResponse)
+def purchase_orders_create(
+    payload: PurchaseOrderCreateRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> PurchaseOrderResponse:
+    _require_db_configured()
+    po = create_purchase_order(db, payload.model_dump())
+    stmt = select(PurchaseOrderModel).where(PurchaseOrderModel.id == po.id).options(selectinload(PurchaseOrderModel.inbound_lines))
+    po2 = db.scalars(stmt).unique().first()
+    return PurchaseOrderResponse(**purchase_order_to_dict(po2 or po))
+
+
+@router.patch("/purchase-orders/{order_id}", response_model=PurchaseOrderResponse)
+def purchase_orders_update(
+    order_id: str,
+    payload: PurchaseOrderUpdateRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> PurchaseOrderResponse:
+    _require_db_configured()
+    try:
+        oid = uuid.UUID(order_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="order_id 형식이 올바르지 않습니다.") from exc
+    po = update_purchase_order(db, oid, payload.model_dump())
+    stmt = (
+        select(PurchaseOrderModel)
+        .where(PurchaseOrderModel.id == po.id)
+        .options(selectinload(PurchaseOrderModel.inbound_lines))
+    )
+    po2 = db.scalars(stmt).unique().first()
+    return PurchaseOrderResponse(**purchase_order_to_dict(po2 or po))
+
+
+@router.post("/purchase-orders/{order_id}/inbounds", response_model=PurchaseInboundLineResponse)
+def purchase_orders_add_inbound(
+    order_id: str,
+    payload: PurchaseInboundCreateRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> PurchaseInboundLineResponse:
+    _require_db_configured()
+    try:
+        oid = uuid.UUID(order_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="order_id 형식이 올바르지 않습니다.") from exc
+    line = add_inbound_line(db, oid, payload.model_dump())
+    return PurchaseInboundLineResponse(
+        id=str(line.id),
+        line_no=line.line_no,
+        ref_code=line.ref_code,
+        actual_inbound_date=line.actual_inbound_date.isoformat() if line.actual_inbound_date else None,
+        quantity=float(line.quantity),
+        inbound_status=line.inbound_status,
+        created_at=line.created_at.isoformat() if line.created_at else None,
+    )
 

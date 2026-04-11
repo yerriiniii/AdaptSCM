@@ -1229,3 +1229,33 @@ def resolve_product_sku_mapping(
         "mapped_kr_name": str(matched.get("kr_name") or ""),
         "mapped_kr_sku": str(matched.get("kr_sku") or ""),
     }
+
+
+def lookup_product_by_any_country_sku(db: Session, raw_sku: object) -> dict[str, str | bool]:
+    """발주 등록용: 어느 국가 SKU든 매칭되면 브랜드·한국 기준 상품명 반환."""
+    needle = _normalize_mapping_sku(raw_sku)
+    if not needle:
+        return {
+            "matched": False,
+            "brand": "",
+            "product_name": "",
+            "message": "상품코드를 입력하세요.",
+        }
+    groups = _load_product_groups(db)
+    for group in groups:
+        for loc in group.locales:
+            if _normalize_mapping_sku(loc.sku) == needle:
+                kr_loc = next((x for x in group.locales if x.country_code == "KR"), None)
+                name = (kr_loc.name if kr_loc and kr_loc.name else None) or group.kr_name or ""
+                return {
+                    "matched": True,
+                    "brand": str(group.brand or "").strip(),
+                    "product_name": str(name).strip(),
+                    "message": "",
+                }
+    return {
+        "matched": False,
+        "brand": "",
+        "product_name": "",
+        "message": "등록된 상품코드가 없습니다. SKU 관리 탭에서 상품코드를 먼저 등록하세요.",
+    }
