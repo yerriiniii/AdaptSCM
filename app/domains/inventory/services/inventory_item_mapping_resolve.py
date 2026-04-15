@@ -91,7 +91,10 @@ def attach_item_mapping_kr_to_inventory_rows(db: Session, country_code: str, res
         if loc is None:
             row["mapped_kr_name"] = "-"
             row["mapped_kr_sku"] = ""
+            row["mapped_barcode"] = ""
             continue
         kr_name, kr_sku = _kr_display_for_locale_row(loc)
         row["mapped_kr_name"] = kr_name
         row["mapped_kr_sku"] = kr_sku
+        group = loc.product_group
+        row["mapped_barcode"] = str(group.barcode or "").strip() if group else ""

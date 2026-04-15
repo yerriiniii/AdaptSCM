@@ -26,13 +26,14 @@ const SKU_MAPPING_FIELDS = [
   { code: "AE", label: "아랍에미리트", nameKey: "ae_name", skuKey: "ae_sku" },
 ];
 const SKU_MAPPING_TEMPLATE_COLUMNS = SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [nameKey, skuKey]);
-const SKU_MAPPING_OPTIONAL_COLUMNS = ["option", "brand"];
+const SKU_MAPPING_OPTIONAL_COLUMNS = ["option", "brand", "barcode"];
 const EMPTY_SKU_MAPPING_FORM = Object.fromEntries([
   ...SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [
     [nameKey, ""],
     [skuKey, ""],
   ]),
   ["brand", ""],
+  ["barcode", ""],
   ["option", ""],
 ]);
 
@@ -208,6 +209,127 @@ async function downloadPoInboundTemplateXlsx() {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "발주_템플릿.xlsx";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/** 재고 대시보드 내보내기: 헤더 노란 배경·볼드, 본문 9pt (ExcelJS) */
+async function downloadInventoryDashboardXlsx(filename, sheetName, rows) {
+  const ExcelJS = (await import("exceljs")).default;
+  const FONT_9 = { name: "맑은 고딕", size: 9 };
+  const thinBorder = {
+    top: { style: "thin" },
+    left: { style: "thin" },
+    bottom: { style: "thin" },
+    right: { style: "thin" },
+  };
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: true }] });
+  if (!rows.length) return;
+  const headers = Object.keys(rows[0]);
+  ws.addRow(headers);
+  for (const r of rows) {
+    ws.addRow(headers.map((h) => r[h]));
+  }
+  ws.eachRow((row, rowNumber) => {
+    row.eachCell((cell) => {
+      cell.font = { ...FONT_9, bold: rowNumber === 1 };
+      cell.border = thinBorder;
+      if (rowNumber === 1) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFFFFF00" },
+        };
+      }
+    });
+  });
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const base = String(filename || "").replace(/\.xlsx$/i, "");
+  a.download = `${base}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/** SKU 탭: 한·미·대·홍 전용 .xlsx를 ZIP으로 내려받기 (파일마다 첫 시트만 업로드 시 읽힘) */
+const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
+  {
+    code: "KR",
+    fileLabel: "한국",
+    headers: ["한국 SKU", "브랜드", "한국 상품명", "옵션", "바코드"],
+    headerNotes: {
+      옵션: "선택. 있으면 각 국가 상품명 끝에 공백과 함께 붙여 저장됩니다.",
+      바코드: "선택. 있으면 상품(item)의 바코드로 저장되며, 업로드 시 값이 있을 때만 갱신됩니다.",
+    },
+  },
+  {
+    code: "US",
+    fileLabel: "미국",
+    headers: ["미국 SKU", "미국 상품명", "한국 SKU"],
+    headerNotes: {
+      "한국 SKU": "연결할 기존 한국 상품의 SKU입니다. 이 값으로 item을 찾아 US 로케일을 붙입니다.",
+    },
+  },
+  { code: "TW", fileLabel: "대만", headers: ["대만 SKU", "대만 상품명"], headerNotes: {} },
+  { code: "HK", fileLabel: "홍콩", headers: ["홍콩 SKU", "홍콩 상품명"], headerNotes: {} },
+];
+
+async function downloadSkuMappingCountryTemplatesZip() {
+  const ExcelJS = (await import("exceljs")).default;
+  const JSZip = (await import("jszip")).default;
+  const FONT_9 = { name: "맑은 고딕", size: 9 };
+  const zip = new JSZip();
+
+  for (const spec of SKU_MAPPING_TEMPLATE_ZIP_SPECS) {
+    const { headers, headerNotes = {} } = spec;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Sheet1", { views: [{ showGridLines: true }] });
+    const hr = ws.addRow(headers);
+    hr.height = 18;
+    ws.addRow(headers.map(() => ""));
+    headers.forEach((h, i) => {
+      ws.getColumn(i + 1).width = String(h).length > 12 ? 22 : 15;
+    });
+    ws.eachRow((row, rowNumber) => {
+      row.eachCell((cell) => {
+        cell.font = {
+          ...FONT_9,
+          bold: rowNumber === 1,
+        };
+        cell.border = {
+          top: { style: "thin" },
+          left: { style: "thin" },
+          bottom: { style: "thin" },
+          right: { style: "thin" },
+        };
+        if (rowNumber === 1) {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFFFFF00" },
+          };
+        }
+      });
+    });
+    headers.forEach((h, i) => {
+      const note = headerNotes[h];
+      if (note) {
+        ws.getRow(1).getCell(i + 1).note = note;
+      }
+    });
+    const buf = await wb.xlsx.writeBuffer();
+    zip.file(`${spec.fileLabel}_SKU_매핑_템플릿.xlsx`, buf);
+  }
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "한미대홍_SKU_매핑_템플릿.zip";
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -666,6 +788,13 @@ function toFixed(value, digits = 2) {
   return parsed.toFixed(digits);
 }
 
+/** 재고 표 날짜 열 헤더 문자열 — `renderDateHeader`와 동일한 한 셀 표기 */
+function formatInventoryDateHeaderForExport(dateKey) {
+  const [y, m, d] = String(dateKey).split("-");
+  if (y && m && d) return `${y} - ${m}-${d}`;
+  return String(dateKey);
+}
+
 function toSigned(value, digits = 0) {
   if (value === null || value === undefined) return "-";
   const parsed = Number(value);
@@ -818,9 +947,14 @@ function getCompareDisplayName(row) {
 }
 
 function getCompareMeta(row) {
+  const lv = row?.level;
+  let levelStr = "";
+  if (lv != null && lv !== "") {
+    levelStr = String(lv).trim().replace(/\.0+$/, "");
+  }
   return {
     supplier: String(row?.supplier || "").trim(),
-    level: String(row?.level ?? "").trim(),
+    level: levelStr,
     warehouse: String(row?.warehouse || row?.category || "").trim(),
   };
 }
@@ -828,7 +962,6 @@ function getCompareMeta(row) {
 function getCompareMetaLabel(row) {
   const meta = getCompareMeta(row);
   const parts = [];
-  if (meta.supplier) parts.push(meta.supplier);
   if (meta.level) parts.push(`L${meta.level}`);
   if (meta.warehouse) parts.push(meta.warehouse);
   return parts.join(" / ");
@@ -840,6 +973,29 @@ function getCompareIdentity(row) {
   const meta = getCompareMeta(row);
   if (!code && !name && !meta.supplier && !meta.level && !meta.warehouse) return "";
   return `${code}::${name}::${meta.supplier}::${meta.level}::${meta.warehouse}`;
+}
+
+/** 한국 행(메타 비어 있음) 먼저 등록된 뒤 해외 행이 오면 더 자세한 구분 문자열로 갱신 */
+function pickRicherCompareMetaLabel(prev, next) {
+  const a = String(prev || "").trim();
+  const b = String(next || "").trim();
+  const ac = a ? a.split(" / ").filter(Boolean).length : 0;
+  const bc = b ? b.split(" / ").filter(Boolean).length : 0;
+  if (bc > ac) return b;
+  if (ac > bc) return a;
+  return b || a;
+}
+
+/** identity 키 끝의 level·warehouse (브랜드는 구분 표시에 넣지 않음) */
+function metaLabelFromCompareIdentityKey(compareKey) {
+  const parts = String(compareKey || "").split("::");
+  if (parts.length < 5) return "";
+  const levelRaw = (parts[parts.length - 2] || "").trim().replace(/\.0+$/, "");
+  const warehouse = (parts[parts.length - 1] || "").trim();
+  const out = [];
+  if (levelRaw) out.push(/^L/i.test(levelRaw) ? levelRaw : `L${levelRaw}`);
+  if (warehouse) out.push(warehouse);
+  return out.join(" / ");
 }
 
 function countryLabel(code = "KR") {
@@ -878,6 +1034,39 @@ function getProductMappingCountries(row = {}) {
 function getLatestDateKey(dateKeys = []) {
   if (!dateKeys.length) return "";
   return [...dateKeys].sort().at(-1) || "";
+}
+
+/** 재고 표 정렬: 화면에 보이는 날짜 열 중 가장 최근 일자의 수량(내림차순 기준) */
+function inventoryRowLatestQty(row, dateCols) {
+  const latest = getLatestDateKey(dateCols);
+  if (!latest) return 0;
+  return Number(row[latest] || 0);
+}
+
+function compareInventoryRowsByLatestQty(a, b, dateCols) {
+  const dq = inventoryRowLatestQty(b, dateCols) - inventoryRowLatestQty(a, dateCols);
+  if (dq !== 0) return dq;
+  const c = String(getRowSku(a) || "").localeCompare(String(getRowSku(b) || ""), "ko");
+  if (c !== 0) return c;
+  return String(a.description || "").localeCompare(String(b.description || ""), "ko");
+}
+
+/** 재고 비교 표: 선택 기준일 기준 각국 수량 합(없는 국가·null은 0) — 내림차순 정렬용 */
+function comparePivotRowTotalQty(row) {
+  let s = 0;
+  const kr = row["한국 현 재고"];
+  if (kr != null) s += Number(kr) || 0;
+  for (const code of OVERSEAS_UPLOAD_COUNTRIES) {
+    const v = row[countryLabel(code)];
+    if (v != null) s += Number(v) || 0;
+  }
+  return s;
+}
+
+function comparePivotRowsByTotalQty(a, b) {
+  const d = comparePivotRowTotalQty(b) - comparePivotRowTotalQty(a);
+  if (d !== 0) return d;
+  return String(a["상품코드"] || "").localeCompare(String(b["상품코드"] || ""), "ko");
 }
 
 /** hydratePersistedState 실패 시 – 네트워크/DB/500 구분에 도움 */
@@ -1588,7 +1777,7 @@ export default function App() {
     if (!rawInventoryRows.length) return [];
     const needle = inventoryKeyword.trim().toLowerCase();
 
-    return rawInventoryRows.filter((row) => {
+    const rows = rawInventoryRows.filter((row) => {
       if (!matchesCountryScope(row.country)) return false;
 
       if (!isKRScope && hasInventoryLevels && inventoryLevelFilter !== "all") {
@@ -1603,6 +1792,7 @@ export default function App() {
       }
       return true;
     });
+    return [...rows].sort((a, b) => compareInventoryRowsByLatestQty(a, b, filteredDateColumns));
   }, [
     rawInventoryRows,
     inventoryKeyword,
@@ -1611,6 +1801,7 @@ export default function App() {
     countryTabMode,
     selectedOverseasCountry,
     isKRScope,
+    filteredDateColumns,
   ]);
 
   useEffect(() => {
@@ -1653,7 +1844,7 @@ export default function App() {
     return groups;
   }, [fileEntries]);
 
-  /** 해외 행과 맞출 때는 공급처/창고/레벨이 국가마다 달라 getCompareIdentity로는 키가 안 맞음 → 한국 SKU(매핑 우선) 기준으로 합산 */
+  /** 해외 행과 맞출 때 브랜드/창고/레벨이 국가마다 달라 행 단위가 다를 수 있음 → 한국 SKU(매핑 우선)로 오늘 재고 합산 */
   const krCompareMap = useMemo(() => {
     const krRows = (scopeResultCache.KR?.rows || []).filter((row) => String(row.country || "KR") === "KR");
     const krDates = scopeResultCache.KR?.dates || [];
@@ -1688,12 +1879,6 @@ export default function App() {
     return map;
   }, [scopeResultCache]);
 
-  const totalInventory = useMemo(() => {
-    const latestDate = getLatestDateKey(filteredDateColumns);
-    if (!latestDate) return 0;
-    return filteredRows.reduce((acc, row) => acc + Number(row[latestDate] || 0), 0);
-  }, [filteredRows, filteredDateColumns]);
-
   const krDisplayRows = useMemo(() => {
     if (!isKRScope) return [];
     return filteredRows.map((row, idx) => ({
@@ -1719,6 +1904,12 @@ export default function App() {
 
   const latestScopeDateLabel = useMemo(() => getLatestDateKey(filteredDateColumns) || "-", [filteredDateColumns]);
 
+  const inventoryBasisLabel = useMemo(() => {
+    if (isKRScope) return "가용재고";
+    if (isOverseasScope) return "해당 국가 창고 재고";
+    return "–";
+  }, [isKRScope, isOverseasScope]);
+
   const compareAvailableDates = useMemo(() => {
     const allDates = new Set(scopeResultCache.KR?.dates || []);
     for (const code of OVERSEAS_UPLOAD_COUNTRIES) {
@@ -1728,6 +1919,12 @@ export default function App() {
     }
     return Array.from(allDates).sort();
   }, [scopeResultCache]);
+
+  const compareDatePickerExtent = useMemo(() => {
+    const sorted = [...compareAvailableDates].filter(Boolean).sort();
+    if (!sorted.length) return {};
+    return { min: sorted[0], max: sorted[sorted.length - 1] };
+  }, [compareAvailableDates]);
 
   const compareLatestDateLabel = useMemo(
     () => getLatestDateKey(compareAvailableDates) || "-",
@@ -1764,8 +1961,15 @@ export default function App() {
         const compareKey = getCompareIdentity(row);
         if (!compareKey) continue;
         allKeys.add(compareKey);
-        if (!rowMetaLookup.has(compareKey)) {
+        const existing = rowMetaLookup.get(compareKey);
+        if (!existing) {
           rowMetaLookup.set(compareKey, { code, name: displayName, metaLabel });
+        } else {
+          rowMetaLookup.set(compareKey, {
+            code: existing.code || code,
+            name: String(existing.name || "").trim() || displayName,
+            metaLabel: pickRicherCompareMetaLabel(existing.metaLabel, metaLabel),
+          });
         }
         if (!hasDate) continue;
         qtyMap.set(compareKey, Number(qtyMap.get(compareKey) || 0) + Number(row[compareSelectedDate] || 0));
@@ -1782,8 +1986,8 @@ export default function App() {
         const aMeta = rowMetaLookup.get(a) || {};
         const bMeta = rowMetaLookup.get(b) || {};
         return (
-          String(aMeta.code || "").localeCompare(String(bMeta.code || "")) ||
-          String(aMeta.name || "").localeCompare(String(bMeta.name || ""))
+          String(aMeta.code || "").localeCompare(String(bMeta.code || ""), "ko") ||
+          String(aMeta.name || "").localeCompare(String(bMeta.name || ""), "ko")
         );
       }),
       rowMetaLookup,
@@ -1817,7 +2021,7 @@ export default function App() {
         _compareKey: rowKey,
         상품코드: meta.code || "",
         한국상품명: meta.name || "",
-        구분: meta.metaLabel || "",
+        구분: String(meta.metaLabel || "").trim() || metaLabelFromCompareIdentityKey(rowKey),
         "한국 현 재고": compareCountryData.byCountry.KR?.hasDate
           ? Number(compareCountryData.byCountry.KR.qtyMap.get(rowKey) || 0)
           : null,
@@ -1834,13 +2038,15 @@ export default function App() {
   const filteredCompareRows = useMemo(() => {
     if (!isCompareScope) return [];
     const needle = inventoryKeyword.trim().toLowerCase();
-    if (!needle) return compareRows;
-    return compareRows.filter((row) => {
-      const code = String(row["상품코드"] || "").toLowerCase();
-      const krName = String(row["한국상품명"] || "").toLowerCase();
-      const meta = String(row["구분"] || "").toLowerCase();
-      return code.includes(needle) || krName.includes(needle) || meta.includes(needle);
-    });
+    const base = !needle
+      ? compareRows
+      : compareRows.filter((row) => {
+          const code = String(row["상품코드"] || "").toLowerCase();
+          const krName = String(row["한국상품명"] || "").toLowerCase();
+          const meta = String(row["구분"] || "").toLowerCase();
+          return code.includes(needle) || krName.includes(needle) || meta.includes(needle);
+        });
+    return [...base].sort(comparePivotRowsByTotalQty);
   }, [compareRows, inventoryKeyword, isCompareScope]);
   const tableMinWidth = useMemo(() => {
     const dateCols = filteredDateColumns.length * 88;
@@ -1986,7 +2192,7 @@ export default function App() {
   function renderInventoryHeaderCells() {
     return (
       <>
-        {isKRScope && <th className="stickyCol stickyColSupplier">공급처</th>}
+        {isKRScope && <th className="stickyCol stickyColBrand">브랜드</th>}
         <th className="stickyCol stickyColCode">상품코드</th>
         <th className="stickyCol stickyColName stickyColBoundary">상품명</th>
         {isOverseasScope && <th className="stickyCol stickyColKrName stickyColBoundary">한국상품명</th>}
@@ -2064,74 +2270,61 @@ export default function App() {
     }
   }
 
-  function exportCurrentView() {
+  async function exportCurrentView() {
     if (isCompareScope) {
       if (!filteredCompareRows.length) return;
       const rows = filteredCompareRows.map((row) => {
         const out = {
           상품코드: row["상품코드"],
-          한국상품명: row["한국상품명"] || "",
-          구분: row["구분"] || "",
-          한국: row["한국 현 재고"] === null ? "-" : Number(row["한국 현 재고"] || 0),
+          한국상품명: row["한국상품명"] || "-",
+          구분: row["구분"] || "-",
+          한국: row["한국 현 재고"] === null ? "-" : toFixed(row["한국 현 재고"], 0),
         };
         for (const code of OVERSEAS_UPLOAD_COUNTRIES) {
           const key = countryLabel(code);
-          out[key] = row[key] === null ? "-" : Number(row[key] || 0);
+          out[key] = row[key] === null ? "-" : toFixed(row[key], 0);
         }
         return out;
       });
-      const ws = XLSX.utils.json_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "재고비교");
-      XLSX.writeFile(wb, "inventory_compare_view.xlsx");
+      await downloadInventoryDashboardXlsx("재고비교_대시보드", "재고비교", rows);
       return;
     }
     if (isKRScope) {
-      if (!krDisplayRows.length) return;
+      if (!krDisplayRows.length || !filteredDateColumns.length) return;
       const rows = krDisplayRows.map((row) => {
         const out = {
-          공급처: row.supplier,
+          브랜드: row.supplier,
           상품코드: getRowSku(row),
-          상품명: row.description || "",
-          창고: row.warehouse || "",
-          레벨: row.level || "",
+          상품명: row.description ? row.description : "(상품명 없음)",
         };
         for (const dt of filteredDateColumns) {
-          out[dt] = Number(row[dt] || 0);
+          out[formatInventoryDateHeaderForExport(dt)] = toFixed(row[dt], 0);
         }
         return out;
       });
-      const ws = XLSX.utils.json_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "한국재고");
-      XLSX.writeFile(wb, "inventory_kr_current_view.xlsx");
+      await downloadInventoryDashboardXlsx("한국_현 재고_대시보드", "한국재고", rows);
       return;
     }
-    if (!filteredRows.length || !filteredDateColumns.length) return;
-    const rows = filteredRows.map((row) => {
+    if (!overseasDisplayRows.length || !filteredDateColumns.length) return;
+    const rows = overseasDisplayRows.map((row) => {
       const krMatchKey = getCanonicalMatchCode(row);
       const out = {
         상품코드: getRowSku(row),
-        상품명: row.description || "",
-        한국상품명: getCompareDisplayName(row) || krNameMap.get(krMatchKey) || "",
-        공급처: row.supplier || "",
-        창고: row.warehouse || "",
-        레벨: row.level || "",
+        상품명: row.description ? row.description : "(상품명 없음)",
+        한국상품명: getCompareDisplayName(row) || krNameMap.get(krMatchKey) || "-",
       };
       if (showKrCompare) {
-        out["한국"] = krCompareMap.size
-          ? Number(krCompareMap.get(krMatchKey) || 0)
+        out["한국 현 재고"] = krCompareMap.size
+          ? toFixed(krCompareMap.get(krMatchKey) || 0, 0)
           : "-";
       }
       for (const dt of filteredDateColumns) {
-        out[dt] = Number(row[dt] || 0);
+        out[formatInventoryDateHeaderForExport(dt)] = toFixed(row[dt], 0);
       }
       return out;
     });
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "해외재고");
-    XLSX.writeFile(wb, "inventory_aggregated_view.xlsx");
+    const overseasFileBase = `${countryLabel(selectedOverseasCountry)}_재고_대시보드`;
+    await downloadInventoryDashboardXlsx(overseasFileBase, "해외재고", rows);
   }
 
   function openFileInput() {
@@ -3167,7 +3360,7 @@ export default function App() {
               className="cautionBtn"
               onClick={() => setShowCautionModal(true)}
             >
-              주의사항
+              안내문
             </button>
           </div>
           <div className="heroActions">
@@ -3341,12 +3534,12 @@ export default function App() {
           <div className="kpiValue">{latestScopeDateLabel}</div>
         </div>
         <div className="kpiCard">
-          <div className="kpiLabel">분석 상품 수</div>
-          <div className="kpiValue">{filteredRows.length}개</div>
+          <div className="kpiLabel">재고 파악 기준</div>
+          <div className="kpiValue">{inventoryBasisLabel}</div>
         </div>
         <div className="kpiCard">
-          <div className="kpiLabel">총 재고</div>
-          <div className="kpiValue">{toFixed(totalInventory, 0)}</div>
+          <div className="kpiLabel">분석 상품 수</div>
+          <div className="kpiValue">{filteredRows.length}개</div>
         </div>
       </section>
 
@@ -3408,14 +3601,16 @@ export default function App() {
             {inventoryDateRange === "custom" && (
               <>
                 <input
-                  type="text"
-                  placeholder={DATE_TEXT_INPUT_HINT}
+                  type="date"
+                  className="inventoryFilterDate"
+                  aria-label="기간 시작일"
                   value={inventoryStartDate}
                   onChange={(e) => setInventoryStartDate(e.target.value)}
                 />
                 <input
-                  type="text"
-                  placeholder={DATE_TEXT_INPUT_HINT}
+                  type="date"
+                  className="inventoryFilterDate"
+                  aria-label="기간 종료일"
                   value={inventoryEndDate}
                   onChange={(e) => setInventoryEndDate(e.target.value)}
                 />
@@ -3495,8 +3690,15 @@ export default function App() {
               <tbody>
                 {(isKRScope ? krDisplayRows : isOverseasScope ? overseasDisplayRows : filteredRows).map((row, idx) => (
                   <tr key={row.trendRowKey || `${row.country}-${getRowSku(row)}-${row.description}-${row.level}-${row.warehouse}-${idx}`}>
-                    {isKRScope && <td className="stickyCol stickyColSupplier">{row.supplier}</td>}
-                    <td className="stickyCol stickyColCode">
+                    {isKRScope && <td className="stickyCol stickyColBrand">{row.supplier}</td>}
+                    <td
+                      className="stickyCol stickyColCode"
+                      title={
+                        String(row.mapped_barcode || "").trim()
+                          ? `바코드: ${String(row.mapped_barcode).trim()}`
+                          : "등록된 바코드가 없습니다"
+                      }
+                    >
                       {getRowSku(row)}
                     </td>
                     <td className="stickyCol stickyColName stickyColBoundary">
@@ -3614,8 +3816,11 @@ export default function App() {
                 />
               </div>
               <input
-                type="text"
-                placeholder={DATE_TEXT_INPUT_HINT}
+                type="date"
+                className="inventoryFilterDate"
+                aria-label="재고 비교 기준일"
+                min={compareDatePickerExtent.min}
+                max={compareDatePickerExtent.max}
                 value={compareSelectedDate}
                 onChange={(e) => setCompareSelectedDate(e.target.value)}
               />
@@ -5758,11 +5963,7 @@ export default function App() {
           <div className="cautionModal" onClick={(e) => e.stopPropagation()}>
             <div className="cautionModalHeader">
               <div>
-                <div className="cautionModalTitle">주의사항</div>
-                <div className="cautionModalSubtitle">
-                  데이터 형식·날짜 기준이 다르면 재고 파악이 어긋날 수 있습니다. 발주 화면 동작은 아래 「발주 기록」을
-                  참고하세요.
-                </div>
+                <div className="cautionModalTitle">안내문</div>
               </div>
               <button
                 type="button"
@@ -5774,47 +5975,55 @@ export default function App() {
             </div>
 
             <div className="cautionSection">
-              <div className="cautionSectionTitle">공통</div>
+              <div className="cautionSectionTitle">공통 (재고·파일)</div>
               <ul className="cautionList">
-                <li>같은 이름의 파일은 중복 업로드되지 않습니다.</li>
-                <li>필수 컬럼명이나 날짜 형식이 다르면 업로드나 집계가 실패할 수 있습니다.</li>
+                <li>한국·해외 재고 탭에서 파일 업로드 후에는 재고 통합 실행을 눌러야 표에 반영됩니다.</li>
+                <li>이미 올린 것과 같은 파일 이름은 다시 올라가지 않습니다.</li>
                 <li>
-                  재고 파일에 선택 열 option(별칭: 옵션, variant 등)이 있으면 상품명(description) 뒤에 공백과 함께
-                  붙여 집계·저장합니다. SKU 매핑의 option 규칙과 같습니다.
+                  재고 엑셀에 넣은 상품코드는 SKU 관리에서 그 국가로 먼저 등록되어 있어야 합니다. 하나라도 빠지면 그 파일
+                  전체가 반영되지 않을 수 있습니다.
                 </li>
-                <li>
-                  재고 파일의 각 SKU는 DB의 item_mapping에 해당 국가 코드로 미리 등록되어 있어야 업로드됩니다. 미등록 SKU가
-                  있으면 전체가 거절되며, 등록된 행이어도 같은 item에 한국(KR) SKU가 없으면 화면의 한국상품명 열은 하이픈(-)으로
-                  표시됩니다.
-                </li>
-                <li>재고 비교는 선택한 동일 기준일 데이터만 사용하며, 없는 값은 임의로 대체하지 않습니다.</li>
+                <li>재고 표의 상품코드에 마우스를 올리면, 등록되어 있는 바코드를 볼 수 있습니다.</li>
               </ul>
             </div>
 
             <div className="cautionSection">
               <div className="cautionSectionTitle">한국 재고</div>
               <ul className="cautionList">
-                <li>날짜는 파일명에서 읽습니다. 파일명에 `YYYYMMDD` 8자리 날짜가 포함되어야 합니다.</li>
-                <li>재고는 `정상재고` 컬럼 기준으로만 파악합니다.</li>
-                <li>한국 탭은 현재고 스냅샷 데이터를 날짜별로 비교하는 방식입니다.</li>
+                <li>
+                  이지어드민에서 제공하는 현 재고 데이터는 엑셀로 열리기는 하지만 .xls 확장자로 제공됩니다. Excel
+                  통합문서(.xlsx) 확장자로 변환하여 업로드 해주세요.
+                </li>
+                <li>
+                  기준 날짜는 파일 이름에 들어 있는 날짜(예: 20250415)를 씁니다. 날짜가 파일명에 없으면 집계·비교가 어긋날 수
+                  있습니다.
+                </li>
+                <li>재고 수량은 열 이름이 「가용재고」인 열만 읽습니다.</li>
+                <li>날짜별로 올린 재고 스냅샷을 나란히 비교하는 화면입니다.</li>
               </ul>
             </div>
 
             <div className="cautionSection">
               <div className="cautionSectionTitle">해외 재고</div>
               <ul className="cautionList">
-                <li>날짜는 파일명 기준이 아니라 파일 내부의 `Date` 컬럼에서 읽습니다.</li>
-                <li>재고는 `Quantity` 컬럼 기준으로 집계합니다.</li>
-                <li>`한국 현 재고 비교`는 한국 시간(Asia/Seoul) 기준 오늘 날짜의 한국 데이터가 있을 때만 켤 수 있습니다.</li>
+                <li>기준 날짜는 파일 안의 날짜 열(date)에서 가져옵니다.</li>
+                <li>재고 수량은 열 이름이 「quantity」인 열만 읽습니다.</li>
+                <li>
+                  한국 현 재고와 비교는, 한국 시간 기준 오늘 날짜의 한국 재고가 있을 때만 켤 수 있습니다.
+                </li>
               </ul>
             </div>
 
             <div className="cautionSection">
               <div className="cautionSectionTitle">재고 비교</div>
               <ul className="cautionList">
-                <li>선택한 날짜에 특정 국가 데이터가 없으면 `-`로 표시됩니다.</li>
-                <li>전날 데이터나 최신 데이터를 임의로 끌어와 대체하지 않습니다.</li>
-                <li>의미 있는 비교를 위해 가능한 한 같은 기준일의 국가별 파일을 맞춰 업로드해주세요.</li>
+                <li>
+                  「구분」은 같은 상품코드 안에서 서로 다른 행을 가리키는 레벨(L1 등)·창고(또는 파일의 분류 열)을
+                  슬래시(/)로 이어 붙인 값입니다. 브랜드는 넣지 않습니다.
+                </li>
+                <li>선택한 날짜에 데이터가 없는 나라는 숫자 대신 –로 보입니다.</li>
+                <li>다른 날짜나 예전 데이터를 임의로 끌어와 채우지 않습니다.</li>
+                <li>반드시 같은 날짜의 데이터로만 비교합니다.</li>
               </ul>
             </div>
 
@@ -5822,40 +6031,48 @@ export default function App() {
               <div className="cautionSectionTitle">발주 기록</div>
               <ul className="cautionList">
                 <li>
-                  <strong>새 발주 등록</strong>: ERP PO 번호·상품코드(SKU)는 비워도 저장할 수 있습니다. 비운 값은
-                  시스템에서 내부 식별용으로 채워지며, 목록에는 값이 없는 것처럼 대시(–)로 보일 수 있습니다. 총 발주수량은
-                  올바른 숫자여야 합니다.
+                  새 발주에서 ERP 번호·상품코드를 비워도 저장할 수 있습니다. 비운 칸은 목록에서 보통 – 로 보입니다. 수량은
+                  숫자로 적어 주세요.
+                </li>
+                <li>날짜는 칸에 직접 입력합니다. YYYY-MM-DD 형식을 권장합니다.</li>
+                <li>
+                  발주 예정이거나 납품일, 입고예정일이 미정인 경우 날짜는 비워 두고 체크박스에 체크하면 됩니다.
                 </li>
                 <li>
-                  날짜(발주일·납품가능일·입고예정일 등)는 <strong>텍스트 입력</strong>이며 YYYY-MM-DD 형식을 권장합니다.
-                  발주일은 「발주 예정」, 납품·입고예정일은 「미정」으로 날짜 없이 둘 수 있습니다.
+                  실제입고일에는 날짜를 YYYY-MM-DD 형식으로 입력하거나, 특수한 경우에는 예외 입고, 무상 입고 등을 입력해
+                  주시면 됩니다.
                 </li>
+                <li>비고란에는 메모하고 싶은 내용을 자유롭게 적을 수 있습니다.</li>
+                <li>저장하면 첫 입고 차수가 자동으로 생겨, 입고 관련 칸을 바로 쓸 수 있습니다.</li>
                 <li>
-                  저장 직후 <strong>1차 입고 행</strong>이 자동으로 만들어져, 표에서 입고 관련 열을 바로 다룰 수 있습니다.
+                  저장된 발주 표에서 수정이 필요하면 연필 모양 버튼을 눌러 수정한 뒤, 화면 아무 곳이나 누르면 저장됩니다.
                 </li>
+                <li>입고 예정인 입고 건은 붉게 강조됩니다.</li>
+                <li>비고에 메모가 있으면 노란색으로 강조됩니다.</li>
+              </ul>
+            </div>
+
+            <div className="cautionSection">
+              <div className="cautionSectionTitle">상품 매핑</div>
+              <ul className="cautionList">
+                <li>상품명이나 SKU로 검색하면, 국가별 상품명·상품코드를 한 번에 볼 수 있습니다.</li>
+              </ul>
+            </div>
+
+            <div className="cautionSection">
+              <div className="cautionSectionTitle">데이터 관리</div>
+              <ul className="cautionList">
+                <li>재고 탭에서 올린 파일·통합까지 끝난 파일에 관한 정보가 국가별로 보입니다.</li>
+                <li>파일 이름, 크기, 해당 파일의 재고 기준 날짜를 확인할 수 있습니다.</li>
                 <li>
-                  <strong>저장된 발주</strong> 표는 연필(✎)로 연 뒤, 입력칸 밖을 누르면 저장·편집 종료됩니다. 표가 넓을 때
-                  <strong> 가로 스크롤</strong>은 맨 위 스크롤 띠에서 움직이며, 헤더·본문 가로 위치는 함께 맞춰집니다.
+                  각 파일 옆 날짜는 기준일을 잡을 때 참고됩니다. 한국은 파일명 날짜도 중요하니, 여기 입력된 날짜와 파일명이
+                  어긋나지 않게 맞춰 주세요.
                 </li>
+                <li>삭제하면 해당 파일에 대한 재고 정보는 완전히 삭제됩니다.</li>
+                <li>국가별 데이터 초기화는 그 나라에 올린 재고 파일 데이터를 한꺼번에 삭제합니다.</li>
+                <li>맨 위 전체 초기화는 모든 국가 데이터를 지웁니다. 되돌리기 어려우니 신중히 눌러 주세요.</li>
                 <li>
-                  저장된 목록 <strong>검색</strong>은 <strong>상품코드(SKU) 또는 상품명</strong>에 포함된 글자로
-                  찾습니다. ERP PO 번호만으로는 검색되지 않습니다.
-                </li>
-                <li>
-                  입고여부가 <strong>예정(X)</strong>인 차수는 납품가능일 열부터 오른쪽이 붉게 강조됩니다. 비고 칸에 메모가
-                  있으면 그 칸은 <strong>노란색</strong>이 우선입니다.
-                </li>
-                <li>
-                  이미 <strong>입고 완료(O)</strong>인 차수는 입고예정일을 바꿀 수 없으며, 연필을 누르면 안내 팝업만
-                  표시됩니다. 발주일 편집에서 「발주 예정」을 켤 때도 입고 완료 차수가 있으면 같은 안내가 나올 수 있습니다.
-                </li>
-                <li>
-                  표·카드에서 수정 후 <strong>초록색 성공 문구</strong>가 뜨지 않을 수 있습니다. 입력이 규칙에 맞지 않으면
-                  상단에 빨간 오류만 보일 수 있습니다.
-                </li>
-                <li>
-                  상세 발주 수정(카드) 화면에서는 ERP PO·SKU 등이 <strong>필수</strong>로 검사될 수 있습니다. 새 등록과
-                  동일하지 않을 수 있습니다.
+                  여기서 지우는 것은 재고 파일·집계 쪽입니다. SKU 관리에 등록한 상품 매핑은 이 탭만으로는 지워지지 않습니다.
                 </li>
               </ul>
             </div>
@@ -5864,27 +6081,16 @@ export default function App() {
               <div className="cautionSectionTitle">SKU 관리</div>
               <ul className="cautionList">
                 <li>
-                  SKU 마스터는 여러 개의 .xlsx를 올릴 수 있으며, 필수 열은{" "}
-                  {SKU_MAPPING_TEMPLATE_COLUMNS.join(", ")} 입니다. 선택 열은{" "}
-                  <code>option</code>(별칭: 옵션, variant 등)와 <code>brand</code>(또는 <code>브랜드</code>)입니다. option이
-                  있으면 각 국가 상품명 뒤에 공백을 두고 붙여 저장합니다. 기존 item에만 매칭되는 행은 브랜드 열이 없거나 비어
-                  있어도 되며 그때는 <code>item.brand</code>를 바꾸지 않습니다. DB에 없어 신규 item으로 생기는 행은 브랜드 값이
-                  필수입니다.
+                  SKU 매핑 템플릿 다운로드로 한국·미국·대만·홍콩 양식을 받을 수 있습니다. 하나의 파일 안에 여러 개의 시트를
+                  읽을 수는 없으니, 되도록 시트를 더 추가하지는 말아 주세요.
                 </li>
-                <li>파일마다 일부 국가 컬럼만 있어도 되지만, 각 행에는 최소 한 국가의 SKU 값이 필요합니다.</li>
-                <li>같은 국가의 같은 SKU가 다른 상품과 충돌하면 전체 업로드가 거절되며 아무 데이터도 반영되지 않습니다.</li>
-                <li>원본 파일은 저장하지 않고, 읽은 매핑 데이터만 DB에 반영합니다.</li>
-                <li>파일 업로드는 기존 매핑을 지우지 않고 병합 업데이트하며, 수기 입력은 한국(`KR`) 상품명과 SKU가 필수입니다.</li>
-                <li>파일 업로드가 어려우면 아래 수기 입력 영역에서 국가별 상품명·SKU와 브랜드를 직접 저장할 수 있습니다.</li>
-              </ul>
-            </div>
-
-            <div className="cautionSection">
-              <div className="cautionSectionTitle">상품 매핑</div>
-              <ul className="cautionList">
-                <li>상품명 또는 SKU로 검색하면 등록된 SKU 매핑 기준으로 같은 상품의 국가별 상품명과 SKU를 함께 확인할 수 있습니다.</li>
-                <li>검색 전에는 결과가 표시되지 않으며, 검색어와 일치하는 매핑이 없으면 결과가 비어 보일 수 있습니다.</li>
-                <li>재고 매칭은 국가별 SKU를 우선 사용하고, 필요 시 같은 국가의 상품명 기준으로도 연결됩니다.</li>
+                <li>여러 개의 엑셀을 한 번에 선택해 올릴 수 있습니다.</li>
+                <li>기존에 등록되어 있는 상품에 대한 정보가 업로드되면 기존 정보에서 갱신합니다.</li>
+                <li>
+                  같은 나라·같은 SKU가 서로 다른 상품으로 두 번 정의되면 그번 업로드 전체가 반영되지 않을 수 있습니다.
+                </li>
+                <li>엑셀 원본 파일은 보관하지 않고, 읽은 매핑 정보만 저장합니다.</li>
+                <li>파일이 어렵다면 수기 작성 탭에서 직접 넣을 수 있습니다.</li>
               </ul>
             </div>
           </div>
@@ -6006,7 +6212,28 @@ export default function App() {
             </div>
             <div className={`skuManageContent ${skuManageMode === "MANUAL" ? "manual-only" : "upload-only"}`}>
               {skuManageMode === "UPLOAD" ? (
-                <div className="skuUploadStage skuManageSinglePanel">
+                <div className="skuUploadStage skuManageSinglePanel poOrderFileUploadStage">
+                  <div className="settingsNotice poOrderFileUploadNotice">
+                    <p className="poOrderFileUploadLead">
+                      <strong>
+                        한국·미국·대만·홍콩용 엑셀 템플릿을 받아 작성한 뒤, 파일들을 한꺼번에 업로드할 수 있습니다.
+                      </strong>
+                    </p>
+                  </div>
+                  <div className="poOrderFileTemplateRow">
+                    <button
+                      type="button"
+                      className="poOrderFileTemplateBtn"
+                      disabled={settingsMutating}
+                      onClick={() => {
+                        downloadSkuMappingCountryTemplatesZip().catch(() =>
+                          window.alert("SKU 매핑 템플릿을 만드는 중 오류가 났습니다.")
+                        );
+                      }}
+                    >
+                      SKU 매핑 템플릿 다운로드
+                    </button>
+                  </div>
                   <button
                     type="button"
                     className="skuUploadPanel"
@@ -6089,6 +6316,20 @@ export default function App() {
                               setManualMappingForm((prev) => ({ ...prev, kr_name: e.target.value }))
                             }
                             placeholder="한국 상품명"
+                            autoComplete="off"
+                          />
+                        </div>
+                      </label>
+                      <label className="skuManualKrField">
+                        <span className="skuManualKrFieldHead">바코드</span>
+                        <div className="skuManualKrFieldBody">
+                          <input
+                            type="text"
+                            value={manualMappingForm.barcode}
+                            onChange={(e) =>
+                              setManualMappingForm((prev) => ({ ...prev, barcode: e.target.value }))
+                            }
+                            placeholder="EAN·UPC 등 (선택)"
                             autoComplete="off"
                           />
                         </div>
@@ -6217,7 +6458,7 @@ export default function App() {
                   <article key={row._id} className="productMappingItemCard">
                     <div
                       className="productMappingAlignGrid"
-                      title={`${row.brand || "–"} | ${row.kr_name || "상품명 없음"}`}
+                      title={`${row.brand || "–"} | ${row.kr_name || "상품명 없음"}${row.barcode ? ` | 바코드 ${row.barcode}` : ""}`}
                     >
                       <div className="productMappingGridHeadBand">
                         <div className="productMappingItemBrandPart productMappingGridHeadBrand">

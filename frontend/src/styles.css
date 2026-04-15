@@ -309,6 +309,12 @@ body {
   padding: 28px 18px 18px;
 }
 
+/* SKU 관리 카드: 발주 파일 업로드와 동일한 상단 안내·템플릿·업로드 패널 정렬 */
+.skuManageCard .skuUploadStage.poOrderFileUploadStage .skuUploadPanel {
+  transform: none;
+  margin-top: 4px;
+}
+
 .skuUploadPanel {
   width: min(100%, 440px);
   margin: 0 auto;
@@ -1381,6 +1387,11 @@ body {
   margin-left: auto;
 }
 
+.filterBar .inventoryFilterDate {
+  min-width: 140px;
+  color-scheme: light;
+}
+
 input,
 select,
 button {
@@ -1627,7 +1638,7 @@ th {
   box-shadow: none;
 }
 
-.inventoryTable.krTable .stickyColSupplier {
+.inventoryTable.krTable .stickyColBrand {
   left: 0;
   width: 120px;
   min-width: 120px;
