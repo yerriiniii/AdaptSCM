@@ -2608,7 +2608,9 @@ th {
   z-index: 26;
   background: #ffffff;
   border-radius: 10px 10px 0 0;
-  box-shadow: 0 1px 0 #e5e7eb;
+  /* 본문 세로 스크롤 시 헤더·데이터 경계에 행이 비치는 현상 완화 */
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+  isolation: isolate;
 }
 
 .poSavedShowTopScrollPair .poSavedStickyHeaderShell {
@@ -2623,6 +2625,8 @@ th {
   -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
   box-sizing: border-box;
+  /* thead(#f8fafc)와 동일 — 세로 스크롤 시 본문 행이 헤더 틈으로 비치지 않게 */
+  background: #f8fafc;
 }
 
 .poSavedHeaderScroll::-webkit-scrollbar {
@@ -2635,11 +2639,24 @@ th {
   -webkit-overflow-scrolling: touch;
   border-radius: 0 0 10px 10px;
   box-sizing: border-box;
+  background: #ffffff;
 }
 
-.poSavedTableTopScroll {
-  margin-bottom: 6px;
+/* 상단 가로 스크롤 띠(poSavedTableTopScroll)가 있을 때: 본문 쪽 가로 스크롤바 숨김(가로는 상단만) */
+.poSavedShowTopScrollPair .poSavedBodyScroll {
+  overflow-x: hidden;
+}
+
+/* 발주 표 전용: 일반 .tableTopScroll 의 margin-bottom(6px) 틈 제거 — 그 사이로 본문/페이지가 비치지 않게 */
+.poSavedTableTopScroll.tableTopScroll {
+  margin-bottom: 0;
   border-radius: 10px 10px 0 0;
+  /* 띠와 표 헤더 사이에 빈 간격 없이 붙임 */
+  border-bottom: 1px solid #e6edf5;
+}
+
+.poSavedShowTopScrollPair {
+  background-color: #ffffff;
 }
 
 .poSavedShowTopScrollPair .poSavedSpreadsheetWrap {

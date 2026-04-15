@@ -1141,12 +1141,12 @@ export default function App() {
   const poStickySubTabsTop = stickyHeights.topbar;
   const poStickySavedFilterTop = stickyHeights.topbar + poOrderStickyHeights.subTabs;
   const poSavedFilterBottomSticky = poStickySavedFilterTop + poOrderStickyHeights.savedFilter;
-  /** 재고 탭과 동일: 필터 하단 ~ 컬럼 헤더 = 상단 가로 스크롤 띠 높이 + 6px. 띠가 없을 때는 흰 스티키 블록으로 같은 두께 유지 */
+  /** 상단 가로 띠 있음: 스티키 헤더 top = 필터 하단 + 띠 높이(띠·헤더 사이 6px 두면 스크롤 시 틈으로 본문이 비침). 띠 없음: 재고 탭과 같은 폴백 두께 */
   const poSavedTableHeaderStickyTop = useMemo(() => {
     if (poSavedShowTopScroll) {
       const stripH =
         poSavedTopStripHeight > 0 ? poSavedTopStripHeight : INVENTORY_MATCH_TOP_SCROLL_STRIP_FALLBACK_PX;
-      return poSavedFilterBottomSticky + stripH + INVENTORY_MATCH_TOP_SCROLL_MARGIN_BELOW_PX;
+      return poSavedFilterBottomSticky + stripH;
     }
     return (
       poSavedFilterBottomSticky +
