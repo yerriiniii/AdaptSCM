@@ -78,6 +78,7 @@ class InventorySkuMappingUpsertRequest(BaseModel):
     kr_name: str
     kr_sku: str
     brand: str = Field(..., max_length=255)
+    barcode: str | None = Field(None, max_length=255)
     option: str | None = None
     us_name: str | None = None
     us_sku: str | None = None
@@ -109,6 +110,7 @@ class InventorySkuMappingItemResponse(BaseModel):
     group_id: str
     kr_name: str
     brand: str | None = None
+    barcode: str | None = None
     locales: list[InventorySkuMappingLocaleResponse] = Field(default_factory=list)
 
 

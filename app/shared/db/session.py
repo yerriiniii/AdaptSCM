@@ -56,6 +56,7 @@ def _ensure_inventory_columns(engine: Engine) -> None:
         },
         "item": {
             "brand": "VARCHAR(255)",
+            "barcode": "VARCHAR(255)",
         },
         "purchase_inbound_lines": {
             "actual_inbound_note": "VARCHAR(128)",

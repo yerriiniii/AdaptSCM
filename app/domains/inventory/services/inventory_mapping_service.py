@@ -27,6 +27,18 @@ COUNTRY_FIELD_SPECS = [
     ("UK", "uk_name", "uk_sku"),
     ("AE", "ae_name", "ae_sku"),
 ]
+# 엑셀·UI와 동일한 국가 표기 (한글 헤더 자동 생성용)
+_COUNTRY_KO_LABEL = {
+    "KR": "한국",
+    "US": "미국",
+    "TW": "대만",
+    "HK": "홍콩",
+    "VN": "베트남",
+    "SG": "싱가포르",
+    "AU": "호주",
+    "UK": "영국",
+    "AE": "아랍에미리트",
+}
 COUNTRY_ORDER = {country_code: index for index, (country_code, _, _) in enumerate(COUNTRY_FIELD_SPECS)}
 COUNTRY_CODES = [country_code for country_code, _, _ in COUNTRY_FIELD_SPECS]
 MAPPING_TEMPLATE_COLUMNS = [column for _, name_key, sku_key in COUNTRY_FIELD_SPECS for column in (name_key, sku_key)]
@@ -34,10 +46,56 @@ OPTION_COLUMN_CANONICAL = "option"
 OPTION_HEADER_ALIASES = frozenset({"option", "options", "옵션", "상품옵션", "variant", "variants"})
 BRAND_COLUMN_CANONICAL = "brand"
 BRAND_HEADER_ALIASES = frozenset({"brand", "브랜드"})
-OPTIONAL_MAPPING_COLUMNS = [OPTION_COLUMN_CANONICAL, BRAND_COLUMN_CANONICAL]
+BARCODE_COLUMN_CANONICAL = "barcode"
+BARCODE_HEADER_ALIASES = frozenset({"barcode", "바코드", "bar_code", "ean", "gtin"})
+OPTIONAL_MAPPING_COLUMNS = [OPTION_COLUMN_CANONICAL, BRAND_COLUMN_CANONICAL, BARCODE_COLUMN_CANONICAL]
 MAX_MAPPING_FILE_SIZE_BYTES = 2 * 1024 * 1024
 # AE/UK/AU 엑셀은 전용 name 열 대신 us_name 만 있는 경우가 많음
 MAPPING_NAME_FALLBACK_TO_US_NAME = frozenset({"AU", "UK", "AE"})
+
+
+def _mapping_country_column_alias_sets() -> dict[str, frozenset[str]]:
+    """canonical(kr_sku 등) → 허용 헤더 집합. 템플릿 한글명·영문 코드·자주 쓰는 변형 포함."""
+    out: dict[str, frozenset[str]] = {}
+    for code, name_key, sku_key in COUNTRY_FIELD_SPECS:
+        label = _COUNTRY_KO_LABEL[code]
+        ko_sku = f"{label} SKU"
+        ko_name = f"{label} 상품명"
+        sku_aliases = {
+            sku_key,
+            ko_sku,
+            f"{label}SKU",
+            f"{label}상품코드",
+            f"{label} 상품코드",
+            f"{label}품번",
+            f"{label} 품번",
+            f"{code} SKU",
+            f"{code.lower()} sku",
+        }
+        name_aliases = {
+            name_key,
+            ko_name,
+            f"{label}상품명",
+            f"{label}명",
+            f"{label} 상품",
+            f"{code} 상품명",
+            f"{code.lower()} 상품명",
+        }
+        if code == "KR":
+            sku_aliases |= {
+                "상품코드",
+                "SKU",
+                "품번",
+                "마스터 SKU",
+                "마스터SKU",
+                "마스터코드",
+                "마스터 코드",
+            }
+            name_aliases |= {"상품명", "제품명", "상품 이름"}
+        out[sku_key] = frozenset(sku_aliases)
+        out[name_key] = frozenset(name_aliases)
+    return out
+
 
 _SKU_TRAILING_VARIANT_SUFFIX = re.compile(r"^(.+)-([A-Za-z0-9]{1,12})$")
 
@@ -94,6 +152,25 @@ def _normalize_mapping_header(value: object) -> str:
     normalized = re.sub(r"\s+", "", normalized)
     normalized = re.sub(r"[_\-()]", "", normalized)
     return normalized
+
+
+def _build_mapping_country_header_key_to_canonical() -> dict[str, str]:
+    """정규화된 헤더 키 → 내부 컬럼명. import 시 별칭 충돌이 있으면 즉시 실패한다."""
+    key_to_canonical: dict[str, str] = {}
+    for canonical, labels in _mapping_country_column_alias_sets().items():
+        for label in labels:
+            nk = _normalize_mapping_header(label)
+            existing = key_to_canonical.get(nk)
+            if existing is not None and existing != canonical:
+                raise RuntimeError(
+                    f"SKU 매핑 국가 컬럼 헤더 별칭 충돌: {label!r} → {canonical}, 이미 {existing!r}에 연결됨."
+                )
+            if existing is None:
+                key_to_canonical[nk] = canonical
+    return key_to_canonical
+
+
+MAPPING_COUNTRY_HEADER_KEY_TO_CANONICAL = _build_mapping_country_header_key_to_canonical()
 
 
 def _lookup_group_by_country_sku_variants(
@@ -197,24 +274,21 @@ def _read_mapping_bytes(upload_file: UploadFile) -> tuple[bytes, int]:
     return raw, size
 
 
-def _read_mapping_frame(upload_file: UploadFile) -> pd.DataFrame:
-    """표준 매핑 컬럼 + 선택 `brand`·`option` 만 사용하고, 나머지 열은 무시한다."""
-    raw, _ = _read_mapping_bytes(upload_file)
-    filename = str(upload_file.filename or "mapping.xlsx")
-    try:
-        df = pd.read_excel(io.BytesIO(raw), sheet_name=0, dtype=object)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"{filename}: 엑셀 파싱 실패 ({exc})") from exc
+def _http_detail_message(detail: object) -> str:
+    if isinstance(detail, str):
+        return detail
+    if isinstance(detail, (list, tuple)) and detail:
+        return str(detail[0])
+    return str(detail)
 
-    header_key_to_canonical: dict[str, str] = {}
-    for canonical in MAPPING_TEMPLATE_COLUMNS:
-        key = _normalize_mapping_header(canonical)
-        if key in header_key_to_canonical:
-            raise HTTPException(status_code=500, detail="매핑 템플릿 컬럼 정의가 서로 충돌합니다.")
-        header_key_to_canonical[key] = canonical
+
+def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
+    """헤더 매칭 후 표준 컬럼만 담은 DataFrame. 매핑 국가 열이 하나도 없으면 HTTPException."""
+    header_key_to_canonical = MAPPING_COUNTRY_HEADER_KEY_TO_CANONICAL
 
     option_header_keys = frozenset(_normalize_mapping_header(a) for a in OPTION_HEADER_ALIASES)
     brand_header_keys = frozenset(_normalize_mapping_header(a) for a in BRAND_HEADER_ALIASES)
+    barcode_header_keys = frozenset(_normalize_mapping_header(a) for a in BARCODE_HEADER_ALIASES)
 
     series_by_canonical: dict[str, pd.Series] = {}
     matched_raw: dict[str, str] = {}
@@ -222,6 +296,8 @@ def _read_mapping_frame(upload_file: UploadFile) -> pd.DataFrame:
     option_matched_raw = ""
     brand_series: pd.Series | None = None
     brand_matched_raw = ""
+    barcode_series: pd.Series | None = None
+    barcode_matched_raw = ""
 
     for col in df.columns:
         raw_label = str(col).strip()
@@ -243,6 +319,24 @@ def _read_mapping_frame(upload_file: UploadFile) -> pd.DataFrame:
                 )
             brand_series = col_slice.copy()
             brand_matched_raw = raw_label
+            continue
+        if norm in barcode_header_keys:
+            if barcode_series is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{filename}: 바코드 열(`barcode` / `바코드` 등)이 두 개 이상입니다 "
+                        f"(`{barcode_matched_raw}` 와 `{raw_label}`)."
+                    ),
+                )
+            col_slice = df[col]
+            if isinstance(col_slice, pd.DataFrame):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{filename}: 헤더 `{raw_label}` 열이 엑셀에서 중복되어 있습니다.",
+                )
+            barcode_series = col_slice.copy()
+            barcode_matched_raw = raw_label
             continue
         if norm in option_header_keys:
             if option_series is not None:
@@ -305,7 +399,39 @@ def _read_mapping_frame(upload_file: UploadFile) -> pd.DataFrame:
     aligned[BRAND_COLUMN_CANONICAL] = (
         brand_series if brand_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
     )
+    aligned[BARCODE_COLUMN_CANONICAL] = (
+        barcode_series if barcode_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
+    )
     return pd.DataFrame(aligned)
+
+
+def _read_mapping_frame(upload_file: UploadFile) -> pd.DataFrame:
+    """표준 매핑 컬럼 + 선택 `brand`·`barcode`·`option` 만 사용하고, 나머지 열은 무시한다. 첫 번째 시트만 읽는다."""
+    raw, _ = _read_mapping_bytes(upload_file)
+    filename = str(upload_file.filename or "mapping.xlsx")
+    last_no_mapping_detail: str | None = None
+    parse_exc: Exception | None = None
+    for header_row in (0, 1):
+        try:
+            df = pd.read_excel(io.BytesIO(raw), sheet_name=0, dtype=object, header=header_row)
+        except Exception as exc:
+            parse_exc = exc
+            if header_row == 0:
+                raise HTTPException(status_code=400, detail=f"{filename}: 엑셀 파싱 실패 ({exc})") from exc
+            break
+        try:
+            return _coerce_mapping_dataframe(df, filename)
+        except HTTPException as e:
+            msg = _http_detail_message(e.detail)
+            if e.status_code == 400 and "인식된 매핑 헤더가 없습니다" in msg:
+                last_no_mapping_detail = msg
+                continue
+            raise
+    if last_no_mapping_detail:
+        raise HTTPException(status_code=400, detail=last_no_mapping_detail)
+    if parse_exc:
+        raise HTTPException(status_code=400, detail=f"{filename}: 엑셀 파싱 실패 ({parse_exc})") from parse_exc
+    raise HTTPException(status_code=400, detail=f"{filename}: 엑셀을 읽을 수 없습니다.")
 
 
 def _normalize_brand_cell(value: object) -> str:
@@ -320,12 +446,25 @@ def _normalize_brand_cell(value: object) -> str:
     return s[:255]
 
 
+def _normalize_barcode_cell(value: object) -> str:
+    try:
+        if pd.isna(value):
+            return ""
+    except TypeError:
+        pass
+    if isinstance(value, float) and math.isnan(value):
+        return ""
+    s = str(value or "").strip()
+    return s[:255]
+
+
 def _mapping_item_payload(group: ProductGroup) -> dict:
     locales = sorted(group.locales, key=lambda locale: COUNTRY_ORDER.get(locale.country_code, 999))
     return {
         "group_id": str(group.id),
         "kr_name": group.kr_name,
         "brand": group.brand,
+        "barcode": group.barcode,
         "locales": [
             {
                 "country_code": locale.country_code,
@@ -370,10 +509,12 @@ def _build_mapping_group(source: dict[str, object], row_label: str) -> dict:
     brand = _normalize_brand_cell(source.get(BRAND_COLUMN_CANONICAL))
     if not brand:
         raise HTTPException(status_code=400, detail=f"{row_label}: brand(또는 브랜드) 값은 필수입니다.")
+    barcode = _normalize_barcode_cell(source.get(BARCODE_COLUMN_CANONICAL))
     return {
         "kr_name": kr_locale["name"],
         "locales": locales,
         "brand": brand,
+        "barcode": barcode,
     }
 
 
@@ -422,6 +563,8 @@ def _merge_manual_mapping_locales(target: ProductGroup, payload: dict, now: date
     """폼에 적힌 국가만 반영·추가하고, 나머지 국가 로케일은 유지한다."""
     target.kr_name = payload["kr_name"]
     target.brand = _normalize_brand_cell(payload.get("brand"))
+    bc = _normalize_barcode_cell(payload.get(BARCODE_COLUMN_CANONICAL))
+    target.barcode = bc if bc else None
     target.manual_updated_at = now
     target.updated_at = now
 
@@ -495,6 +638,7 @@ def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | Non
     match_us_name = _append_option_to_product_name(match_us_name, opt_source)
 
     brand = _normalize_brand_cell(source.get(BRAND_COLUMN_CANONICAL))
+    barcode = _normalize_barcode_cell(source.get(BARCODE_COLUMN_CANONICAL))
 
     return {
         "row_label": row_label,
@@ -506,6 +650,7 @@ def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | Non
         "anchor_kr_name": anchor_kr_name,
         "match_us_name": match_us_name,
         "brand": brand,
+        "barcode": barcode,
     }
 
 
@@ -1000,6 +1145,9 @@ def _apply_merge_record(
     brand_val = _normalize_brand_cell(record.get("brand"))
     if brand_val:
         target.brand = brand_val
+    barcode_val = _normalize_barcode_cell(record.get(BARCODE_COLUMN_CANONICAL))
+    if barcode_val:
+        target.barcode = barcode_val
     target.upload_updated_at = uploaded_at
     target.updated_at = uploaded_at
 
@@ -1066,10 +1214,12 @@ def merge_product_sku_mappings(db: Session, upload_files: list[UploadFile]) -> d
                             f"`brand` 또는 `브랜드` 열에 값이 필요합니다."
                         ),
                     )
+                new_barcode = _normalize_barcode_cell(record.get(BARCODE_COLUMN_CANONICAL))
                 target = ProductGroup(
                     id=uuid.uuid4(),
                     kr_name=str(record["kr_name"] or record["fallback_name"]),
                     brand=new_brand,
+                    barcode=new_barcode if new_barcode else None,
                     upload_updated_at=uploaded_at,
                     manual_updated_at=None,
                     updated_at=uploaded_at,
@@ -1132,9 +1282,11 @@ def upsert_product_sku_mapping(db: Session, payload: dict[str, object]) -> dict:
     _validate_group_conflicts(rows, record, exclude_group_id=target.id if target else None)
     try:
         if target is None:
+            bc0 = _normalize_barcode_cell(record.get(BARCODE_COLUMN_CANONICAL))
             target = ProductGroup(
                 kr_name=record["kr_name"],
                 brand=record["brand"],
+                barcode=bc0 if bc0 else None,
                 upload_updated_at=None,
                 manual_updated_at=manual_updated_at,
                 updated_at=manual_updated_at,
@@ -1175,7 +1327,7 @@ def list_product_sku_mappings(db: Session, query: str | None = None, limit: int 
 
     items: list[dict] = []
     for group in rows:
-        haystack_parts = [group.kr_name]
+        haystack_parts = [group.kr_name, str(group.barcode or "")]
         for locale in group.locales:
             haystack_parts.extend([locale.country_code, locale.name or "", locale.sku])
         haystack = " ".join(haystack_parts).casefold()

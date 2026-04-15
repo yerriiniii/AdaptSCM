@@ -16,10 +16,6 @@ COLUMN_ALIASES = {
     "warehouse": {
         "warehouse",
         "warehous",
-        "창고",
-        "창고+정상재고",
-        "창고정상재고",
-        "warehouse+normalstock",
     },
     "itemno": {
         "itemno",
@@ -33,7 +29,7 @@ COLUMN_ALIASES = {
     },
     "category": {"category", "카테고리"},
     "level": {"level"},
-    "quantity": {"quantity", "재고", "수량", "재고수량", "정상재고", "normalstock"},
+    "quantity": {"quantity", "가용재고"},
     "description": {"description", "상품명", "품명"},
     "option": {"option", "options", "옵션", "상품옵션", "variant", "variants"},
     "supplier": {"supplier", "공급처", "vendor"},
@@ -213,7 +209,7 @@ def _read_inventory_bytes(filename: str, raw: bytes) -> pd.DataFrame:
             status_code=400,
             detail=(
                 f"{filename}: 필수 컬럼 누락 {missing}. "
-                "필요 컬럼: itemno(또는 상품코드), quantity(또는 정상재고)"
+                "필요 컬럼: itemno(또는 상품코드), quantity(또는 가용재고)"
             ),
         )
     if "description" not in df.columns:
