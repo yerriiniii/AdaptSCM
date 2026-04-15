@@ -872,11 +872,9 @@ export default function App() {
     const q = savedPoSearch.trim().toLowerCase();
     if (q) {
       rows = rows.filter((po) => {
-        const erpRaw = String(po.erp_po_number || "").toLowerCase();
-        const erpDisp = purchaseOrderErpForDisplay(po.erp_po_number).toLowerCase();
+        const skuRaw = String(po.sku || "").toLowerCase();
         const name = String(po.product_name || "").toLowerCase();
-        const odNote = String(po.order_date_note || "").toLowerCase();
-        return erpRaw.includes(q) || erpDisp.includes(q) || name.includes(q) || odNote.includes(q);
+        return skuRaw.includes(q) || name.includes(q);
       });
     }
     if (savedPoDateRange !== "all") {
@@ -3763,10 +3761,10 @@ export default function App() {
                 <input
                   className="searchInput poSavedFilterSearch"
                   type="search"
-                  placeholder="ERP PO 또는 상품명 검색..."
+                  placeholder="상품코드 또는 상품명 검색..."
                   value={savedPoSearch}
                   onChange={(e) => setSavedPoSearch(e.target.value)}
-                  aria-label="저장된 발주 검색 (ERP PO 또는 상품명)"
+                  aria-label="저장된 발주 검색 (상품코드 또는 상품명)"
                   autoComplete="off"
                 />
               </div>

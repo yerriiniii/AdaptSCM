@@ -2676,7 +2676,7 @@ th {
   border-right: none;
 }
 
-/* Saved PO: order date (2), delivery / expected / actual inbound (9,10,12) — same width */
+/* Saved PO: 발주일(2)·납품가능일(9)·입고예정일(10)·실제입고일(12) 동일·다소 좁게 */
 .poSavedSpreadsheet thead th:nth-child(2),
 .poSavedSpreadsheet thead th:nth-child(9),
 .poSavedSpreadsheet thead th:nth-child(10),
@@ -2685,9 +2685,9 @@ th {
 .poSavedSpreadsheet tbody td:nth-child(9),
 .poSavedSpreadsheet tbody td:nth-child(10),
 .poSavedSpreadsheet tbody td:nth-child(12) {
-  width: 10.5rem;
-  min-width: 10.5rem;
-  max-width: 10.5rem;
+  width: 7.5rem;
+  min-width: 7.5rem;
+  max-width: 7.5rem;
   box-sizing: border-box;
 }
 
