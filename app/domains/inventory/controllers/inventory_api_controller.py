@@ -48,6 +48,7 @@ from app.domains.inventory.models.inventory_models import PurchaseOrder as Purch
 from app.domains.inventory.services.purchase_order_service import (
     add_inbound_line,
     create_purchase_order,
+    delete_inbound_line,
     delete_purchase_order,
     list_purchase_orders,
     patch_inbound_line_quick,
@@ -279,7 +280,9 @@ def purchase_orders_patch_inbound_line(
             line.delivery_available_date.isoformat() if line.delivery_available_date else None
         ),
         expected_inbound_date=(
-            line.expected_inbound_date.isoformat() if line.expected_inbound_date else None
+            None
+            if (line.inbound_status or "").strip().upper() == "O"
+            else (line.expected_inbound_date.isoformat() if line.expected_inbound_date else None)
         ),
         actual_inbound_date=line.actual_inbound_date.isoformat() if line.actual_inbound_date else None,
         actual_inbound_note=line.actual_inbound_note,
@@ -288,6 +291,18 @@ def purchase_orders_patch_inbound_line(
         inbound_status=line.inbound_status,
         created_at=line.created_at.isoformat() if line.created_at else None,
     )
+
+
+@router.delete("/purchase-orders/{order_id}/inbound-lines/{line_id}")
+def purchase_orders_delete_inbound_line(order_id: str, line_id: str, db: Session = Depends(get_db_session)) -> dict:
+    _require_db_configured()
+    try:
+        oid = uuid.UUID(order_id)
+        lid = uuid.UUID(line_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="id 형식이 올바르지 않습니다.") from exc
+    delete_inbound_line(db, oid, lid)
+    return {"ok": True}
 
 
 @router.post("/purchase-orders/{order_id}/inbounds", response_model=PurchaseInboundLineResponse)

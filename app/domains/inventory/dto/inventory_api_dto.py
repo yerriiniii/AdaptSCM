@@ -167,6 +167,7 @@ class PurchaseOrderCreateRequest(BaseModel):
 
 class PurchaseInboundCreateRequest(BaseModel):
     delivery_available_date: str | None = None
+    expected_inbound_date: str | None = None
     actual_inbound_date: str | None = None
     actual_inbound_note: str | None = None
     quantity: float | str
@@ -185,10 +186,12 @@ class PurchaseOrderInboundLineUpdate(BaseModel):
 
 
 class PurchaseInboundLineQuickPatchRequest(BaseModel):
-    """저장된 발주 표에서 실제입고일·수량·입고여부·비고 메모만 부분 수정."""
+    """저장된 발주 표에서 납품가능일·실제입고일·입고예정일·수량·입고여부·비고 메모만 부분 수정."""
 
+    delivery_available_date: str | None = None
     actual_inbound_date: str | None = None
     actual_inbound_note: str | None = None
+    expected_inbound_date: str | None = None
     quantity: float | str | None = None
     inbound_status: str | None = None
     line_memo: str | None = None

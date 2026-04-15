@@ -180,6 +180,27 @@ def create_purchase_order(db: Session, payload: dict) -> PurchaseOrder:
         expected_inbound_date=_parse_date(payload.get("expected_inbound_date"), "입고예정일"),
     )
     db.add(po)
+    db.flush()
+    db.refresh(po)
+
+    # 저장 표는 입고 차수 행이 있어야 실제입고·수량·입고여부·비고 연필이 보인다. 신규 발주에 1차 입고를 둔다.
+    line = PurchaseInboundLine(
+        purchase_order_id=po.id,
+        line_no=1,
+        ref_code="_",
+        delivery_available_date=po.delivery_available_date,
+        expected_inbound_date=po.expected_inbound_date,
+        actual_inbound_date=None,
+        actual_inbound_note=None,
+        quantity=float(total_q),
+        inbound_status="X",
+    )
+    db.add(line)
+    db.flush()
+    po_loaded = get_purchase_order(db, po.id)
+    if po_loaded is not None:
+        _normalize_inbound_ref_codes(po_loaded)
+
     db.commit()
     db.refresh(po)
     return po
@@ -334,6 +355,12 @@ def patch_inbound_line_quick(db: Session, order_id: uuid.UUID, line_id: uuid.UUI
         raise HTTPException(status_code=404, detail="입고 차수를 찾을 수 없습니다.")
 
     touched = False
+    if "delivery_available_date" in payload:
+        raw_d = payload.get("delivery_available_date")
+        line.delivery_available_date = (
+            None if raw_d is None or str(raw_d).strip() == "" else _parse_date(raw_d, "납품가능일")
+        )
+        touched = True
     if "actual_inbound_date" in payload:
         raw = payload.get("actual_inbound_date")
         line.actual_inbound_date = (
@@ -365,6 +392,22 @@ def patch_inbound_line_quick(db: Session, order_id: uuid.UUID, line_id: uuid.UUI
         if status == "O":
             line.expected_inbound_date = None
         touched = True
+    if "expected_inbound_date" in payload:
+        status_now = str(line.inbound_status or "").strip().upper()
+        raw_e = payload.get("expected_inbound_date")
+        clearing = raw_e is None or str(raw_e).strip() == ""
+        if clearing:
+            if status_now != "O":
+                line.expected_inbound_date = None
+            touched = True
+        elif status_now == "O":
+            raise HTTPException(
+                status_code=400,
+                detail="입고 완료(O) 차수는 입고예정일을 수정할 수 없습니다.",
+            )
+        else:
+            line.expected_inbound_date = _parse_date(raw_e, "입고예정일")
+            touched = True
     if "line_memo" in payload:
         m = str(payload.get("line_memo") or "").strip() or None
         if m and len(m) > _LINE_MEMO_MAX:
@@ -390,6 +433,29 @@ def patch_inbound_line_quick(db: Session, order_id: uuid.UUID, line_id: uuid.UUI
     db.commit()
     db.refresh(line)
     return line
+
+
+def delete_inbound_line(db: Session, order_id: uuid.UUID, line_id: uuid.UUID) -> None:
+    po = get_purchase_order(db, order_id)
+    if po is None:
+        raise HTTPException(status_code=404, detail="발주를 찾을 수 없습니다.")
+    line = next((ln for ln in (po.inbound_lines or []) if ln.id == line_id), None)
+    if line is None:
+        raise HTTPException(status_code=404, detail="입고 차수를 찾을 수 없습니다.")
+    db.delete(line)
+    db.flush()
+    stmt = (
+        select(PurchaseInboundLine)
+        .where(PurchaseInboundLine.purchase_order_id == order_id)
+        .order_by(PurchaseInboundLine.line_no)
+    )
+    remaining = list(db.scalars(stmt).unique().all())
+    for i, ln in enumerate(remaining, start=1):
+        ln.line_no = i
+    po2 = get_purchase_order(db, order_id)
+    if po2 is not None:
+        _normalize_inbound_ref_codes(po2)
+    db.commit()
 
 
 def purchase_order_to_dict(po: PurchaseOrder) -> dict:

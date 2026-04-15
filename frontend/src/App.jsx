@@ -46,6 +46,10 @@ function purchaseOrderProductTypeToFields(productType) {
 /** 엑셀 일괄 등록 시 ERP 없음 → DB에만 쓰이는 접두사 (화면에서는 en dash –) */
 const PO_NO_ERP_PREFIX = "__NO_ERP__";
 
+/** 날짜는 텍스트로 입력 (브라우저 date 피커 대신) */
+const DATE_TEXT_INPUT_HINT = "YYYY-MM-DD 권장";
+const ACTUAL_INBOUND_TEXT_PLACEHOLDER = "YYYY-MM-DD 또는 직접 입력";
+
 function purchaseOrderErpForDisplay(erp) {
   const s = String(erp || "").trim();
   if (s.startsWith(PO_NO_ERP_PREFIX)) return "\u2013";
@@ -149,10 +153,10 @@ const EMPTY_INBOUND_LINE_DRAFT = {
   delivery_available_date: "",
   delivery_available_tbd: false,
   expected_inbound_date: "",
-  actual_inbound_date: "",
-  actual_inbound_note: "",
+  expected_inbound_tbd: false,
+  actual_inbound_input: "",
   quantity: "",
-  inbound_status: "O",
+  inbound_status: "X",
 };
 
 function isIsoDateOnly(value) {
@@ -824,6 +828,8 @@ export default function App() {
   const poMemoAutosaveTimerRef = useRef(null);
   const poMemoModalIdsRef = useRef(null);
   const poMemoDraftRef = useRef("");
+  /** 입고 줄 0개일 때 자동 생성 POST 중복 방지 */
+  const poInboundSeedLockRef = useRef(new Set());
   const poSavedTopScrollRef = useRef(null);
   const poSavedScrollSyncingRef = useRef(false);
   const poSubTabsBarRef = useRef(null);
@@ -965,6 +971,23 @@ export default function App() {
   const isPurchaseOrderScope = countryTabMode === "PURCHASE_ORDERS";
   const isInventoryAdminScope =
     isSettingsScope || isSkuMappingScope || isProductSearchScope || isPurchaseOrderScope;
+
+  /** 저장 발주 표: blur가 누락될 때(스크롤 트랙·레이아웃 클릭 등)에도 입력값 커밋·편집 종료 */
+  useEffect(() => {
+    if (!isPurchaseOrderScope || purchaseOrderSubTab !== "saved" || !savedPoInline) return;
+    const onDocMouseDownCapture = (e) => {
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      const active = document.activeElement;
+      if (!active || !(active instanceof HTMLElement)) return;
+      if (active === target || active.contains(target)) return;
+      if (active.tagName === "INPUT" && active.classList.contains("poSavedSsInlineInput")) {
+        active.blur();
+      }
+    };
+    document.addEventListener("mousedown", onDocMouseDownCapture, true);
+    return () => document.removeEventListener("mousedown", onDocMouseDownCapture, true);
+  }, [isPurchaseOrderScope, purchaseOrderSubTab, savedPoInline]);
 
   useEffect(() => {
     if (!isPurchaseOrderScope || purchaseOrderSubTab !== "saved") return;
@@ -1997,12 +2020,11 @@ export default function App() {
     }
   }
 
-  async function deletePurchaseOrder(poId) {
-    if (
-      !window.confirm(
-        "이 발주를 삭제할까요? 연결된 입고 차수도 함께 삭제되며 되돌릴 수 없습니다."
-      )
-    ) {
+  async function deletePurchaseOrder(poId, options = {}) {
+    const confirmMessage =
+      options.confirmMessage ??
+      "이 발주를 삭제할까요? 연결된 입고 차수도 함께 삭제되며 되돌릴 수 없습니다.";
+    if (!window.confirm(confirmMessage)) {
       return;
     }
     setPurchaseOrderError("");
@@ -2023,7 +2045,24 @@ export default function App() {
         delete next[poId];
         return next;
       });
-      setPurchaseOrderSuccess("발주가 삭제되었습니다.");
+      await fetchPurchaseOrdersList();
+    } catch (err) {
+      const det = err?.response?.data?.detail;
+      setPurchaseOrderError(Array.isArray(det) ? det.join("\n") : det || err?.message || "삭제 실패");
+    }
+  }
+
+  async function deleteInboundLine(orderId, lineId) {
+    if (!window.confirm("해당 입고를 삭제하시겠습니까?")) {
+      return;
+    }
+    setPurchaseOrderError("");
+    setPurchaseOrderSuccess("");
+    try {
+      await axios.delete(
+        `${API_BASE}/api/inventory/purchase-orders/${orderId}/inbound-lines/${lineId}`
+      );
+      setSavedPoInline(null);
       await fetchPurchaseOrdersList();
     } catch (err) {
       const det = err?.response?.data?.detail;
@@ -2120,9 +2159,10 @@ export default function App() {
       setPurchaseOrderError("입고수량을 올바른 숫자로 입력하세요.");
       return;
     }
-    const hasInDate = String(d.actual_inbound_date || "").trim();
-    const hasInNote = String(d.actual_inbound_note || "").trim();
-    let nextInboundStatus = d.inbound_status || "O";
+    const actParsed = normalizeActualInboundInput(String(d.actual_inbound_input || "").trim());
+    const hasInDate = String(actParsed.actual_inbound_date || "").trim();
+    const hasInNote = String(actParsed.actual_inbound_note || "").trim();
+    let nextInboundStatus = String(d.inbound_status || "X").trim().toUpperCase();
     if (hasInDate || hasInNote) {
       nextInboundStatus = "O";
     }
@@ -2133,9 +2173,12 @@ export default function App() {
     try {
       const res = await axios.post(`${API_BASE}/api/inventory/purchase-orders/${orderId}/inbounds`, {
         delivery_available_date: d.delivery_available_tbd ? null : d.delivery_available_date?.trim() || null,
-        expected_inbound_date: d.expected_inbound_date?.trim() || null,
-        actual_inbound_date: d.actual_inbound_date || null,
-        actual_inbound_note: hasInNote || null,
+        expected_inbound_date:
+          String(nextInboundStatus || "").toUpperCase() === "O" || d.expected_inbound_tbd
+            ? null
+            : d.expected_inbound_date?.trim() || null,
+        actual_inbound_date: actParsed.actual_inbound_date,
+        actual_inbound_note: hasInNote ? actParsed.actual_inbound_note : null,
         quantity: Number(qRaw),
         inbound_status: nextInboundStatus,
       });
@@ -2178,7 +2221,6 @@ export default function App() {
           };
         });
       }
-      setPurchaseOrderSuccess("입고 차수가 추가되었습니다.");
       await fetchPurchaseOrdersList();
     } catch (err) {
       const det = err?.response?.data?.detail;
@@ -2192,7 +2234,6 @@ export default function App() {
     try {
       await axios.patch(`${API_BASE}/api/inventory/purchase-orders/${orderId}/inbound-lines/${lineId}`, patch);
       setSavedPoInline(null);
-      setPurchaseOrderSuccess("저장되었습니다.");
       await fetchPurchaseOrdersList();
       return true;
     } catch (err) {
@@ -2202,11 +2243,79 @@ export default function App() {
     }
   }
 
+  /** 입고 차수가 없으면 1차 입고를 만들고 새 줄 id 반환 (저장 표 연필용) */
+  async function ensureFirstInboundLine(po) {
+    const sorted = [...(po.inbound_lines || [])].sort(
+      (a, b) => (Number(a.line_no) || 0) - (Number(b.line_no) || 0)
+    );
+    if (sorted.length > 0) {
+      return String(sorted[0].id);
+    }
+    const pid = String(po.id);
+    if (poInboundSeedLockRef.current.has(pid)) {
+      return null;
+    }
+    const q = po.total_quantity != null ? Number(po.total_quantity) : NaN;
+    if (!Number.isFinite(q)) {
+      setPurchaseOrderError("입고 행이 없습니다. 총 발주수량을 확인한 뒤 다시 시도해 주세요.");
+      return null;
+    }
+    poInboundSeedLockRef.current.add(pid);
+    setPurchaseOrderError("");
+    try {
+      const res = await axios.post(`${API_BASE}/api/inventory/purchase-orders/${pid}/inbounds`, {
+        delivery_available_date: po.delivery_available_date || null,
+        expected_inbound_date: po.expected_inbound_date || null,
+        actual_inbound_date: null,
+        actual_inbound_note: null,
+        quantity: q,
+        inbound_status: "X",
+      });
+      const newId = res?.data?.id;
+      await fetchPurchaseOrdersList();
+      return newId != null ? String(newId) : null;
+    } catch (err) {
+      const det = err?.response?.data?.detail;
+      setPurchaseOrderError(
+        Array.isArray(det) ? det.join("\n") : det || err?.message || "입고 행 생성 실패"
+      );
+      return null;
+    } finally {
+      poInboundSeedLockRef.current.delete(pid);
+    }
+  }
+
+  function buildPurchaseOrderUpdatePayloadFromPo(po, patch = {}) {
+    return {
+      order_date: po.order_date || null,
+      order_date_note: po.order_date_note || null,
+      erp_po_number: String(po.erp_po_number || "").trim(),
+      product_type: String(po.product_type || "본품").trim() || "본품",
+      sku: String(po.sku || "").trim(),
+      brand: String(po.brand || "").trim(),
+      product_name: String(po.product_name || "").trim(),
+      manufacturer: String(po.manufacturer || "").trim(),
+      total_quantity: Number(po.total_quantity),
+      delivery_available_date: po.delivery_available_date || null,
+      expected_inbound_date: po.expected_inbound_date || null,
+      ...patch,
+    };
+  }
+
   async function patchPurchaseOrderField(orderId, patch) {
     setPurchaseOrderError("");
     setPurchaseOrderSuccess("");
+    const po = purchaseOrders.find((p) => String(p.id) === String(orderId));
+    if (!po) {
+      setPurchaseOrderError("발주 정보를 찾을 수 없습니다. 목록을 새로고침합니다.");
+      await fetchPurchaseOrdersList();
+      return false;
+    }
     try {
-      await axios.patch(`${API_BASE}/api/inventory/purchase-orders/${orderId}`, patch);
+      await axios.patch(
+        `${API_BASE}/api/inventory/purchase-orders/${orderId}`,
+        buildPurchaseOrderUpdatePayloadFromPo(po, patch)
+      );
       setSavedPoInline(null);
       setPurchaseOrderSuccess("저장되었습니다.");
       await fetchPurchaseOrdersList();
@@ -2956,12 +3065,14 @@ export default function App() {
             {inventoryDateRange === "custom" && (
               <>
                 <input
-                  type="date"
+                  type="text"
+                  placeholder={DATE_TEXT_INPUT_HINT}
                   value={inventoryStartDate}
                   onChange={(e) => setInventoryStartDate(e.target.value)}
                 />
                 <input
-                  type="date"
+                  type="text"
+                  placeholder={DATE_TEXT_INPUT_HINT}
                   value={inventoryEndDate}
                   onChange={(e) => setInventoryEndDate(e.target.value)}
                 />
@@ -3160,7 +3271,8 @@ export default function App() {
                 />
               </div>
               <input
-                type="date"
+                type="text"
+                placeholder={DATE_TEXT_INPUT_HINT}
                 value={compareSelectedDate}
                 onChange={(e) => setCompareSelectedDate(e.target.value)}
               />
@@ -3444,7 +3556,8 @@ export default function App() {
                     <span className="skuManualKrFieldHead">발주일자</span>
                     <div className="skuManualKrFieldBody poExpectedInboundBody">
                       <input
-                        type="date"
+                        type="text"
+                        placeholder={DATE_TEXT_INPUT_HINT}
                         disabled={isOrderDatePlannedNote(poForm.order_date_note)}
                         value={isOrderDatePlannedNote(poForm.order_date_note) ? "" : poForm.order_date}
                         onChange={(e) =>
@@ -3561,7 +3674,8 @@ export default function App() {
                     <span className="skuManualKrFieldHead">납품가능일</span>
                     <div className="skuManualKrFieldBody poExpectedInboundBody">
                       <input
-                        type="date"
+                        type="text"
+                        placeholder={DATE_TEXT_INPUT_HINT}
                         disabled={poForm.delivery_available_tbd}
                         value={poForm.delivery_available_tbd ? "" : poForm.delivery_available_date}
                         onChange={(e) =>
@@ -3593,7 +3707,8 @@ export default function App() {
                     <span className="skuManualKrFieldHead">입고예정일</span>
                     <div className="skuManualKrFieldBody poExpectedInboundBody">
                       <input
-                        type="date"
+                        type="text"
+                        placeholder={DATE_TEXT_INPUT_HINT}
                         disabled={poForm.expected_inbound_tbd}
                         value={poForm.expected_inbound_tbd ? "" : poForm.expected_inbound_date}
                         onChange={(e) =>
@@ -3749,6 +3864,7 @@ export default function App() {
                             <th>입고수량</th>
                             <th>입고여부</th>
                             <th>비고</th>
+                            <th className="poSavedSsThDelete">발주 삭제</th>
                           </tr>
                         </thead>
                       </table>
@@ -3799,7 +3915,7 @@ export default function App() {
                                 >
                                   {head ? (
                                     <span className="poSavedSsHeadDateCell">
-                                      {savedPoInline?.orderId === po.id &&
+                                      {String(savedPoInline?.orderId) === String(po.id) &&
                                       savedPoInline?.field === "order_date" ? (
                                         <input
                                           type="text"
@@ -3824,7 +3940,7 @@ export default function App() {
                                             aria-label="발주일자 수정"
                                             onClick={() =>
                                               setSavedPoInline({
-                                                orderId: po.id,
+                                                orderId: String(po.id),
                                                 lineId: null,
                                                 field: "order_date",
                                                 draft: String(po.order_date_note || po.order_date || ""),
@@ -3860,23 +3976,206 @@ export default function App() {
                                   {head ? po.manufacturer || "–" : samePoBlank}
                                 </td>
                                 <td className={`poSavedSsTd ${!head ? "poSavedSsTdSamePo" : ""}`}>
-                                  {head
-                                    ? po.total_quantity != null
-                                      ? String(po.total_quantity)
-                                      : "–"
-                                    : samePoDash}
+                                  {head ? (
+                                    String(savedPoInline?.orderId) === String(po.id) &&
+                                    savedPoInline?.field === "total_quantity" ? (
+                                      <input
+                                        type="number"
+                                        className="poSavedSsInlineInput poSavedSsInlineNumber"
+                                        min={0}
+                                        step="any"
+                                        value={savedPoInline.draft}
+                                        onChange={(e) =>
+                                          setSavedPoInline((s) => (s ? { ...s, draft: e.target.value } : s))
+                                        }
+                                        onBlur={(e) => {
+                                          const raw = e.currentTarget.value.replace(/,/g, "").trim();
+                                          if (!raw || Number.isNaN(Number(raw))) {
+                                            setSavedPoInline(null);
+                                            return;
+                                          }
+                                          void patchPurchaseOrderField(po.id, {
+                                            total_quantity: Number(raw),
+                                          });
+                                        }}
+                                        autoFocus
+                                        aria-label="총 발주수량 수정"
+                                      />
+                                    ) : (
+                                      <span className="poSavedSsCellWithPencil">
+                                        <span>
+                                          {po.total_quantity != null ? String(po.total_quantity) : "–"}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          className="poSavedSsPencilBtn poSavedPreventPoRowDbl"
+                                          aria-label="총 발주수량 수정"
+                                          onClick={() =>
+                                            setSavedPoInline({
+                                              orderId: String(po.id),
+                                              lineId: null,
+                                              field: "total_quantity",
+                                              draft:
+                                                po.total_quantity != null ? String(po.total_quantity) : "",
+                                            })
+                                          }
+                                        >
+                                          ✎
+                                        </button>
+                                      </span>
+                                    )
+                                  ) : (
+                                    samePoDash
+                                  )}
                                 </td>
                                 <td
                                   className={`poSavedSsColDate poSavedSsTd ${!head ? "poSavedSsTdSamePo" : ""} ${inboundBg}`}
                                 >
-                                  {line
-                                    ? line.delivery_available_date || po.delivery_available_date || "–"
-                                    : po.delivery_available_date || "–"}
+                                  {(() => {
+                                    const deliveryDisp = line
+                                      ? line.delivery_available_date || po.delivery_available_date || "–"
+                                      : po.delivery_available_date || "–";
+                                    const deliveryDraft = line
+                                      ? String(
+                                          line.delivery_available_date || po.delivery_available_date || ""
+                                        )
+                                      : String(po.delivery_available_date || "");
+                                    const inlineDel =
+                                      String(savedPoInline?.orderId) === String(po.id) &&
+                                      savedPoInline?.field === "delivery_available" &&
+                                      (line
+                                        ? String(savedPoInline?.lineId) === String(line.id)
+                                        : savedPoInline?.lineId == null);
+                                    if (inlineDel) {
+                                      return (
+                                        <input
+                                          type="text"
+                                          className="poSavedSsInlineInput"
+                                          value={String(savedPoInline.draft ?? "")}
+                                          placeholder={DATE_TEXT_INPUT_HINT}
+                                          onChange={(e) =>
+                                            setSavedPoInline((s) => (s ? { ...s, draft: e.target.value } : s))
+                                          }
+                                          onBlur={(e) => {
+                                            const v = e.currentTarget.value.trim();
+                                            if (line) {
+                                              void patchInboundLineField(po.id, line.id, {
+                                                delivery_available_date: v || null,
+                                              });
+                                            } else {
+                                              void patchPurchaseOrderField(po.id, {
+                                                delivery_available_date: v || null,
+                                              });
+                                            }
+                                          }}
+                                          autoFocus
+                                          aria-label="납품가능일 수정"
+                                        />
+                                      );
+                                    }
+                                    return (
+                                      <span className="poSavedSsCellWithPencil">
+                                        <span>{deliveryDisp}</span>
+                                        <button
+                                          type="button"
+                                          className="poSavedSsPencilBtn poSavedPreventPoRowDbl"
+                                          aria-label="납품가능일 수정"
+                                          onClick={() =>
+                                            setSavedPoInline({
+                                              orderId: String(po.id),
+                                              lineId: line ? String(line.id) : null,
+                                              field: "delivery_available",
+                                              draft:
+                                                deliveryDraft ||
+                                                (deliveryDisp !== "–" ? String(deliveryDisp) : ""),
+                                            })
+                                          }
+                                        >
+                                          ✎
+                                        </button>
+                                      </span>
+                                    );
+                                  })()}
                                 </td>
                                 <td
                                   className={`poSavedSsColDate poSavedSsTd ${!head ? "poSavedSsTdSamePo" : ""} ${inboundBg}`}
                                 >
-                                  {formatPoLineExpectedInboundDisplay(line, po)}
+                                  {(() => {
+                                    const expectedDisp = formatPoLineExpectedInboundDisplay(line, po);
+                                    const expectedDraftBase = line
+                                      ? String(line.expected_inbound_date || po.expected_inbound_date || "")
+                                      : String(po.expected_inbound_date || "");
+                                    const inlineExpected =
+                                      String(savedPoInline?.orderId) === String(po.id) &&
+                                      savedPoInline?.field === "expected_inbound" &&
+                                      (line
+                                        ? String(savedPoInline?.lineId) === String(line.id)
+                                        : savedPoInline?.lineId == null);
+                                    if (inlineExpected) {
+                                      return (
+                                        <input
+                                          type="text"
+                                          className="poSavedSsInlineInput"
+                                          value={String(savedPoInline.draft ?? "")}
+                                          placeholder={DATE_TEXT_INPUT_HINT}
+                                          onChange={(e) =>
+                                            setSavedPoInline((s) => (s ? { ...s, draft: e.target.value } : s))
+                                          }
+                                          onBlur={(e) => {
+                                            const v = e.currentTarget.value.trim();
+                                            if (
+                                              line &&
+                                              String(line.inbound_status || "").trim().toUpperCase() === "O"
+                                            ) {
+                                              setPurchaseOrderError("");
+                                              if (v) {
+                                                window.alert(
+                                                  "입고 완료(O)인 차수는 입고예정일을 넣을 수 없습니다.\n\n입고여부를 예정(X)으로 바꾼 뒤 다시 시도해 주세요."
+                                                );
+                                              }
+                                              setSavedPoInline(null);
+                                              return;
+                                            }
+                                            if (line) {
+                                              void patchInboundLineField(po.id, line.id, {
+                                                expected_inbound_date: v || null,
+                                              });
+                                            } else {
+                                              void patchPurchaseOrderField(po.id, {
+                                                expected_inbound_date: v || null,
+                                              });
+                                            }
+                                          }}
+                                          autoFocus
+                                          aria-label="입고예정일 수정"
+                                        />
+                                      );
+                                    }
+                                    return (
+                                      <span className="poSavedSsCellWithPencil">
+                                        <span>{expectedDisp}</span>
+                                        <button
+                                          type="button"
+                                          className="poSavedSsPencilBtn poSavedPreventPoRowDbl"
+                                          aria-label="입고예정일 수정"
+                                          onClick={() =>
+                                            setSavedPoInline({
+                                              orderId: String(po.id),
+                                              lineId: line ? String(line.id) : null,
+                                              field: "expected_inbound",
+                                              draft:
+                                                expectedDraftBase ||
+                                                (expectedDisp !== "–" && expectedDisp !== "미정"
+                                                  ? String(expectedDisp)
+                                                  : ""),
+                                            })
+                                          }
+                                        >
+                                          ✎
+                                        </button>
+                                      </span>
+                                    );
+                                  })()}
                                 </td>
                                 <td
                                   className={`poSavedSsTd poSavedSsTdErpCol ${inboundBg}`}
@@ -3886,15 +4185,34 @@ export default function App() {
                                 </td>
                                 <td className={`poSavedSsColDate poSavedSsTd ${inboundBg}`}>
                                   {!line ? (
-                                    "–"
-                                  ) : savedPoInline?.orderId === po.id &&
-                                    savedPoInline?.lineId === line.id &&
+                                    <span className="poSavedSsCellWithPencil">
+                                      <span>–</span>
+                                      <button
+                                        type="button"
+                                        className="poSavedSsPencilBtn poSavedPreventPoRowDbl"
+                                        aria-label="실제입고일 수정"
+                                        onClick={async () => {
+                                          const lineId = await ensureFirstInboundLine(po);
+                                          if (!lineId) return;
+                                          setSavedPoInline({
+                                            orderId: String(po.id),
+                                            lineId,
+                                            field: "actual",
+                                            draft: "",
+                                          });
+                                        }}
+                                      >
+                                        ✎
+                                      </button>
+                                    </span>
+                                  ) : String(savedPoInline?.orderId) === String(po.id) &&
+                                    String(savedPoInline?.lineId) === String(line.id) &&
                                     savedPoInline?.field === "actual" ? (
                                     <input
                                       type="text"
                                       className="poSavedSsInlineInput"
                                       value={savedPoInline.draft}
-                                      placeholder="YYYY-MM-DD 또는 직접 입력"
+                                      placeholder={ACTUAL_INBOUND_TEXT_PLACEHOLDER}
                                       onChange={(e) =>
                                         setSavedPoInline((s) => (s ? { ...s, draft: e.target.value } : s))
                                       }
@@ -3917,8 +4235,8 @@ export default function App() {
                                         aria-label="실제입고일 수정"
                                         onClick={() =>
                                           setSavedPoInline({
-                                            orderId: po.id,
-                                            lineId: line.id,
+                                            orderId: String(po.id),
+                                            lineId: String(line.id),
                                             field: "actual",
                                             draft: String(line.actual_inbound_note || line.actual_inbound_date || ""),
                                           })
@@ -3931,9 +4249,29 @@ export default function App() {
                                 </td>
                                 <td className={`poSavedSsTd ${inboundBg}`}>
                                   {!line ? (
-                                    "–"
-                                  ) : savedPoInline?.orderId === po.id &&
-                                    savedPoInline?.lineId === line.id &&
+                                    <span className="poSavedSsCellWithPencil">
+                                      <span>–</span>
+                                      <button
+                                        type="button"
+                                        className="poSavedSsPencilBtn poSavedPreventPoRowDbl"
+                                        aria-label="입고수량 수정"
+                                        onClick={async () => {
+                                          const lineId = await ensureFirstInboundLine(po);
+                                          if (!lineId) return;
+                                          setSavedPoInline({
+                                            orderId: String(po.id),
+                                            lineId,
+                                            field: "qty",
+                                            draft:
+                                              po.total_quantity != null ? String(po.total_quantity) : "",
+                                          });
+                                        }}
+                                      >
+                                        ✎
+                                      </button>
+                                    </span>
+                                  ) : String(savedPoInline?.orderId) === String(po.id) &&
+                                    String(savedPoInline?.lineId) === String(line.id) &&
                                     savedPoInline?.field === "qty" ? (
                                     <input
                                       type="number"
@@ -3946,7 +4284,11 @@ export default function App() {
                                       }
                                       onBlur={(e) => {
                                         const raw = e.currentTarget.value.replace(/,/g, "").trim();
-                                        if (!raw || Number.isNaN(Number(raw))) {
+                                        if (!raw) {
+                                          void patchInboundLineField(po.id, line.id, { quantity: 0 });
+                                          return;
+                                        }
+                                        if (Number.isNaN(Number(raw))) {
                                           setSavedPoInline(null);
                                           return;
                                         }
@@ -3963,8 +4305,8 @@ export default function App() {
                                         aria-label="입고수량 수정"
                                         onClick={() =>
                                           setSavedPoInline({
-                                            orderId: po.id,
-                                            lineId: line.id,
+                                            orderId: String(po.id),
+                                            lineId: String(line.id),
                                             field: "qty",
                                             draft: line.quantity != null ? String(line.quantity) : "",
                                           })
@@ -3977,13 +4319,32 @@ export default function App() {
                                 </td>
                                 <td className={`poSavedSsTd ${inboundBg}`}>
                                   {!line ? (
-                                    "–"
-                                  ) : savedPoInline?.orderId === po.id &&
-                                    savedPoInline?.lineId === line.id &&
+                                    <span className="poSavedSsCellWithPencil">
+                                      <span>–</span>
+                                      <button
+                                        type="button"
+                                        className="poSavedSsPencilBtn poSavedPreventPoRowDbl"
+                                        aria-label="입고여부 수정"
+                                        onClick={async () => {
+                                          const lineId = await ensureFirstInboundLine(po);
+                                          if (!lineId) return;
+                                          setSavedPoInline({
+                                            orderId: String(po.id),
+                                            lineId,
+                                            field: "status",
+                                            draft: "X",
+                                          });
+                                        }}
+                                      >
+                                        ✎
+                                      </button>
+                                    </span>
+                                  ) : String(savedPoInline?.orderId) === String(po.id) &&
+                                    String(savedPoInline?.lineId) === String(line.id) &&
                                     savedPoInline?.field === "status" ? (
                                     <select
                                       className="poSavedSsInlineSelect"
-                                      value={savedPoInline.draft}
+                                      value={savedPoInline.draft || "X"}
                                       onChange={(e) => {
                                         const v = e.target.value;
                                         if (v === "O") {
@@ -4006,6 +4367,9 @@ export default function App() {
                                         }
                                         void patchInboundLineField(po.id, line.id, { inbound_status: v });
                                       }}
+                                      onBlur={() =>
+                                        setSavedPoInline((s) => (s?.field === "status" ? null : s))
+                                      }
                                       autoFocus
                                     >
                                       <option value="O">O</option>
@@ -4018,14 +4382,17 @@ export default function App() {
                                         type="button"
                                         className="poSavedSsPencilBtn poSavedPreventPoRowDbl"
                                         aria-label="입고여부 수정"
-                                        onClick={() =>
+                                        onClick={() => {
+                                          const st = String(line.inbound_status || "")
+                                            .trim()
+                                            .toUpperCase();
                                           setSavedPoInline({
-                                            orderId: po.id,
-                                            lineId: line.id,
+                                            orderId: String(po.id),
+                                            lineId: String(line.id),
                                             field: "status",
-                                            draft: String(line.inbound_status || "O").trim().toUpperCase() || "O",
-                                          })
-                                        }
+                                            draft: st === "O" || st === "X" ? st : "X",
+                                          });
+                                        }}
                                       >
                                         ✎
                                       </button>
@@ -4036,7 +4403,27 @@ export default function App() {
                                   className={`poSavedSsTd poSavedSsMemoCol ${hasMemo ? "poSavedSsMemoColHasMemo" : ""}`}
                                 >
                                   {!line ? (
-                                    "–"
+                                    <span className="poSavedSsMemoCellInner">
+                                      <span className="poSavedSsCellWithPencil">
+                                        <span>–</span>
+                                        <button
+                                          type="button"
+                                          className="poSavedSsPencilBtn poSavedPreventPoRowDbl"
+                                          aria-label="비고 수정"
+                                          onClick={async () => {
+                                            const lineId = await ensureFirstInboundLine(po);
+                                            if (!lineId) return;
+                                            setSavedPoMemoModal({
+                                              orderId: po.id,
+                                              lineId,
+                                              draft: "",
+                                            });
+                                          }}
+                                        >
+                                          ✎
+                                        </button>
+                                      </span>
+                                    </span>
                                   ) : (
                                     <span className="poSavedSsMemoCellInner">
                                       {hasMemo ? (
@@ -4054,22 +4441,52 @@ export default function App() {
                                           메모 보기
                                         </button>
                                       ) : (
-                                        <button
-                                          type="button"
-                                          className="poSavedSsPencilBtn poSavedPreventPoRowDbl"
-                                          aria-label="비고 수정"
-                                          onClick={() =>
-                                            setSavedPoMemoModal({
-                                              orderId: po.id,
-                                              lineId: line.id,
-                                              draft: memoTrim,
-                                            })
-                                          }
-                                        >
-                                          ✎
-                                        </button>
+                                        <span className="poSavedSsCellWithPencil">
+                                          <span>–</span>
+                                          <button
+                                            type="button"
+                                            className="poSavedSsPencilBtn poSavedPreventPoRowDbl"
+                                            aria-label="비고 수정"
+                                            onClick={() =>
+                                              setSavedPoMemoModal({
+                                                orderId: po.id,
+                                                lineId: line.id,
+                                                draft: memoTrim,
+                                              })
+                                            }
+                                          >
+                                            ✎
+                                          </button>
+                                        </span>
                                       )}
                                     </span>
+                                  )}
+                                </td>
+                                <td className={`poSavedSsTd poSavedSsDeleteCol ${inboundBg}`}>
+                                  {!line ? (
+                                    <button
+                                      type="button"
+                                      className="poSavedSsTrashBtn poSavedPreventPoRowDbl"
+                                      aria-label="발주 삭제"
+                                      title="발주 삭제"
+                                      onClick={() =>
+                                        void deletePurchaseOrder(po.id, {
+                                          confirmMessage: "해당 입고를 삭제하시겠습니까?",
+                                        })
+                                      }
+                                    >
+                                      {"\uD83D\uDDD1"}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="poSavedSsTrashBtn poSavedPreventPoRowDbl"
+                                      aria-label="입고 차수 삭제"
+                                      title="입고 차수 삭제"
+                                      onClick={() => void deleteInboundLine(po.id, line.id)}
+                                    >
+                                      {"\uD83D\uDDD1"}
+                                    </button>
                                   )}
                                 </td>
                               </tr>
@@ -4100,8 +4517,9 @@ export default function App() {
                               <td className={`poSavedSsColDate poSavedSsTd poSavedSsNewInboundCols`}>
                                 <div className="poExpectedInboundBody">
                                   <input
-                                    type="date"
+                                    type="text"
                                     className="poSavedSsInlineInput poSavedSsNewLineInputWide"
+                                    placeholder={DATE_TEXT_INPUT_HINT}
                                     value={sheetNewDraft.delivery_available_tbd ? "" : sheetNewDraft.delivery_available_date || ""}
                                     disabled={sheetNewDraft.delivery_available_tbd}
                                     onChange={(e) =>
@@ -4130,52 +4548,60 @@ export default function App() {
                                 </div>
                               </td>
                               <td className={`poSavedSsColDate poSavedSsTd poSavedSsNewInboundCols`}>
-                                <input
-                                  type="date"
-                                  className="poSavedSsInlineInput poSavedSsNewLineInputWide"
-                                  value={sheetNewDraft.expected_inbound_date || ""}
-                                  onChange={(e) =>
-                                    updateSavedPoNewLineDraft(po.id, {
-                                      expected_inbound_date: e.target.value,
-                                    })
-                                  }
-                                  disabled={String(sheetNewDraft.inbound_status || "O").toUpperCase() === "O"}
-                                  aria-label="입고예정일 (신규 차수)"
-                                />
+                                <div className="poExpectedInboundBody">
+                                  <input
+                                    type="text"
+                                    className="poSavedSsInlineInput poSavedSsNewLineInputWide"
+                                    placeholder={DATE_TEXT_INPUT_HINT}
+                                    value={
+                                      sheetNewDraft.expected_inbound_tbd
+                                        ? ""
+                                        : sheetNewDraft.expected_inbound_date || ""
+                                    }
+                                    disabled={
+                                      Boolean(sheetNewDraft.expected_inbound_tbd) ||
+                                      String(sheetNewDraft.inbound_status || "X").toUpperCase() === "O"
+                                    }
+                                    onChange={(e) =>
+                                      updateSavedPoNewLineDraft(po.id, {
+                                        expected_inbound_date: e.target.value,
+                                        expected_inbound_tbd: false,
+                                      })
+                                    }
+                                    aria-label="입고예정일 (신규 차수)"
+                                  />
+                                  <label className="poExpectedInboundTbd">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(sheetNewDraft.expected_inbound_tbd)}
+                                      disabled={String(sheetNewDraft.inbound_status || "X").toUpperCase() === "O"}
+                                      onChange={(e) =>
+                                        updateSavedPoNewLineDraft(po.id, (cur) => ({
+                                          expected_inbound_tbd: e.target.checked,
+                                          expected_inbound_date: e.target.checked ? "" : cur.expected_inbound_date,
+                                        }))
+                                      }
+                                    />
+                                    미정
+                                  </label>
+                                </div>
                               </td>
                               <td className={`poSavedSsTd poSavedSsTdErpCol poSavedSsNewInboundCols`}>
                                 <span className="poSavedSsNewLineHint">저장 시 부여</span>
                               </td>
                               <td className={`poSavedSsColDate poSavedSsTd poSavedSsNewInboundCols`}>
-                                <div className="poSavedSsNewLineDateStack">
-                                  <input
-                                    type="date"
-                                    className="poSavedSsInlineInput poSavedSsNewLineInputWide"
-                                    value={sheetNewDraft.actual_inbound_date || ""}
-                                    onChange={(e) => {
-                                      const v = e.target.value;
-                                      updateSavedPoNewLineDraft(po.id, (cur) => ({
-                                        actual_inbound_date: v,
-                                        actual_inbound_note: v ? "" : cur.actual_inbound_note,
-                                      }));
-                                    }}
-                                    aria-label="실제입고일 (신규 차수)"
-                                  />
-                                  <input
-                                    type="text"
-                                    className="poSavedSsInlineInput poSavedSsNewLineNoteInput"
-                                    placeholder="비고: 예외·무상 입고"
-                                    value={sheetNewDraft.actual_inbound_note || ""}
-                                    onChange={(e) => {
-                                      const v = e.target.value;
-                                      updateSavedPoNewLineDraft(po.id, (cur) => ({
-                                        actual_inbound_note: v,
-                                        actual_inbound_date: v.trim() ? "" : cur.actual_inbound_date,
-                                      }));
-                                    }}
-                                    aria-label="실제입고 비고 (신규 차수)"
-                                  />
-                                </div>
+                                <input
+                                  type="text"
+                                  className="poSavedSsInlineInput poSavedSsNewLineInputWide"
+                                  placeholder={ACTUAL_INBOUND_TEXT_PLACEHOLDER}
+                                  value={sheetNewDraft.actual_inbound_input || ""}
+                                  onChange={(e) =>
+                                    updateSavedPoNewLineDraft(po.id, {
+                                      actual_inbound_input: e.target.value,
+                                    })
+                                  }
+                                  aria-label="실제입고 (신규 차수)"
+                                />
                               </td>
                               <td className={`poSavedSsTd poSavedSsNewInboundCols`}>
                                 <input
@@ -4194,12 +4620,13 @@ export default function App() {
                               <td className={`poSavedSsTd poSavedSsNewInboundCols`}>
                                 <select
                                   className="poSavedSsInlineSelect"
-                                  value={String(sheetNewDraft.inbound_status || "O").toUpperCase()}
+                                  value={String(sheetNewDraft.inbound_status || "X").toUpperCase()}
                                   onChange={(e) => {
                                     const v = e.target.value;
                                     updateSavedPoNewLineDraft(po.id, (cur) => ({
                                       inbound_status: v,
                                       expected_inbound_date: v === "O" ? "" : cur.expected_inbound_date,
+                                      expected_inbound_tbd: v === "O" ? false : cur.expected_inbound_tbd,
                                     }));
                                   }}
                                   aria-label="입고여부 (신규 차수)"
@@ -4231,6 +4658,7 @@ export default function App() {
                                   </button>
                                 </div>
                               </td>
+                              <td className="poSavedSsTd poSavedSsDeleteCol poSavedSsNewInboundCols" aria-hidden="true" />
                             </tr>
                           ) : null}
                         </tbody>
@@ -4315,8 +4743,9 @@ export default function App() {
                                 <span className="poCardMetaLabel">발주일</span>
                                 <div className="poExpectedInboundBody">
                                   <input
-                                    type="date"
+                                    type="text"
                                     className="poCardMetaInput"
+                                    placeholder={DATE_TEXT_INPUT_HINT}
                                     disabled={isOrderDatePlannedNote(d.order_date_note)}
                                     value={isOrderDatePlannedNote(d.order_date_note) ? "" : d.order_date}
                                     onChange={(e) =>
@@ -4465,8 +4894,9 @@ export default function App() {
                           <dt>납품가능일 (발주 공통)</dt>
                           <dd>
                             <input
-                              type="date"
+                              type="text"
                               className="poCardDdInput"
+                              placeholder={DATE_TEXT_INPUT_HINT}
                               value={d.delivery_available_date}
                               onChange={(e) =>
                                 setPoEditDraft((p) =>
@@ -4484,8 +4914,9 @@ export default function App() {
                           <dd>
                             <div className="poExpectedInboundBody poCardExpectedInbound">
                               <input
-                                type="date"
+                                type="text"
                                 className="poCardDdInput poCardDdInputDate"
+                                placeholder={DATE_TEXT_INPUT_HINT}
                                 disabled={d.expected_inbound_tbd}
                                 value={d.expected_inbound_tbd ? "" : d.expected_inbound_date}
                                 onChange={(e) =>
@@ -4592,8 +5023,9 @@ export default function App() {
                                   </td>
                                   <td>
                                     <input
-                                      type="date"
+                                      type="text"
                                       className="poInboundCellControl"
+                                      placeholder={DATE_TEXT_INPUT_HINT}
                                       aria-label={`납품가능일 – ${erpLabel}`}
                                       value={line.delivery_available_date || ""}
                                       onChange={(e) => {
@@ -4613,8 +5045,9 @@ export default function App() {
                                   </td>
                                   <td>
                                     <input
-                                      type="date"
+                                      type="text"
                                       className="poInboundCellControl"
+                                      placeholder={DATE_TEXT_INPUT_HINT}
                                       aria-label={`입고예정일 – ${erpLabel}`}
                                       value={line.expected_inbound_date || ""}
                                       onChange={(e) => {
@@ -4632,43 +5065,31 @@ export default function App() {
                                       }}
                                     />
                                   </td>
-                                  <td className="poInboundDateCellStack">
-                                    <input
-                                      type="date"
-                                      className="poInboundCellControl"
-                                      aria-label={`실제입고일 – ${erpLabel}`}
-                                      value={line.actual_inbound_date}
-                                      onChange={(e) => {
-                                        const v = e.target.value;
-                                        setPoEditDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                lines: prev.lines.map((x) =>
-                                                  x.id === line.id
-                                                    ? { ...x, actual_inbound_date: v, actual_inbound_note: v ? "" : x.actual_inbound_note }
-                                                    : x
-                                                ),
-                                              }
-                                            : prev
-                                        );
-                                      }}
-                                    />
+                                  <td>
                                     <input
                                       type="text"
-                                      className="poInboundCellControl poInboundNoteInput"
-                                      placeholder="비고: 예외 입고·무상 입고"
-                                      aria-label={`실제입고 비고 – ${erpLabel}`}
-                                      value={line.actual_inbound_note || ""}
+                                      className="poInboundCellControl"
+                                      placeholder={ACTUAL_INBOUND_TEXT_PLACEHOLDER}
+                                      aria-label={`실제입고 – ${erpLabel}`}
+                                      value={
+                                        String(line.actual_inbound_note || "").trim() ||
+                                        line.actual_inbound_date ||
+                                        ""
+                                      }
                                       onChange={(e) => {
                                         const v = e.target.value;
+                                        const p = normalizeActualInboundInput(v);
                                         setPoEditDraft((prev) =>
                                           prev
                                             ? {
                                                 ...prev,
                                                 lines: prev.lines.map((x) =>
                                                   x.id === line.id
-                                                    ? { ...x, actual_inbound_note: v, actual_inbound_date: v.trim() ? "" : x.actual_inbound_date }
+                                                    ? {
+                                                        ...x,
+                                                        actual_inbound_date: p.actual_inbound_date || "",
+                                                        actual_inbound_note: p.actual_inbound_note || "",
+                                                      }
                                                     : x
                                                 ),
                                               }
@@ -4956,7 +5377,8 @@ export default function App() {
                       <div className="fileControl">
                         <span>날짜</span>
                         <input
-                          type="date"
+                          type="text"
+                          placeholder={DATE_TEXT_INPUT_HINT}
                           value={entry.date}
                           onChange={(e) => {
                             const next = e.target.value;

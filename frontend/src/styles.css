@@ -2840,6 +2840,66 @@ th {
   max-width: 12rem;
 }
 
+.poSavedSsNewInboundSheetRow .poSavedSsNewLineNoteInput {
+  max-width: 100%;
+}
+
+/* 신규 차수 행: 실제입고일 열에 날짜+비고 입력이 겹치지 않도록 열 너비 확보 */
+.poSavedSsNewInboundSheetRow td:nth-child(12) {
+  min-width: 11.5rem;
+  max-width: min(22rem, 48vw);
+  vertical-align: top;
+}
+
+.poSavedSsNewInboundSheetRow td:nth-child(13) {
+  min-width: 7rem;
+}
+
+.poSavedSpreadsheet td .poExpectedInboundBody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 10px;
+  max-width: 100%;
+}
+
+.poSavedSpreadsheet td .poExpectedInboundBody input[type="date"] {
+  flex: 1 1 9.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.poSavedSsThDelete {
+  width: 4.75rem;
+  white-space: normal;
+  line-height: 1.25;
+  word-break: keep-all;
+}
+
+.poSavedSsDeleteCol {
+  width: 4.75rem;
+  max-width: 5.5rem;
+  padding: 6px 4px !important;
+  vertical-align: middle;
+}
+
+.poSavedSsTrashBtn {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 1.15rem;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  opacity: 0.8;
+}
+
+.poSavedSsTrashBtn:hover {
+  opacity: 1;
+  background: #fee2e2;
+}
+
 .poSavedSsNewLineInputWide {
   min-width: 8.75rem;
   max-width: 100%;
