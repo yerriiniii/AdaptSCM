@@ -18,6 +18,8 @@ from app.domains.inventory.dto.inventory_api_dto import (
     PurchaseInboundLineQuickPatchRequest,
     PurchaseInboundLineResponse,
     PurchaseOrderCreateRequest,
+    PurchaseOrderImportRequest,
+    PurchaseOrderImportResponse,
     PurchaseOrderListResponse,
     PurchaseOrderResponse,
     PurchaseOrderUpdateRequest,
@@ -50,6 +52,7 @@ from app.domains.inventory.services.purchase_order_service import (
     create_purchase_order,
     delete_inbound_line,
     delete_purchase_order,
+    import_purchase_orders_from_sheet,
     list_purchase_orders,
     patch_inbound_line_quick,
     purchase_order_to_dict,
@@ -221,6 +224,16 @@ def purchase_orders_create(
     stmt = select(PurchaseOrderModel).where(PurchaseOrderModel.id == po.id).options(selectinload(PurchaseOrderModel.inbound_lines))
     po2 = db.scalars(stmt).unique().first()
     return PurchaseOrderResponse(**purchase_order_to_dict(po2 or po))
+
+
+@router.post("/purchase-orders/import", response_model=PurchaseOrderImportResponse)
+def purchase_orders_import(
+    payload: PurchaseOrderImportRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> PurchaseOrderImportResponse:
+    _require_db_configured()
+    created = import_purchase_orders_from_sheet(db, [r.model_dump() for r in payload.rows])
+    return PurchaseOrderImportResponse(created_count=created)
 
 
 @router.delete("/purchase-orders/{order_id}")

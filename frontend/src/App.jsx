@@ -47,9 +47,177 @@ function purchaseOrderProductTypeToFields(productType) {
 const PO_NO_ERP_PREFIX = "__NO_ERP__";
 const PO_NO_SKU_PREFIX = "__NO_SKU__";
 
+/** 발주 엑셀 업로드 — 헤더는 템플릿과 동일한 한글 열 이름 */
+const PO_INBOUND_SHEET_HEADERS = [
+  "발주일자",
+  "ERP PO번호",
+  "상품유형",
+  "상품번호",
+  "제조사",
+  "총 발주수량",
+  "납품가능일",
+  "입고예정일",
+  "실제입고일",
+  "입고수량",
+  "입고여부",
+];
+
+/** 엑셀 날짜 직렬(1900 기준) → YYYY-MM-DD. 타임존과 무관하게 캘린더 일만 맞춤. */
+function excelSerialToIsoDate(serial) {
+  const whole = Math.floor(Number(serial));
+  const ms = Math.round((whole - 25569) * 86400 * 1000);
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+/** treatNumberAsExcelDate: 숫자 열(수량 등)은 엑셀 날짜 직렬과 겹칠 수 있어 날짜 열에서만 직렬→ISO 변환 */
+function normalizeInboundSheetCell(value, treatNumberAsExcelDate = false) {
+  if (value == null || value === "") return "";
+  if (
+    treatNumberAsExcelDate &&
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value > 20000 &&
+    value < 600000
+  ) {
+    return excelSerialToIsoDate(value);
+  }
+  if (treatNumberAsExcelDate && value instanceof Date && !Number.isNaN(value.getTime())) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return String(value).trim();
+}
+
+function parsePurchaseOrderInboundSheet(fileArrayBuffer) {
+  const errors = [];
+  const wb = XLSX.read(fileArrayBuffer, { type: "array", cellDates: false });
+  const sheetName = wb.SheetNames[0];
+  if (!sheetName) {
+    return { rows: [], errors: ["시트가 비어 있습니다."] };
+  }
+  const ws = wb.Sheets[sheetName];
+  const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", blankrows: false });
+  if (!data.length) {
+    return { rows: [], errors: ["데이터가 없습니다."] };
+  }
+  const headerRow = data[0].map((c) => String(c ?? "").trim());
+  const colIndex = {};
+  for (let i = 0; i < PO_INBOUND_SHEET_HEADERS.length; i += 1) {
+    const want = PO_INBOUND_SHEET_HEADERS[i];
+    const idx = headerRow.indexOf(want);
+    if (idx < 0) {
+      errors.push(`헤더에「${want}」열이 없습니다. 제공한 템플릿을 사용했는지 확인해 주세요.`);
+    } else {
+      colIndex[want] = idx;
+    }
+  }
+  if (errors.length) {
+    return { rows: [], errors };
+  }
+  const rows = [];
+  for (let r = 1; r < data.length; r += 1) {
+    const row = data[r];
+    if (!row || !row.length) continue;
+    const excelRowNum = r + 1;
+    const get = (key, dateCol = false) => {
+      const j = colIndex[key];
+      return j == null ? "" : normalizeInboundSheetCell(row[j], dateCol);
+    };
+    const pack = {
+      row_number: excelRowNum,
+      order_date: get("발주일자", true),
+      erp_po_number: get("ERP PO번호"),
+      product_type: get("상품유형"),
+      product_number: get("상품번호"),
+      manufacturer: get("제조사"),
+      total_quantity: get("총 발주수량"),
+      delivery_available_date: get("납품가능일", true) || null,
+      expected_inbound_date: get("입고예정일", true) || null,
+      actual_inbound: get("실제입고일", true) || null,
+      inbound_quantity: get("입고수량"),
+      inbound_status: get("입고여부"),
+    };
+    if (/^\s*예\s*:/i.test(String(pack.order_date || ""))) {
+      continue;
+    }
+    const emptyRow =
+      !String(pack.erp_po_number || "").trim() &&
+      !String(pack.product_number || "").trim() &&
+      !String(pack.order_date || "").trim() &&
+      !String(pack.total_quantity || "").trim();
+    if (emptyRow) continue;
+    rows.push(pack);
+  }
+  return { rows, errors: [] };
+}
+
+async function downloadPoInboundTemplateXlsx() {
+  const ExcelJS = (await import("exceljs")).default;
+  const FONT_9 = { name: "맑은 고딕", size: 9 };
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("발주_템플릿", { views: [{ showGridLines: true }] });
+  const hr = ws.addRow(PO_INBOUND_SHEET_HEADERS);
+  hr.height = 18;
+  const hint = ws.addRow([
+    "예: 2025-08-07",
+    "예: CMS20250807",
+    "예: 본품",
+    "예: 05971",
+    "예: 코스모코스",
+    "예: 20000",
+    "예: 2025-11-07",
+    "예: 2025-12-11",
+    "",
+    "예: 11520",
+    "예: 입고 예정",
+  ]);
+  hint.height = 16;
+  PO_INBOUND_SHEET_HEADERS.forEach((_, i) => {
+    ws.getColumn(i + 1).width = 16;
+  });
+  ws.eachRow((row, rowNumber) => {
+    row.eachCell((cell) => {
+      cell.font = {
+        ...FONT_9,
+        bold: rowNumber === 1,
+      };
+      cell.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+      if (rowNumber === 1) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFFFFF00" },
+        };
+      }
+    });
+  });
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "발주_템플릿.xlsx";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 /** 날짜는 텍스트로 입력 (브라우저 date 피커 대신) */
 const DATE_TEXT_INPUT_HINT = "YYYY-MM-DD 권장";
 const ACTUAL_INBOUND_TEXT_PLACEHOLDER = "YYYY-MM-DD 또는 직접 입력";
+/** 저장된 발주(표·발주 수정 모달): 날짜 입력란 힌트 없음. 새 발주 등록 탭은 위 상수 유지 */
+const PO_SAVED_DATE_PLACEHOLDER = "";
+const PO_SAVED_ACTUAL_INBOUND_PLACEHOLDER = "";
 /** 저장 발주 표: 입고여부 O인 차수에서 입고예정일 연필 시 */
 const PO_SAVED_EXPECTED_INBOUND_BLOCKED_O_MSG =
   "이미 입고 완료된 건입니다. 입고 여부를 확인해주세요.";
@@ -835,8 +1003,10 @@ export default function App() {
   const [inboundDrafts, setInboundDrafts] = useState({});
   /** 저장된 발주 표: 발주별 하단 인라인 신규 입고 차수 초안 (orderId 문자열 키) */
   const [savedPoNewLineDraftByOrderId, setSavedPoNewLineDraftByOrderId] = useState({});
-  /** 발주 기록 탭 내부: 새 등록 | 저장된 목록 */
+  /** 발주 기록 탭 내부: 발주 파일 업로드 | 새 등록 | 저장된 목록 */
   const [purchaseOrderSubTab, setPurchaseOrderSubTab] = useState("register");
+  const [poInboundUploadBusy, setPoInboundUploadBusy] = useState(false);
+  const [poInboundFileKey, setPoInboundFileKey] = useState(0);
   const poSavedTableScrollRef = useRef(null);
   const poSavedHeaderScrollRef = useRef(null);
   const poSavedHeadTableRef = useRef(null);
@@ -866,6 +1036,9 @@ export default function App() {
   const [savedPoInline, setSavedPoInline] = useState(null);
   const savedPoInlineRef = useRef(null);
   savedPoInlineRef.current = savedPoInline;
+  /** 저장 발주 표: 일괄 삭제 선택 — `P|orderId`(입고 0건인 발주) 또는 `L|orderId|lineId` */
+  const [savedPoBulkSelected, setSavedPoBulkSelected] = useState({});
+  const savedPoBulkHeaderCbRef = useRef(null);
 
   const filteredPurchaseOrders = useMemo(() => {
     let rows = purchaseOrders;
@@ -915,6 +1088,52 @@ export default function App() {
     });
     return groups;
   }, [filteredPurchaseOrders]);
+
+  const savedPoBulkSelectableKeysFlat = useMemo(() => {
+    const keys = [];
+    for (const { po, lines } of savedPoSpreadsheetGroups) {
+      if (!lines.length) keys.push(`P|${po.id}`);
+      else for (const line of lines) keys.push(`L|${po.id}|${line.id}`);
+    }
+    return keys;
+  }, [savedPoSpreadsheetGroups]);
+
+  const savedPoBulkKeySet = useMemo(
+    () => new Set(savedPoBulkSelectableKeysFlat),
+    [savedPoBulkSelectableKeysFlat]
+  );
+
+  const savedPoBulkSelectedVisibleCount = useMemo(
+    () => savedPoBulkSelectableKeysFlat.filter((k) => savedPoBulkSelected[k]).length,
+    [savedPoBulkSelectableKeysFlat, savedPoBulkSelected]
+  );
+
+  const savedPoBulkAllVisibleSelected = useMemo(() => {
+    const flat = savedPoBulkSelectableKeysFlat;
+    return flat.length > 0 && flat.every((k) => savedPoBulkSelected[k]);
+  }, [savedPoBulkSelectableKeysFlat, savedPoBulkSelected]);
+
+  const savedPoBulkSomeVisibleSelected = useMemo(
+    () => savedPoBulkSelectableKeysFlat.some((k) => savedPoBulkSelected[k]),
+    [savedPoBulkSelectableKeysFlat, savedPoBulkSelected]
+  );
+
+  useLayoutEffect(() => {
+    const el = savedPoBulkHeaderCbRef.current;
+    if (!el) return;
+    el.indeterminate =
+      savedPoBulkSomeVisibleSelected && !savedPoBulkAllVisibleSelected;
+  }, [savedPoBulkSomeVisibleSelected, savedPoBulkAllVisibleSelected]);
+
+  useEffect(() => {
+    setSavedPoBulkSelected((prev) => {
+      const next = {};
+      for (const k of Object.keys(prev)) {
+        if (savedPoBulkKeySet.has(k)) next[k] = true;
+      }
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+    });
+  }, [savedPoBulkKeySet]);
 
   useEffect(() => {
     if (!mappingError) return;
@@ -1183,8 +1402,8 @@ export default function App() {
         });
       });
       const nameColIdx = 4;
-      const nameMinPx = 210;
-      const nameMaxPx = 380;
+      const nameMinPx = 190;
+      const nameMaxPx = 360;
       if (nameColIdx < colCount) {
         maxW[nameColIdx] = Math.min(nameMaxPx, Math.max(maxW[nameColIdx] || 0, nameMinPx));
       }
@@ -2069,21 +2288,92 @@ export default function App() {
     }
   }
 
-  async function deleteInboundLine(orderId, lineId) {
-    if (!window.confirm("해당 입고를 삭제하시겠습니까?")) {
+  function toggleSavedPoBulkKey(rawKey) {
+    setSavedPoBulkSelected((prev) => {
+      const next = { ...prev };
+      if (next[rawKey]) {
+        delete next[rawKey];
+        return next;
+      }
+      next[rawKey] = true;
+      if (rawKey.startsWith("P|")) {
+        const oid = rawKey.slice(2);
+        for (const k of Object.keys(next)) {
+          if (k.startsWith(`L|${oid}|`)) delete next[k];
+        }
+      } else if (rawKey.startsWith("L|")) {
+        const parts = rawKey.split("|");
+        const oid = parts[1];
+        if (oid) delete next[`P|${oid}`];
+      }
+      return next;
+    });
+  }
+
+  function setSavedPoBulkSelectAllVisible(selectAll) {
+    if (!selectAll) {
+      setSavedPoBulkSelected({});
       return;
     }
+    setSavedPoBulkSelected(Object.fromEntries(savedPoBulkSelectableKeysFlat.map((k) => [k, true])));
+  }
+
+  async function bulkDeleteSavedPoSelections() {
+    const keys = Object.keys(savedPoBulkSelected).filter((k) => savedPoBulkKeySet.has(k));
+    if (!keys.length) return;
+
+    const wholePo = new Set();
+    const linePairs = [];
+    for (const k of keys) {
+      if (k.startsWith("P|")) {
+        const id = k.slice(2);
+        if (id) wholePo.add(id);
+      } else if (k.startsWith("L|")) {
+        const parts = k.split("|");
+        const oid = parts[1];
+        const lid = parts[2];
+        if (oid && lid) linePairs.push({ orderId: oid, lineId: lid });
+      }
+    }
+    const lineFiltered = linePairs.filter(({ orderId }) => !wholePo.has(orderId));
+    const n = wholePo.size + lineFiltered.length;
+    if (!window.confirm(`선택한 입고 ${n}건을 삭제할까요? 되돌릴 수 없습니다.`)) {
+      return;
+    }
+
     setPurchaseOrderError("");
     setPurchaseOrderSuccess("");
+    const touchedOrderIds = new Set([...wholePo, ...lineFiltered.map((x) => x.orderId)]);
+
     try {
-      await axios.delete(
-        `${API_BASE}/api/inventory/purchase-orders/${orderId}/inbound-lines/${lineId}`
-      );
+      for (const { orderId, lineId } of lineFiltered) {
+        await axios.delete(
+          `${API_BASE}/api/inventory/purchase-orders/${orderId}/inbound-lines/${lineId}`
+        );
+      }
+      for (const poId of wholePo) {
+        await axios.delete(`${API_BASE}/api/inventory/purchase-orders/${poId}`);
+        if (String(editingPoId) === String(poId)) {
+          cancelPoEdit();
+        }
+      }
       setSavedPoInline(null);
+      setSavedPoBulkSelected({});
+      setSavedPoNewLineDraftByOrderId((prev) => {
+        const next = { ...prev };
+        for (const id of touchedOrderIds) delete next[String(id)];
+        return next;
+      });
+      setInboundDrafts((prev) => {
+        const next = { ...prev };
+        for (const id of touchedOrderIds) delete next[id];
+        return next;
+      });
       await fetchPurchaseOrdersList();
     } catch (err) {
       const det = err?.response?.data?.detail;
       setPurchaseOrderError(Array.isArray(det) ? det.join("\n") : det || err?.message || "삭제 실패");
+      await fetchPurchaseOrdersList();
     }
   }
 
@@ -2150,6 +2440,52 @@ export default function App() {
     } catch (err) {
       const det = err?.response?.data?.detail;
       setPurchaseOrderError(Array.isArray(det) ? det.join("\n") : det || err?.message || "저장 실패");
+    }
+  }
+
+  async function downloadPoInboundTemplateClick() {
+    setPurchaseOrderError("");
+    setPurchaseOrderSuccess("");
+    try {
+      await downloadPoInboundTemplateXlsx();
+    } catch (err) {
+      setPurchaseOrderError(err?.message || "템플릿을 만드는 중 오류가 났습니다.");
+    }
+  }
+
+  function openPoOrderFileInput() {
+    const el = document.getElementById("po-order-file-input");
+    if (el) el.click();
+  }
+
+  async function handlePoInboundFileSelected(ev) {
+    const f = ev.target.files?.[0];
+    ev.target.value = "";
+    if (!f) return;
+    setPurchaseOrderError("");
+    setPurchaseOrderSuccess("");
+    setPoInboundUploadBusy(true);
+    try {
+      const buf = await f.arrayBuffer();
+      const { rows, errors } = parsePurchaseOrderInboundSheet(buf);
+      if (errors.length) {
+        setPurchaseOrderError(errors.join("\n"));
+        return;
+      }
+      if (!rows.length) {
+        setPurchaseOrderError("업로드할 데이터 행이 없습니다. 템플릿 2행 이후에 내용을 입력했는지 확인해 주세요.");
+        return;
+      }
+      await axios.post(`${API_BASE}/api/inventory/purchase-orders/import`, { rows });
+      setPurchaseOrderSuccess(`${rows.length}건이 저장된 발주에 반영되었습니다.`);
+      setPurchaseOrderSubTab("saved");
+      await fetchPurchaseOrdersList();
+    } catch (err) {
+      const det = err?.response?.data?.detail;
+      setPurchaseOrderError(Array.isArray(det) ? det.join("\n") : det || err?.message || "업로드 실패");
+    } finally {
+      setPoInboundUploadBusy(false);
+      setPoInboundFileKey((k) => k + 1);
     }
   }
 
@@ -3527,6 +3863,15 @@ export default function App() {
             <button
               type="button"
               role="tab"
+              aria-selected={purchaseOrderSubTab === "orderFileUpload"}
+              className={`tab poSubTab ${purchaseOrderSubTab === "orderFileUpload" ? "active" : ""}`}
+              onClick={() => setPurchaseOrderSubTab("orderFileUpload")}
+            >
+              발주 파일 업로드
+            </button>
+            <button
+              type="button"
+              role="tab"
               aria-selected={purchaseOrderSubTab === "register"}
               className={`tab poSubTab ${purchaseOrderSubTab === "register" ? "active" : ""}`}
               onClick={() => setPurchaseOrderSubTab("register")}
@@ -3747,6 +4092,55 @@ export default function App() {
           </div>
           ) : null}
 
+          {purchaseOrderSubTab === "orderFileUpload" ? (
+            <div className="poOrderFileUploadCard">
+              <input
+                key={poInboundFileKey}
+                id="po-order-file-input"
+                type="file"
+                accept=".xlsx,.xls"
+                style={{ display: "none" }}
+                disabled={poInboundUploadBusy}
+                onChange={(e) => void handlePoInboundFileSelected(e)}
+              />
+              <div className="skuUploadStage skuManageSinglePanel poOrderFileUploadStage">
+                <div className="settingsNotice poOrderFileUploadNotice">
+                  <p className="poOrderFileUploadLead">
+                    <strong>
+                      엑셀 템플릿을 받아 작성한 뒤 업로드하면 「저장된 발주」에 그대로 저장됩니다.
+                    </strong>
+                  </p>
+                  <p className="poOrderFileUploadSub">
+                    상품명과 브랜드는 상품번호를 통해 자동 입력되므로 상품코드만 입력하면 됩니다.
+                  </p>
+                </div>
+                <div className="poOrderFileTemplateRow">
+                  <button
+                    type="button"
+                    className="poOrderFileTemplateBtn"
+                    disabled={poInboundUploadBusy}
+                    onClick={() => void downloadPoInboundTemplateClick()}
+                  >
+                    엑셀 템플릿 다운로드
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="skuUploadPanel"
+                  disabled={poInboundUploadBusy}
+                  onClick={() => openPoOrderFileInput()}
+                >
+                  <span className="skuUploadMain">
+                    <span className="skuUploadBadge">XLSX</span>
+                    <span className="skuUploadButtonLabel">
+                      {poInboundUploadBusy ? "업로드 중..." : "발주 파일 업로드"}
+                    </span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {purchaseOrderSubTab === "saved" ? (
           <div className="poFormCard poSavedOrdersPanel">
             <div
@@ -3807,6 +4201,14 @@ export default function App() {
                 }}
               >
                 필터 초기화
+              </button>
+              <button
+                type="button"
+                className="ghost poSavedBulkDeleteBtn"
+                disabled={savedPoBulkSelectedVisibleCount === 0}
+                onClick={() => void bulkDeleteSavedPoSelections()}
+              >
+                선택 삭제 ({savedPoBulkSelectedVisibleCount})
               </button>
             </div>
             {purchaseOrdersLoading ? (
@@ -3869,7 +4271,17 @@ export default function App() {
                             <th>입고수량</th>
                             <th>입고여부</th>
                             <th>비고</th>
-                            <th className="poSavedSsThDelete">발주 삭제</th>
+                            <th className="poSavedSsThSelect">
+                              <input
+                                ref={savedPoBulkHeaderCbRef}
+                                type="checkbox"
+                                className="poSavedSsRowCheckbox"
+                                disabled={!savedPoBulkSelectableKeysFlat.length}
+                                checked={savedPoBulkAllVisibleSelected}
+                                onChange={(e) => setSavedPoBulkSelectAllVisible(e.target.checked)}
+                                aria-label="보이는 입고 전체 선택"
+                              />
+                            </th>
                           </tr>
                         </thead>
                       </table>
@@ -3932,7 +4344,7 @@ export default function App() {
                                                 ? ""
                                                 : String(savedPoInline.draft ?? "")
                                             }
-                                            placeholder={DATE_TEXT_INPUT_HINT}
+                                            placeholder={PO_SAVED_DATE_PLACEHOLDER}
                                             onChange={(e) =>
                                               setSavedPoInline((s) =>
                                                 s
@@ -4113,7 +4525,7 @@ export default function App() {
                                             value={
                                               savedPoInline.tbd ? "" : String(savedPoInline.draft ?? "")
                                             }
-                                            placeholder={DATE_TEXT_INPUT_HINT}
+                                            placeholder={PO_SAVED_DATE_PLACEHOLDER}
                                             onChange={(e) =>
                                               setSavedPoInline((s) =>
                                                 s
@@ -4212,7 +4624,7 @@ export default function App() {
                                             value={
                                               savedPoInline.tbd ? "" : String(savedPoInline.draft ?? "")
                                             }
-                                            placeholder={DATE_TEXT_INPUT_HINT}
+                                            placeholder={PO_SAVED_DATE_PLACEHOLDER}
                                             onChange={(e) =>
                                               setSavedPoInline((s) =>
                                                 s
@@ -4333,7 +4745,7 @@ export default function App() {
                                       type="text"
                                       className="poSavedSsInlineInput"
                                       value={savedPoInline.draft}
-                                      placeholder={ACTUAL_INBOUND_TEXT_PLACEHOLDER}
+                                      placeholder={PO_SAVED_ACTUAL_INBOUND_PLACEHOLDER}
                                       onChange={(e) =>
                                         setSavedPoInline((s) => (s ? { ...s, draft: e.target.value } : s))
                                       }
@@ -4583,31 +4995,23 @@ export default function App() {
                                     </span>
                                   )}
                                 </td>
-                                <td className={`poSavedSsTd poSavedSsDeleteCol ${inboundBg}`}>
+                                <td className={`poSavedSsTd poSavedSsSelectCol ${inboundBg}`}>
                                   {!line ? (
-                                    <button
-                                      type="button"
-                                      className="poSavedSsTrashBtn poSavedPreventPoRowDbl"
-                                      aria-label="발주 삭제"
-                                      title="발주 삭제"
-                                      onClick={() =>
-                                        void deletePurchaseOrder(po.id, {
-                                          confirmMessage: "해당 입고를 삭제하시겠습니까?",
-                                        })
-                                      }
-                                    >
-                                      {"\uD83D\uDDD1"}
-                                    </button>
+                                    <input
+                                      type="checkbox"
+                                      className="poSavedSsRowCheckbox poSavedPreventPoRowDbl"
+                                      checked={Boolean(savedPoBulkSelected[`P|${po.id}`])}
+                                      onChange={() => toggleSavedPoBulkKey(`P|${po.id}`)}
+                                      aria-label="이 발주 삭제 대상에 포함 (입고 차수 없음)"
+                                    />
                                   ) : (
-                                    <button
-                                      type="button"
-                                      className="poSavedSsTrashBtn poSavedPreventPoRowDbl"
-                                      aria-label="입고 차수 삭제"
-                                      title="입고 차수 삭제"
-                                      onClick={() => void deleteInboundLine(po.id, line.id)}
-                                    >
-                                      {"\uD83D\uDDD1"}
-                                    </button>
+                                    <input
+                                      type="checkbox"
+                                      className="poSavedSsRowCheckbox poSavedPreventPoRowDbl"
+                                      checked={Boolean(savedPoBulkSelected[`L|${po.id}|${line.id}`])}
+                                      onChange={() => toggleSavedPoBulkKey(`L|${po.id}|${line.id}`)}
+                                      aria-label={`입고 차수 ${line.line_no ?? ""} 삭제 대상에 포함`}
+                                    />
                                   )}
                                 </td>
                               </tr>
@@ -4640,7 +5044,7 @@ export default function App() {
                                   <input
                                     type="text"
                                     className="poSavedSsInlineInput poSavedSsNewLineInputWide"
-                                    placeholder={DATE_TEXT_INPUT_HINT}
+                                    placeholder={PO_SAVED_DATE_PLACEHOLDER}
                                     value={sheetNewDraft.delivery_available_tbd ? "" : sheetNewDraft.delivery_available_date || ""}
                                     disabled={sheetNewDraft.delivery_available_tbd}
                                     onChange={(e) =>
@@ -4673,7 +5077,7 @@ export default function App() {
                                   <input
                                     type="text"
                                     className="poSavedSsInlineInput poSavedSsNewLineInputWide"
-                                    placeholder={DATE_TEXT_INPUT_HINT}
+                                    placeholder={PO_SAVED_DATE_PLACEHOLDER}
                                     value={
                                       sheetNewDraft.expected_inbound_tbd
                                         ? ""
@@ -4714,7 +5118,7 @@ export default function App() {
                                 <input
                                   type="text"
                                   className="poSavedSsInlineInput poSavedSsNewLineInputWide"
-                                  placeholder={ACTUAL_INBOUND_TEXT_PLACEHOLDER}
+                                  placeholder={PO_SAVED_ACTUAL_INBOUND_PLACEHOLDER}
                                   value={sheetNewDraft.actual_inbound_input || ""}
                                   onChange={(e) =>
                                     updateSavedPoNewLineDraft(po.id, {
@@ -4779,7 +5183,7 @@ export default function App() {
                                   </button>
                                 </div>
                               </td>
-                              <td className="poSavedSsTd poSavedSsDeleteCol poSavedSsNewInboundCols" aria-hidden="true" />
+                              <td className="poSavedSsTd poSavedSsSelectCol poSavedSsNewInboundCols" aria-hidden="true" />
                             </tr>
                           ) : null}
                         </tbody>
@@ -4866,7 +5270,7 @@ export default function App() {
                                   <input
                                     type="text"
                                     className="poCardMetaInput"
-                                    placeholder={DATE_TEXT_INPUT_HINT}
+                                    placeholder={PO_SAVED_DATE_PLACEHOLDER}
                                     disabled={isOrderDatePlannedNote(d.order_date_note)}
                                     value={isOrderDatePlannedNote(d.order_date_note) ? "" : d.order_date}
                                     onChange={(e) =>
@@ -5017,7 +5421,7 @@ export default function App() {
                             <input
                               type="text"
                               className="poCardDdInput"
-                              placeholder={DATE_TEXT_INPUT_HINT}
+                              placeholder={PO_SAVED_DATE_PLACEHOLDER}
                               value={d.delivery_available_date}
                               onChange={(e) =>
                                 setPoEditDraft((p) =>
@@ -5037,7 +5441,7 @@ export default function App() {
                               <input
                                 type="text"
                                 className="poCardDdInput poCardDdInputDate"
-                                placeholder={DATE_TEXT_INPUT_HINT}
+                                placeholder={PO_SAVED_DATE_PLACEHOLDER}
                                 disabled={d.expected_inbound_tbd}
                                 value={d.expected_inbound_tbd ? "" : d.expected_inbound_date}
                                 onChange={(e) =>
@@ -5146,7 +5550,7 @@ export default function App() {
                                     <input
                                       type="text"
                                       className="poInboundCellControl"
-                                      placeholder={DATE_TEXT_INPUT_HINT}
+                                      placeholder={PO_SAVED_DATE_PLACEHOLDER}
                                       aria-label={`납품가능일 – ${erpLabel}`}
                                       value={line.delivery_available_date || ""}
                                       onChange={(e) => {
@@ -5168,7 +5572,7 @@ export default function App() {
                                     <input
                                       type="text"
                                       className="poInboundCellControl"
-                                      placeholder={DATE_TEXT_INPUT_HINT}
+                                      placeholder={PO_SAVED_DATE_PLACEHOLDER}
                                       aria-label={`입고예정일 – ${erpLabel}`}
                                       value={line.expected_inbound_date || ""}
                                       onChange={(e) => {
@@ -5190,7 +5594,7 @@ export default function App() {
                                     <input
                                       type="text"
                                       className="poInboundCellControl"
-                                      placeholder={ACTUAL_INBOUND_TEXT_PLACEHOLDER}
+                                      placeholder={PO_SAVED_ACTUAL_INBOUND_PLACEHOLDER}
                                       aria-label={`실제입고 – ${erpLabel}`}
                                       value={
                                         String(line.actual_inbound_note || "").trim() ||
@@ -5355,7 +5759,10 @@ export default function App() {
             <div className="cautionModalHeader">
               <div>
                 <div className="cautionModalTitle">주의사항</div>
-                <div className="cautionModalSubtitle">데이터 형식이나 날짜 기준이 다르면 재고 파악이 정확하지 않을 수 있습니다.</div>
+                <div className="cautionModalSubtitle">
+                  데이터 형식·날짜 기준이 다르면 재고 파악이 어긋날 수 있습니다. 발주 화면 동작은 아래 「발주 기록」을
+                  참고하세요.
+                </div>
               </div>
               <button
                 type="button"
@@ -5408,6 +5815,48 @@ export default function App() {
                 <li>선택한 날짜에 특정 국가 데이터가 없으면 `-`로 표시됩니다.</li>
                 <li>전날 데이터나 최신 데이터를 임의로 끌어와 대체하지 않습니다.</li>
                 <li>의미 있는 비교를 위해 가능한 한 같은 기준일의 국가별 파일을 맞춰 업로드해주세요.</li>
+              </ul>
+            </div>
+
+            <div className="cautionSection">
+              <div className="cautionSectionTitle">발주 기록</div>
+              <ul className="cautionList">
+                <li>
+                  <strong>새 발주 등록</strong>: ERP PO 번호·상품코드(SKU)는 비워도 저장할 수 있습니다. 비운 값은
+                  시스템에서 내부 식별용으로 채워지며, 목록에는 값이 없는 것처럼 대시(–)로 보일 수 있습니다. 총 발주수량은
+                  올바른 숫자여야 합니다.
+                </li>
+                <li>
+                  날짜(발주일·납품가능일·입고예정일 등)는 <strong>텍스트 입력</strong>이며 YYYY-MM-DD 형식을 권장합니다.
+                  발주일은 「발주 예정」, 납품·입고예정일은 「미정」으로 날짜 없이 둘 수 있습니다.
+                </li>
+                <li>
+                  저장 직후 <strong>1차 입고 행</strong>이 자동으로 만들어져, 표에서 입고 관련 열을 바로 다룰 수 있습니다.
+                </li>
+                <li>
+                  <strong>저장된 발주</strong> 표는 연필(✎)로 연 뒤, 입력칸 밖을 누르면 저장·편집 종료됩니다. 표가 넓을 때
+                  <strong> 가로 스크롤</strong>은 맨 위 스크롤 띠에서 움직이며, 헤더·본문 가로 위치는 함께 맞춰집니다.
+                </li>
+                <li>
+                  저장된 목록 <strong>검색</strong>은 <strong>상품코드(SKU) 또는 상품명</strong>에 포함된 글자로
+                  찾습니다. ERP PO 번호만으로는 검색되지 않습니다.
+                </li>
+                <li>
+                  입고여부가 <strong>예정(X)</strong>인 차수는 납품가능일 열부터 오른쪽이 붉게 강조됩니다. 비고 칸에 메모가
+                  있으면 그 칸은 <strong>노란색</strong>이 우선입니다.
+                </li>
+                <li>
+                  이미 <strong>입고 완료(O)</strong>인 차수는 입고예정일을 바꿀 수 없으며, 연필을 누르면 안내 팝업만
+                  표시됩니다. 발주일 편집에서 「발주 예정」을 켤 때도 입고 완료 차수가 있으면 같은 안내가 나올 수 있습니다.
+                </li>
+                <li>
+                  표·카드에서 수정 후 <strong>초록색 성공 문구</strong>가 뜨지 않을 수 있습니다. 입력이 규칙에 맞지 않으면
+                  상단에 빨간 오류만 보일 수 있습니다.
+                </li>
+                <li>
+                  상세 발주 수정(카드) 화면에서는 ERP PO·SKU 등이 <strong>필수</strong>로 검사될 수 있습니다. 새 등록과
+                  동일하지 않을 수 있습니다.
+                </li>
               </ul>
             </div>
 

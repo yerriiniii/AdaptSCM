@@ -216,5 +216,31 @@ class SkuLookupForPurchaseResponse(BaseModel):
     matched: bool
     brand: str = ""
     product_name: str = ""
+    kr_sku: str = ""
     message: str = ""
+
+
+class PurchaseOrderImportRow(BaseModel):
+    """입고 엑셀 한 행 (row_number는 원본 시트의 행 번호, 에러 표시용)."""
+
+    row_number: int = Field(..., ge=1)
+    order_date: str = ""
+    erp_po_number: str = ""
+    product_type: str = ""
+    product_number: str = ""
+    manufacturer: str = ""
+    total_quantity: str | int | float = ""
+    delivery_available_date: str | None = None
+    expected_inbound_date: str | None = None
+    actual_inbound: str | None = None
+    inbound_quantity: str | int | float = ""
+    inbound_status: str = ""
+
+
+class PurchaseOrderImportRequest(BaseModel):
+    rows: list[PurchaseOrderImportRow]
+
+
+class PurchaseOrderImportResponse(BaseModel):
+    created_count: int
 

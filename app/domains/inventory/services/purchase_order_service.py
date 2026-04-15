@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.domains.inventory.models.inventory_models import PurchaseInboundLine, PurchaseOrder
+from app.domains.inventory.services.inventory_mapping_service import lookup_product_by_any_country_sku
 
 ORDER_DATE_PLANNED_CANONICAL = "발주 예정"
 ORDER_DATE_NOTE_MAX = 128
@@ -99,6 +100,113 @@ def _parse_inbound_date_and_note(payload: dict) -> tuple[date | None, str | None
     return None, note
 
 
+def _parse_optional_sheet_date(value: object, field_label: str) -> tuple[date | None, str | None]:
+    """엑셀에서 온 날짜 문자열. 빈 값은 (None, None). 비어 있지 않은데 파싱 실패 시 에러 문구."""
+    if value is None or value == "":
+        return None, None
+    if isinstance(value, date):
+        return value, None
+    s = str(value).strip()
+    if not s:
+        return None, None
+    s2 = s.replace(".", "-").replace("/", "-")
+    for cand in (s[:10], s2[:10], s, s2):
+        cand = cand.strip()
+        if not cand:
+            continue
+        try:
+            parts = cand.split("-")
+            if len(parts) == 3:
+                y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+                return date(y, m, d), None
+        except (ValueError, TypeError):
+            pass
+        try:
+            return date.fromisoformat(cand[:10]), None
+        except ValueError:
+            continue
+    return None, f"{field_label} 날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)"
+
+
+def _parse_optional_sheet_date_loose(value: object) -> date | None:
+    """납품가능일·입고예정일: 날짜로 읽히면 저장, 그 외(무상 입고 등 텍스트)는 None — 저장된 발주 인라인과 동일하게 날짜만 반영."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, date):
+        return value
+    s = str(value).strip()
+    if not s:
+        return None
+    d, _err = _parse_optional_sheet_date(s, "_")
+    return d
+
+
+_TOTAL_Q_OMIT_NORMALIZED = frozenset(
+    {"", "-", "–", "—", "\u2013", "\u2014", "n/a", "na", "#n/a", "없음", "해당없음", "해당 없음"}
+)
+
+
+def _parse_total_quantity_optional(value: object) -> tuple[Decimal | None, bool, str | None]:
+    """(총 발주수량, 헤더 생략 여부, 에러). 공백·대시 등이면 추가 입고만(기존 발주 필요)."""
+    if value is None:
+        return None, True, None
+    s_raw = str(value).replace(",", "").strip()
+    if not s_raw:
+        return None, True, None
+    key = s_raw.casefold().replace(" ", "").replace("\u3000", "")
+    if s_raw in _TOTAL_Q_OMIT_NORMALIZED or key in {"-", "–", "—", "n/a", "na", "#n/a", "해당없음"}:
+        return None, True, None
+    try:
+        d = Decimal(s_raw)
+    except Exception:
+        return None, False, "총 발주수량 숫자 형식이 올바르지 않습니다."
+    if d <= 0:
+        return None, False, "총 발주수량은 0보다 커야 합니다."
+    return d, False, None
+
+
+def _normalize_inbound_status_sheet(raw: object) -> str | None:
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    compact = "".join(s.split()).replace("\u3000", "").casefold()
+    u = s.upper()
+    if u == "O" or compact in ("입고완료", "완료"):
+        return "O"
+    if u == "X" or compact in ("입고예정", "예정"):
+        return "X"
+    if "예정" in s:
+        return "X"
+    if "완료" in s:
+        return "O"
+    return None
+
+
+def _try_decimal_sheet(value: object) -> tuple[Decimal | None, str | None]:
+    if value is None:
+        return None, "값이 비어 있습니다."
+    s = str(value).replace(",", "").strip()
+    if not s:
+        return None, "값이 비어 있습니다."
+    try:
+        return Decimal(s), None
+    except Exception:
+        return None, "숫자 형식이 올바르지 않습니다."
+
+
+def _actual_inbound_from_sheet(raw: object) -> tuple[date | None, str | None, str | None]:
+    """(날짜, 비고, 에러). 저장된 발주 인라인과 동일: YYYY-MM-DD면 날짜, 아니면 비고 텍스트(무상 입고 등)."""
+    s = str(raw or "").strip()
+    if not s:
+        return None, None, None
+    d, _err = _parse_optional_sheet_date(s, "실제입고일")
+    if d is not None:
+        return d, None, None
+    if len(s) > _INBOUND_NOTE_MAX:
+        return None, None, f"실제입고 비고는 {_INBOUND_NOTE_MAX}자 이내여야 합니다."
+    return None, s, None
+
+
 def list_purchase_orders(db: Session) -> list[PurchaseOrder]:
     stmt = (
         select(PurchaseOrder)
@@ -147,7 +255,7 @@ def delete_purchase_order(db: Session, order_id: uuid.UUID) -> None:
     db.commit()
 
 
-def create_purchase_order(db: Session, payload: dict) -> PurchaseOrder:
+def create_purchase_order(db: Session, payload: dict, *, commit: bool = True) -> PurchaseOrder:
     erp = str(payload.get("erp_po_number") or "").strip()
     if not erp:
         erp = f"{NO_ERP_PO_PREFIX}{uuid.uuid4().hex}"
@@ -202,12 +310,17 @@ def create_purchase_order(db: Session, payload: dict) -> PurchaseOrder:
     if po_loaded is not None:
         _normalize_inbound_ref_codes(po_loaded)
 
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(po)
     return po
 
 
-def add_inbound_line(db: Session, order_id: uuid.UUID, payload: dict) -> PurchaseInboundLine:
+def add_inbound_line(
+    db: Session, order_id: uuid.UUID, payload: dict, *, commit: bool = True
+) -> PurchaseInboundLine:
     po = get_purchase_order(db, order_id)
     if po is None:
         raise HTTPException(status_code=404, detail="발주를 찾을 수 없습니다.")
@@ -252,7 +365,10 @@ def add_inbound_line(db: Session, order_id: uuid.UUID, payload: dict) -> Purchas
     po2 = get_purchase_order(db, order_id)
     if po2 is not None:
         _normalize_inbound_ref_codes(po2)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(line)
     return line
 
@@ -346,7 +462,9 @@ def update_purchase_order(db: Session, order_id: uuid.UUID, payload: dict) -> Pu
     return po
 
 
-def patch_inbound_line_quick(db: Session, order_id: uuid.UUID, line_id: uuid.UUID, payload: dict) -> PurchaseInboundLine:
+def patch_inbound_line_quick(
+    db: Session, order_id: uuid.UUID, line_id: uuid.UUID, payload: dict, *, commit: bool = True
+) -> PurchaseInboundLine:
     """실제입고일·입고수량·입고여부·비고 메모만 부분 수정."""
     po = get_purchase_order(db, order_id)
     if po is None:
@@ -431,9 +549,191 @@ def patch_inbound_line_quick(db: Session, order_id: uuid.UUID, line_id: uuid.UUI
             detail="입고 완료(O)이면 실제입고일 또는 실제입고 비고(예: 예외 입고·무상 입고)가 필요합니다.",
         )
 
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(line)
     return line
+
+
+def import_purchase_orders_from_sheet(db: Session, rows: list[dict]) -> int:
+    """입고 엑셀에서 파싱된 행들을 검증한 뒤 저장된 발주로 일괄 저장. 전부 성공하거나 전부 롤백.
+
+    동일 ERP PO·상품코드(SKU)·발주일이면 하나의 발주로 보고, 첫 행은 발주 생성+1차 입고 반영,
+    이후 행(또는 DB에 이미 있는 발주)은 입고 차수만 추가한다.
+    """
+    errors: list[str] = []
+    prepared: list[dict] = []
+
+    for item in rows:
+        rn = int(item.get("row_number") or 0)
+        erp = str(item.get("erp_po_number") or "").strip()
+        order_date_raw = str(item.get("order_date") or "").strip()
+        pnum = str(item.get("product_number") or "").strip()
+        if not erp and not pnum and not order_date_raw:
+            continue
+        row_errs: list[str] = []
+        if not erp:
+            row_errs.append(f"{rn}행: ERP PO번호가 비어 있습니다.")
+        if not order_date_raw:
+            row_errs.append(f"{rn}행: 발주일자가 비어 있습니다.")
+        else:
+            od, od_err = _parse_optional_sheet_date(order_date_raw, "발주일자")
+            if od_err:
+                row_errs.append(f"{rn}행: 발주일자 — {od_err}")
+            elif od is None:
+                row_errs.append(f"{rn}행: 발주일자가 비어 있습니다.")
+        if not pnum:
+            row_errs.append(f"{rn}행: 상품번호가 비어 있습니다.")
+        total_d, total_omit, t_err = _parse_total_quantity_optional(item.get("total_quantity"))
+        if t_err:
+            row_errs.append(f"{rn}행: 총 발주수량 — {t_err}")
+        in_q, in_err = _try_decimal_sheet(item.get("inbound_quantity"))
+        if in_err:
+            row_errs.append(f"{rn}행: 입고수량 — {in_err}")
+        elif in_q is not None and in_q < 0:
+            row_errs.append(f"{rn}행: 입고수량은 0 이상이어야 합니다.")
+
+        st = _normalize_inbound_status_sheet(item.get("inbound_status"))
+        if st is None:
+            row_errs.append(
+                f"{rn}행: 입고여부를 인식할 수 없습니다. "
+                f"(입고완료·완료·O 또는 입고 예정·예정·X)"
+            )
+
+        deliv = _parse_optional_sheet_date_loose(item.get("delivery_available_date"))
+        exp = _parse_optional_sheet_date_loose(item.get("expected_inbound_date"))
+
+        ad: date | None = None
+        an: str | None = None
+        act_err: str | None = None
+        if item.get("actual_inbound") is not None and str(item.get("actual_inbound") or "").strip():
+            ad, an, act_err = _actual_inbound_from_sheet(item.get("actual_inbound"))
+            if act_err:
+                row_errs.append(f"{rn}행: {act_err}")
+
+        if st == "O" and ad is None and not (an and str(an).strip()):
+            row_errs.append(
+                f"{rn}행: 입고여부가 완료(O)이면 실제입고일(YYYY-MM-DD) 또는 비고 텍스트가 필요합니다."
+            )
+
+        if row_errs:
+            errors.extend(row_errs)
+            continue
+
+        if st is None or in_q is None:
+            errors.append(f"{rn}행: 필수 값을 확인해 주세요.")
+            continue
+        if not total_omit and total_d is None:
+            errors.append(f"{rn}행: 총 발주수량을 입력하세요.")
+            continue
+        od2, _od2e = _parse_optional_sheet_date(order_date_raw, "발주일자")
+        if od2 is None:
+            errors.append(f"{rn}행: 발주일자를 확인해 주세요.")
+            continue
+
+        hit = lookup_product_by_any_country_sku(db, pnum)
+        if not hit.get("matched"):
+            errors.append(f"{rn}행: 상품번호 — {hit.get('message') or '매칭 실패'}")
+            continue
+
+        kr_sku = str(hit.get("kr_sku") or "").strip()
+        if not kr_sku:
+            errors.append(f"{rn}행: 상품번호에 대응하는 한국 SKU를 찾을 수 없습니다.")
+            continue
+
+        biz_key = (erp, kr_sku, od2)
+
+        product_type = str(item.get("product_type") or "").strip() or "본품"
+        manufacturer = str(item.get("manufacturer") or "").strip()
+
+        patch: dict = {
+            "delivery_available_date": deliv.isoformat() if deliv else None,
+            "quantity": float(in_q),
+            "inbound_status": st,
+            "expected_inbound_date": (exp.isoformat() if exp else None) if st == "X" else None,
+            "actual_inbound_date": (ad.isoformat() if ad else "") if st == "O" else "",
+            "actual_inbound_note": (an if an else "") if st == "O" else "",
+        }
+
+        create_payload: dict | None = None
+        if not total_omit:
+            assert total_d is not None
+            create_payload = {
+                "order_date": od2.isoformat(),
+                "order_date_note": None,
+                "erp_po_number": erp,
+                "product_type": product_type,
+                "sku": kr_sku,
+                "brand": str(hit.get("brand") or "").strip(),
+                "product_name": str(hit.get("product_name") or "").strip(),
+                "manufacturer": manufacturer,
+                "total_quantity": float(total_d),
+                "delivery_available_date": deliv.isoformat() if deliv else None,
+                "expected_inbound_date": exp.isoformat() if exp else None,
+            }
+
+        prepared.append(
+            {
+                "row_number": rn,
+                "biz_key": biz_key,
+                "erp": erp,
+                "kr_sku": kr_sku,
+                "od2": od2,
+                "total_omit": total_omit,
+                "create": create_payload,
+                "patch": patch,
+            }
+        )
+
+    if errors:
+        raise HTTPException(status_code=400, detail=errors)
+
+    po_by_key: dict[tuple[str, str, date | None], uuid.UUID] = {}
+
+    try:
+        for pack in prepared:
+            bk = pack["biz_key"]
+            po_id = po_by_key.get(bk)
+            if po_id is None:
+                existing = find_existing_purchase_order_id_by_business_key(
+                    db, pack["erp"], pack["kr_sku"], pack["od2"]
+                )
+                if existing is None:
+                    if pack["total_omit"]:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=(
+                                f'{pack["row_number"]}행: 총 발주수량이 비어 있으면 동일 ERP·SKU·발주일의 발주가 '
+                                f"이미 있어야 합니다. 먼저 총 발주수량이 있는 행을 넣거나, 저장된 발주를 확인하세요."
+                            ),
+                        )
+                    assert pack["create"] is not None
+                    po = create_purchase_order(db, pack["create"], commit=False)
+                    po_by_key[bk] = po.id
+                    po_full = get_purchase_order(db, po.id)
+                    if po_full is None or not po_full.inbound_lines:
+                        raise HTTPException(
+                            status_code=500,
+                            detail="발주 생성 후 입고 행을 찾을 수 없습니다.",
+                        )
+                    first = sorted(po_full.inbound_lines, key=lambda x: x.line_no)[0]
+                    patch_inbound_line_quick(db, po.id, first.id, pack["patch"], commit=False)
+                else:
+                    po_by_key[bk] = existing
+                    add_inbound_line(db, existing, pack["patch"], commit=False)
+            else:
+                add_inbound_line(db, po_id, pack["patch"], commit=False)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"저장 중 오류: {exc}") from exc
+
+    return len(prepared)
 
 
 def delete_inbound_line(db: Session, order_id: uuid.UUID, line_id: uuid.UUID) -> None:
