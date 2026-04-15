@@ -4469,7 +4469,7 @@ export default function App() {
                                   )}
                                 </td>
                                 <td
-                                  className={`poSavedSsTd poSavedSsMemoCol ${hasMemo ? "poSavedSsMemoColHasMemo" : ""}`}
+                                  className={`poSavedSsTd poSavedSsMemoCol ${hasMemo ? "poSavedSsMemoColHasMemo" : ""} ${inboundBg}`}
                                 >
                                   {!line ? (
                                     <span className="poSavedSsMemoCellInner">

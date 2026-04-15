@@ -3010,6 +3010,12 @@ th {
   background: #fef9c3 !important;
 }
 
+/* 미입고(X) 행: 비고도 납품가능일~와 동일 빨간 톤 — 메모 있으면 노란 비고가 우선 */
+.poSavedSpreadsheet tbody td.poSavedSsMemoCol.poSavedSsMemoColHasMemo.poSavedSsPendingInboundCols {
+  background: #fef9c3 !important;
+  color: #713f12;
+}
+
 .poSavedSsMemoCellInner {
   display: inline-flex;
   align-items: center;
