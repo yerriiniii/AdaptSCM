@@ -49,6 +49,9 @@ const PO_NO_ERP_PREFIX = "__NO_ERP__";
 /** 날짜는 텍스트로 입력 (브라우저 date 피커 대신) */
 const DATE_TEXT_INPUT_HINT = "YYYY-MM-DD 권장";
 const ACTUAL_INBOUND_TEXT_PLACEHOLDER = "YYYY-MM-DD 또는 직접 입력";
+/** 저장 발주 표: 입고여부 O인 차수에서 입고예정일 연필 시 */
+const PO_SAVED_EXPECTED_INBOUND_BLOCKED_O_MSG =
+  "이미 입고 완료된 건입니다. 입고 여부를 확인해주세요.";
 
 function purchaseOrderErpForDisplay(erp) {
   const s = String(erp || "").trim();
@@ -845,8 +848,10 @@ export default function App() {
   const [poEditDraft, setPoEditDraft] = useState(null);
   /** 저장된 발주: 비고 메모 편집 모달 { orderId, lineId, draft } */
   const [savedPoMemoModal, setSavedPoMemoModal] = useState(null);
-  /** { orderId, lineId, field: 'actual'|'qty'|'status', draft } */
+  /** { orderId, lineId, field, draft, tbd? } — 납품/입고예정일 인라인에만 tbd 사용 */
   const [savedPoInline, setSavedPoInline] = useState(null);
+  const savedPoInlineRef = useRef(null);
+  savedPoInlineRef.current = savedPoInline;
 
   const filteredPurchaseOrders = useMemo(() => {
     let rows = purchaseOrders;
@@ -4048,29 +4053,60 @@ export default function App() {
                                         : savedPoInline?.lineId == null);
                                     if (inlineDel) {
                                       return (
-                                        <input
-                                          type="text"
-                                          className="poSavedSsInlineInput"
-                                          value={String(savedPoInline.draft ?? "")}
-                                          placeholder={DATE_TEXT_INPUT_HINT}
-                                          onChange={(e) =>
-                                            setSavedPoInline((s) => (s ? { ...s, draft: e.target.value } : s))
-                                          }
-                                          onBlur={(e) => {
-                                            const v = e.currentTarget.value.trim();
-                                            if (line) {
-                                              void patchInboundLineField(po.id, line.id, {
-                                                delivery_available_date: v || null,
-                                              });
-                                            } else {
-                                              void patchPurchaseOrderField(po.id, {
-                                                delivery_available_date: v || null,
-                                              });
+                                        <div className="poExpectedInboundBody">
+                                          <input
+                                            type="text"
+                                            className="poSavedSsInlineInput"
+                                            disabled={Boolean(savedPoInline.tbd)}
+                                            value={
+                                              savedPoInline.tbd ? "" : String(savedPoInline.draft ?? "")
                                             }
-                                          }}
-                                          autoFocus
-                                          aria-label="납품가능일 수정"
-                                        />
+                                            placeholder={DATE_TEXT_INPUT_HINT}
+                                            onChange={(e) =>
+                                              setSavedPoInline((s) =>
+                                                s
+                                                  ? {
+                                                      ...s,
+                                                      draft: e.target.value,
+                                                      tbd: false,
+                                                    }
+                                                  : s
+                                              )
+                                            }
+                                            onBlur={(e) => {
+                                              const s = savedPoInlineRef.current;
+                                              const tbd = Boolean(s?.field === "delivery_available" && s?.tbd);
+                                              const v = tbd ? "" : e.currentTarget.value.trim();
+                                              if (line) {
+                                                void patchInboundLineField(po.id, line.id, {
+                                                  delivery_available_date: v || null,
+                                                });
+                                              } else {
+                                                void patchPurchaseOrderField(po.id, {
+                                                  delivery_available_date: v || null,
+                                                });
+                                              }
+                                            }}
+                                            autoFocus
+                                            aria-label="납품가능일 수정"
+                                          />
+                                          <label className="poExpectedInboundTbd">
+                                            <input
+                                              type="checkbox"
+                                              checked={Boolean(savedPoInline.tbd)}
+                                              onMouseDown={(e) => e.preventDefault()}
+                                              onChange={(e) => {
+                                                const tbd = e.target.checked;
+                                                setSavedPoInline((s) =>
+                                                  s && s.field === "delivery_available"
+                                                    ? { ...s, tbd, draft: tbd ? "" : s.draft }
+                                                    : s
+                                                );
+                                              }}
+                                            />
+                                            미정
+                                          </label>
+                                        </div>
                                       );
                                     }
                                     return (
@@ -4080,16 +4116,19 @@ export default function App() {
                                           type="button"
                                           className="poSavedSsPencilBtn poSavedPreventPoRowDbl"
                                           aria-label="납품가능일 수정"
-                                          onClick={() =>
+                                          onClick={() => {
+                                            const d0 =
+                                              deliveryDraft ||
+                                              (deliveryDisp !== "–" ? String(deliveryDisp) : "");
+                                            const has = Boolean(String(d0 || "").trim());
                                             setSavedPoInline({
                                               orderId: String(po.id),
                                               lineId: line ? String(line.id) : null,
                                               field: "delivery_available",
-                                              draft:
-                                                deliveryDraft ||
-                                                (deliveryDisp !== "–" ? String(deliveryDisp) : ""),
-                                            })
-                                          }
+                                              draft: has ? d0 : "",
+                                              tbd: !has,
+                                            });
+                                          }}
                                         >
                                           ✎
                                         </button>
@@ -4113,42 +4152,62 @@ export default function App() {
                                         : savedPoInline?.lineId == null);
                                     if (inlineExpected) {
                                       return (
-                                        <input
-                                          type="text"
-                                          className="poSavedSsInlineInput"
-                                          value={String(savedPoInline.draft ?? "")}
-                                          placeholder={DATE_TEXT_INPUT_HINT}
-                                          onChange={(e) =>
-                                            setSavedPoInline((s) => (s ? { ...s, draft: e.target.value } : s))
-                                          }
-                                          onBlur={(e) => {
-                                            const v = e.currentTarget.value.trim();
-                                            if (
-                                              line &&
-                                              String(line.inbound_status || "").trim().toUpperCase() === "O"
-                                            ) {
-                                              setPurchaseOrderError("");
-                                              if (v) {
-                                                window.alert(
-                                                  "입고 완료(O)인 차수는 입고예정일을 넣을 수 없습니다.\n\n입고여부를 예정(X)으로 바꾼 뒤 다시 시도해 주세요."
-                                                );
+                                        <div className="poExpectedInboundBody">
+                                          <input
+                                            type="text"
+                                            className="poSavedSsInlineInput"
+                                            disabled={Boolean(savedPoInline.tbd)}
+                                            value={
+                                              savedPoInline.tbd ? "" : String(savedPoInline.draft ?? "")
+                                            }
+                                            placeholder={DATE_TEXT_INPUT_HINT}
+                                            onChange={(e) =>
+                                              setSavedPoInline((s) =>
+                                                s
+                                                  ? {
+                                                      ...s,
+                                                      draft: e.target.value,
+                                                      tbd: false,
+                                                    }
+                                                  : s
+                                              )
+                                            }
+                                            onBlur={(e) => {
+                                              const s = savedPoInlineRef.current;
+                                              const tbd = Boolean(
+                                                s?.field === "expected_inbound" && s?.tbd
+                                              );
+                                              const v = tbd ? "" : e.currentTarget.value.trim();
+                                              if (line) {
+                                                void patchInboundLineField(po.id, line.id, {
+                                                  expected_inbound_date: v || null,
+                                                });
+                                              } else {
+                                                void patchPurchaseOrderField(po.id, {
+                                                  expected_inbound_date: v || null,
+                                                });
                                               }
-                                              setSavedPoInline(null);
-                                              return;
-                                            }
-                                            if (line) {
-                                              void patchInboundLineField(po.id, line.id, {
-                                                expected_inbound_date: v || null,
-                                              });
-                                            } else {
-                                              void patchPurchaseOrderField(po.id, {
-                                                expected_inbound_date: v || null,
-                                              });
-                                            }
-                                          }}
-                                          autoFocus
-                                          aria-label="입고예정일 수정"
-                                        />
+                                            }}
+                                            autoFocus
+                                            aria-label="입고예정일 수정"
+                                          />
+                                          <label className="poExpectedInboundTbd">
+                                            <input
+                                              type="checkbox"
+                                              checked={Boolean(savedPoInline.tbd)}
+                                              onMouseDown={(e) => e.preventDefault()}
+                                              onChange={(e) => {
+                                                const tbd = e.target.checked;
+                                                setSavedPoInline((s) =>
+                                                  s && s.field === "expected_inbound"
+                                                    ? { ...s, tbd, draft: tbd ? "" : s.draft }
+                                                    : s
+                                                );
+                                              }}
+                                            />
+                                            미정
+                                          </label>
+                                        </div>
                                       );
                                     }
                                     return (
@@ -4158,18 +4217,28 @@ export default function App() {
                                           type="button"
                                           className="poSavedSsPencilBtn poSavedPreventPoRowDbl"
                                           aria-label="입고예정일 수정"
-                                          onClick={() =>
+                                          onClick={() => {
+                                            if (
+                                              line &&
+                                              String(line.inbound_status || "").trim().toUpperCase() === "O"
+                                            ) {
+                                              window.alert(PO_SAVED_EXPECTED_INBOUND_BLOCKED_O_MSG);
+                                              return;
+                                            }
+                                            const e0 =
+                                              expectedDraftBase ||
+                                              (expectedDisp !== "–" && expectedDisp !== "미정"
+                                                ? String(expectedDisp)
+                                                : "");
+                                            const has = Boolean(String(e0 || "").trim());
                                             setSavedPoInline({
                                               orderId: String(po.id),
                                               lineId: line ? String(line.id) : null,
                                               field: "expected_inbound",
-                                              draft:
-                                                expectedDraftBase ||
-                                                (expectedDisp !== "–" && expectedDisp !== "미정"
-                                                  ? String(expectedDisp)
-                                                  : ""),
-                                            })
-                                          }
+                                              draft: has ? e0 : "",
+                                              tbd: !has,
+                                            });
+                                          }}
                                         >
                                           ✎
                                         </button>

@@ -2870,6 +2870,12 @@ th {
   max-width: 100%;
 }
 
+.poSavedSpreadsheet td .poExpectedInboundBody .poSavedSsInlineInput {
+  flex: 1 1 7.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .poSavedSsThDelete {
   width: 4.75rem;
   white-space: normal;
