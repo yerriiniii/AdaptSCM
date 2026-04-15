@@ -1239,6 +1239,7 @@ def lookup_product_by_any_country_sku(db: Session, raw_sku: object) -> dict[str,
             "matched": False,
             "brand": "",
             "product_name": "",
+            "kr_sku": "",
             "message": "상품코드를 입력하세요.",
         }
     groups = _load_product_groups(db)
@@ -1247,15 +1248,18 @@ def lookup_product_by_any_country_sku(db: Session, raw_sku: object) -> dict[str,
             if _normalize_mapping_sku(loc.sku) == needle:
                 kr_loc = next((x for x in group.locales if x.country_code == "KR"), None)
                 name = (kr_loc.name if kr_loc and kr_loc.name else None) or group.kr_name or ""
+                kr_sku_val = str(kr_loc.sku if kr_loc and kr_loc.sku else "").strip() or needle
                 return {
                     "matched": True,
                     "brand": str(group.brand or "").strip(),
                     "product_name": str(name).strip(),
+                    "kr_sku": kr_sku_val,
                     "message": "",
                 }
     return {
         "matched": False,
         "brand": "",
         "product_name": "",
+        "kr_sku": "",
         "message": "등록된 상품코드가 없습니다. SKU 관리 탭에서 상품코드를 먼저 등록하세요.",
     }
