@@ -120,7 +120,11 @@ class PurchaseInboundLineResponse(BaseModel):
     id: str
     line_no: int
     ref_code: str
+    delivery_available_date: str | None = None
+    expected_inbound_date: str | None = None
     actual_inbound_date: str | None = None
+    actual_inbound_note: str | None = None
+    line_memo: str | None = None
     quantity: float
     inbound_status: str
     created_at: str | None = None
@@ -129,6 +133,7 @@ class PurchaseInboundLineResponse(BaseModel):
 class PurchaseOrderResponse(BaseModel):
     id: str
     order_date: str | None = None
+    order_date_note: str | None = None
     erp_po_number: str
     product_type: str
     sku: str
@@ -147,10 +152,11 @@ class PurchaseOrderListResponse(BaseModel):
 
 
 class PurchaseOrderCreateRequest(BaseModel):
-    order_date: str
-    erp_po_number: str
+    order_date: str | None = None
+    order_date_note: str | None = None
+    erp_po_number: str = ""
     product_type: str = "본품"
-    sku: str
+    sku: str = ""
     brand: str = ""
     product_name: str = ""
     manufacturer: str = ""
@@ -160,20 +166,40 @@ class PurchaseOrderCreateRequest(BaseModel):
 
 
 class PurchaseInboundCreateRequest(BaseModel):
+    delivery_available_date: str | None = None
+    expected_inbound_date: str | None = None
     actual_inbound_date: str | None = None
+    actual_inbound_note: str | None = None
     quantity: float | str
     inbound_status: str = "O"
 
 
 class PurchaseOrderInboundLineUpdate(BaseModel):
     id: str
+    delivery_available_date: str | None = None
+    expected_inbound_date: str | None = None
     actual_inbound_date: str | None = None
+    actual_inbound_note: str | None = None
+    line_memo: str | None = None
     quantity: float | str
     inbound_status: str = "O"
 
 
+class PurchaseInboundLineQuickPatchRequest(BaseModel):
+    """저장된 발주 표에서 납품가능일·실제입고일·입고예정일·수량·입고여부·비고 메모만 부분 수정."""
+
+    delivery_available_date: str | None = None
+    actual_inbound_date: str | None = None
+    actual_inbound_note: str | None = None
+    expected_inbound_date: str | None = None
+    quantity: float | str | None = None
+    inbound_status: str | None = None
+    line_memo: str | None = None
+
+
 class PurchaseOrderUpdateRequest(BaseModel):
-    order_date: str
+    order_date: str | None = None
+    order_date_note: str | None = None
     erp_po_number: str
     product_type: str = "본품"
     sku: str

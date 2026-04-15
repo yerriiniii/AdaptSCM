@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import FastAPI, Request
@@ -10,11 +11,7 @@ from app.domains.inventory.controllers.inventory_api_controller import (
 )
 from app.domains.inventory.models import inventory_models as _inventory_models  # noqa: F401
 from app.shared.config import get_runtime_settings
-from app.shared.db.session import (
-    initialize_database,
-    is_database_configured,
-    test_database_connection,
-)
+from app.shared.db.session import initialize_database, is_database_configured, test_database_connection
 from app.shared.storage import is_s3_configured
 
 settings = get_runtime_settings()
@@ -47,9 +44,11 @@ app.include_router(inventory_router)
 
 
 @app.on_event("startup")
-def on_startup() -> None:
+async def on_startup() -> None:
+    """요청 수락 전에 DB 스키마 1회 적용(동시 요청 경쟁 방지). 무거운 작업은 이벤트 루프를 막지 않도록 스레드에서 실행."""
     if is_database_configured():
-        initialize_database()
+        await asyncio.to_thread(initialize_database)
+    _log.info("FastAPI startup 훅 완료")
 
 
 @app.get("/health")

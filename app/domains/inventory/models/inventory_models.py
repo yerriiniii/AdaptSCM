@@ -143,7 +143,8 @@ class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid_value)
-    order_date: Mapped[date] = mapped_column(Date, nullable=False)
+    order_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    order_date_note: Mapped[str | None] = mapped_column(String(128), nullable=True)
     erp_po_number: Mapped[str] = mapped_column(String(128), nullable=False)
     product_type: Mapped[str] = mapped_column(String(255), nullable=False)
     sku: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -161,7 +162,14 @@ class PurchaseOrder(Base):
         order_by="PurchaseInboundLine.line_no",
     )
 
-    __table_args__ = (UniqueConstraint("erp_po_number", name="uq_purchase_orders_erp_po_number"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "erp_po_number",
+            "sku",
+            "order_date",
+            name="uq_purchase_orders_erp_sku_order_date",
+        ),
+    )
 
 
 class PurchaseInboundLine(Base):
@@ -177,7 +185,11 @@ class PurchaseInboundLine(Base):
     )
     line_no: Mapped[int] = mapped_column(Integer, nullable=False)
     ref_code: Mapped[str] = mapped_column(String(160), nullable=False)
+    delivery_available_date: Mapped[date | None] = mapped_column(Date)
+    expected_inbound_date: Mapped[date | None] = mapped_column(Date)
     actual_inbound_date: Mapped[date | None] = mapped_column(Date)
+    actual_inbound_note: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    line_memo: Mapped[str | None] = mapped_column(Text, nullable=True)
     quantity: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
     inbound_status: Mapped[str] = mapped_column(String(4), nullable=False, default="O")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
