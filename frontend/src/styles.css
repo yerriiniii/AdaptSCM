@@ -2429,6 +2429,20 @@ th {
   border-bottom: 1px solid #eef2f7;
 }
 
+.poOrderStickySubTabs {
+  position: sticky;
+  z-index: 28;
+  background: #ffffff;
+  box-shadow: 0 1px 0 #eef2f7;
+}
+
+.poOrderStickySavedFilter {
+  position: sticky;
+  z-index: 27;
+  background: #ffffff;
+  box-shadow: 0 1px 0 #eef2f7;
+}
+
 .poSubTab {
   height: 36px;
   padding: 0 10px;
@@ -2467,6 +2481,7 @@ th {
   border: 1px solid #c5e8d8;
   color: #0f5132;
   font-size: 14px;
+  white-space: pre-wrap;
 }
 
 .poFormCard {
@@ -2535,6 +2550,614 @@ th {
 .poSavedFilterSearch {
   min-width: 0;
   width: 100%;
+}
+
+/* 저장된 발주 — 통합 표(재고 테이블 톤, 발주별 묶음) */
+.poSavedSpreadsheetWrap {
+  width: 100%;
+  margin-top: 0;
+  border: 1px solid #e6edf5;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+/* 가로 스크롤 띠 없을 때: 필터~헤더 사이를 흰색으로 채워 표 본문이 비치지 않게 */
+.poSavedStickyFilterTableGap {
+  position: sticky;
+  z-index: 25;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-sizing: border-box;
+  background-color: #ffffff;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+/* 재고 탭과 같이 필터 바로 아래에 붙는 상단 스크롤 띠 — 본문(z-index 낮음) 위로 덮음 */
+.poSavedTableTopScroll.stickyTableTopScroll {
+  z-index: 25;
+}
+
+/* 헤더는 가로만 스크롤(재고 표와 동일). sticky는 th가 아니라 바깥 셸에 적용해 뷰포트 기준으로 맞춤 */
+.poSavedStickyHeaderShell {
+  position: sticky;
+  z-index: 26;
+  background: #ffffff;
+  border-radius: 10px 10px 0 0;
+  box-shadow: 0 1px 0 #e5e7eb;
+}
+
+.poSavedShowTopScrollPair .poSavedStickyHeaderShell {
+  border-radius: 0;
+}
+
+.poSavedHeaderScroll {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+}
+
+.poSavedHeaderScroll::-webkit-scrollbar {
+  height: 0;
+}
+
+.poSavedBodyScroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 0 0 10px 10px;
+  box-sizing: border-box;
+}
+
+.poSavedTableTopScroll {
+  margin-bottom: 6px;
+  border-radius: 10px 10px 0 0;
+}
+
+.poSavedShowTopScrollPair .poSavedSpreadsheetWrap {
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.poSavedSpreadsheet {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #111827;
+}
+
+.poSavedSpreadsheet thead th {
+  background: #f8fafc;
+  color: #64748b;
+  font-weight: 700;
+  border-bottom: 2px solid #e5e7eb;
+  border-right: 1px solid #eef2f7;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  min-height: 40px;
+  text-align: center;
+  white-space: nowrap;
+  line-height: 1.45;
+  vertical-align: middle;
+}
+
+.poSavedSpreadsheet thead th:last-child {
+  border-right: none;
+}
+
+/* ERP PO 열(입고 식별 시작) — 헤더 세로 구분과 동일(1px #eef2f7) */
+.poSavedSpreadsheet thead th:nth-child(11),
+.poSavedSpreadsheet tbody td:nth-child(11) {
+  border-left: 1px solid #eef2f7;
+}
+
+.poSavedSpreadsheet .poSavedSsThAction {
+  width: 4.75rem;
+}
+
+/* 발주건이 바뀔 때 — 헤더 하단과 같은 두께·색 */
+.poSavedSpreadsheet tbody.poSavedSsGroup:not(:first-of-type) tr:first-child td {
+  border-top: 2px solid #e5e7eb;
+}
+
+.poSavedSpreadsheet tbody.poSavedSsGroup td {
+  background: #ffffff;
+}
+
+.poSavedSpreadsheet tbody td {
+  border-bottom: 1px solid #eef2f7;
+  border-right: 1px solid #f1f5f9;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  min-height: 40px;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 1.45;
+}
+
+.poSavedSpreadsheet tbody td:last-child {
+  border-right: none;
+}
+
+/* 같은 발주의 2행째부터: 발주 공통 열은 값 대신 '-' (입고 예정 셀은 예외로 빨간 톤 유지) */
+.poSavedSsTdSamePo {
+  color: #111827;
+  font-weight: 400;
+}
+
+.poSavedSsColDate,
+.poSavedSsColSku {
+  font-weight: 400;
+}
+
+.poSavedSpreadsheet thead th.poSavedSsThName {
+  white-space: normal;
+  text-align: center;
+  word-break: break-word;
+  min-width: 200px;
+  max-width: min(360px, 34vw);
+  vertical-align: middle;
+}
+
+.poSavedSsTdName {
+  text-align: center;
+  white-space: normal;
+  max-width: min(360px, 34vw);
+  min-width: 200px;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  vertical-align: middle;
+}
+
+.poSavedSpreadsheet thead th:nth-child(12),
+.poSavedSpreadsheet tbody td:nth-child(12) {
+  min-width: 112px;
+  max-width: 112px;
+}
+
+.poSavedSsTdErpCol {
+  word-break: break-word;
+  max-width: min(14rem, 28vw);
+}
+
+/* 입고 예정(X)이 하나라도 있으면 발주 공통 열(총 발주수량까지) 전체 빨간 톤 */
+.poSavedSsPendingProduct {
+  background: #fee2e2 !important;
+  color: #991b1b;
+}
+
+/* 납품가능일~입고여부: 해당 차수가 미입고(X)일 때만 빨간 톤 */
+.poSavedSsPendingInboundCols {
+  background: #fee2e2 !important;
+  color: #991b1b;
+}
+
+.poSavedSpreadsheet tbody td.poSavedSsPendingInboundCols:nth-child(14) {
+  font-weight: 600;
+}
+
+.poSavedSsDataRow {
+  cursor: default;
+}
+
+/* 표 하단 인라인 신규 입고 차수 행 */
+.poSavedSsNewInboundSheetRow .poSavedSsNewInboundCols {
+  background: #eff6ff !important;
+  color: #1e3a8a;
+}
+
+.poSavedSsNewInboundSheetRow .poSavedSsMemoCol.poSavedSsNewInboundCols {
+  background: #dbeafe !important;
+}
+
+.poSavedSsNewLineBadge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1d4ed8;
+  letter-spacing: -0.02em;
+}
+
+.poSavedSsHeadDateCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+}
+
+.poSavedSsHeadDateText {
+  line-height: 1.35;
+}
+
+.poSavedSsAddInboundBtn {
+  width: auto;
+  height: auto;
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #6b7280;
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.poSavedSsAddInboundBtn:hover {
+  color: #475569;
+}
+
+.poSavedSsAddInboundPlaceholder {
+  display: inline-block;
+  color: #64748b;
+}
+
+.poSavedSsPoEditBtn {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  min-height: 22px;
+  line-height: 1.2;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+}
+
+.poSavedSsPoEditBtn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.poSavedSsNewLineHint {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.poSavedSsNewLineDateStack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.poSavedSsNewLineNoteInput {
+  width: 100%;
+  min-width: 0;
+  max-width: 12rem;
+}
+
+.poSavedSsNewLineInputWide {
+  min-width: 8.75rem;
+  max-width: 100%;
+}
+
+.poSavedSsNewLineActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+}
+
+.poSavedSsNewLineSaveBtn,
+.poSavedSsNewLineCancelBtn {
+  font-size: 12px;
+  min-height: 30px;
+  padding: 4px 10px;
+}
+
+/* 마지막 입고 차수 바로 아래: 엑셀처럼 항상 보이는 추가 행 */
+.poSavedSsAppendRow {
+  cursor: pointer;
+  outline: none;
+}
+
+.poSavedSsAppendRow:hover {
+  background: #f0fdf4 !important;
+}
+
+.poSavedSsAppendRow:focus-visible {
+  box-shadow: inset 0 0 0 2px #22c55e;
+}
+
+.poSavedSsAppendRowInbound {
+  background: #f8fafc !important;
+  color: #64748b;
+}
+
+.poSavedSsAppendRow .poSavedSsAppendRowInbound {
+  font-weight: 500;
+}
+
+.poSavedSsAppendRowLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: #15803d;
+  letter-spacing: -0.02em;
+}
+
+.poSavedSsCellWithPencil {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.poSavedSsPencilBtn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.poSavedSsPencilBtn:hover {
+  opacity: 1;
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.poSavedSsInlineInput,
+.poSavedSsInlineSelect {
+  max-width: 100%;
+  height: 30px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  padding: 0 6px;
+}
+
+.poSavedSsInlineNumber {
+  width: 5.5rem;
+}
+
+.poSavedSsMemoCol {
+  background: #ffffff;
+  vertical-align: middle;
+}
+
+.poSavedSsMemoColHasMemo {
+  background: #fef9c3 !important;
+}
+
+.poSavedSsMemoCellInner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.poSavedMemoViewLink {
+  border: 0;
+  background: transparent;
+  padding: 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #854d0e;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.poSavedMemoViewLink:hover {
+  color: #713f12;
+}
+
+/* 저장된 발주 — 발주정보 수정만 오버레이(표 아래로 밀리지 않음) */
+.poSavedPoEditModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px 32px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.poSavedPoEditModal {
+  width: min(920px, 100%);
+  margin-top: 0;
+  max-height: min(92vh, 1200px);
+  overflow: auto;
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+  padding: 16px 18px 20px;
+  box-sizing: border-box;
+}
+
+.poSavedPoEditModalTitle {
+  font-size: 17px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.poMemoModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.poMemoModal {
+  width: min(420px, 100%);
+  max-height: min(80vh, 560px);
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.poMemoModalHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.poMemoModalTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.poMemoModalClose {
+  flex-shrink: 0;
+}
+
+.poMemoModalBody {
+  font-size: 14px;
+  line-height: 1.55;
+  color: #374151;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow: auto;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.poMemoModalTextarea {
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #e3e8f0;
+  font-family: inherit;
+}
+
+.poMemoModalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.poMemoModalActionsEnd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.poMemoModalDeleteBtn {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  min-height: 36px;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+  cursor: pointer;
+}
+
+.poMemoModalDeleteBtn:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+.poSavedSsEditBtn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  min-height: 24px;
+  line-height: 1.2;
+}
+
+/* 2행째 이상: 실제 클릭은 없고, 1행과 동일한 박스로 행 높이만 맞춤 */
+.poSavedSsEditBtnLayoutSync {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.poSavedSsActionCell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.poSavedSsActionCellSync {
+  min-height: 24px;
+}
+
+.poSavedSsDeleteBtn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  min-height: 24px;
+  line-height: 1.2;
+  color: #b45309;
+}
+
+.poSavedSsDeleteBtn:hover {
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.poCardDeletePoBtn {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.poCardDeletePoBtn:hover {
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.poSavedEditBelowTable {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e9f0;
 }
 
 .poCardHeroBand {
@@ -2916,6 +3539,18 @@ th {
   outline: none;
   border-color: #94a3b8;
   box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.4);
+}
+
+.poInboundDateCellStack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.poInboundNoteInput {
+  min-height: 34px;
+  font-size: 12px;
 }
 
 .poInboundNewActionsCell {

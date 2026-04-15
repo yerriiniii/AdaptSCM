@@ -15,6 +15,7 @@ from app.domains.inventory.dto.inventory_api_dto import (
     InventorySkuMappingUpsertRequest,
     InventorySkuMappingUploadResponse,
     PurchaseInboundCreateRequest,
+    PurchaseInboundLineQuickPatchRequest,
     PurchaseInboundLineResponse,
     PurchaseOrderCreateRequest,
     PurchaseOrderListResponse,
@@ -47,7 +48,9 @@ from app.domains.inventory.models.inventory_models import PurchaseOrder as Purch
 from app.domains.inventory.services.purchase_order_service import (
     add_inbound_line,
     create_purchase_order,
+    delete_purchase_order,
     list_purchase_orders,
+    patch_inbound_line_quick,
     purchase_order_to_dict,
     update_purchase_order,
 )
@@ -219,6 +222,17 @@ def purchase_orders_create(
     return PurchaseOrderResponse(**purchase_order_to_dict(po2 or po))
 
 
+@router.delete("/purchase-orders/{order_id}")
+def purchase_orders_delete(order_id: str, db: Session = Depends(get_db_session)) -> dict:
+    _require_db_configured()
+    try:
+        oid = uuid.UUID(order_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="order_id 형식이 올바르지 않습니다.") from exc
+    delete_purchase_order(db, oid)
+    return {"ok": True}
+
+
 @router.patch("/purchase-orders/{order_id}", response_model=PurchaseOrderResponse)
 def purchase_orders_update(
     order_id: str,
@@ -240,6 +254,42 @@ def purchase_orders_update(
     return PurchaseOrderResponse(**purchase_order_to_dict(po2 or po))
 
 
+@router.patch(
+    "/purchase-orders/{order_id}/inbound-lines/{line_id}",
+    response_model=PurchaseInboundLineResponse,
+)
+def purchase_orders_patch_inbound_line(
+    order_id: str,
+    line_id: str,
+    payload: PurchaseInboundLineQuickPatchRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> PurchaseInboundLineResponse:
+    _require_db_configured()
+    try:
+        oid = uuid.UUID(order_id)
+        lid = uuid.UUID(line_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="id 형식이 올바르지 않습니다.") from exc
+    line = patch_inbound_line_quick(db, oid, lid, payload.model_dump(exclude_unset=True))
+    return PurchaseInboundLineResponse(
+        id=str(line.id),
+        line_no=line.line_no,
+        ref_code=line.ref_code,
+        delivery_available_date=(
+            line.delivery_available_date.isoformat() if line.delivery_available_date else None
+        ),
+        expected_inbound_date=(
+            line.expected_inbound_date.isoformat() if line.expected_inbound_date else None
+        ),
+        actual_inbound_date=line.actual_inbound_date.isoformat() if line.actual_inbound_date else None,
+        actual_inbound_note=line.actual_inbound_note,
+        line_memo=line.line_memo,
+        quantity=float(line.quantity),
+        inbound_status=line.inbound_status,
+        created_at=line.created_at.isoformat() if line.created_at else None,
+    )
+
+
 @router.post("/purchase-orders/{order_id}/inbounds", response_model=PurchaseInboundLineResponse)
 def purchase_orders_add_inbound(
     order_id: str,
@@ -256,7 +306,15 @@ def purchase_orders_add_inbound(
         id=str(line.id),
         line_no=line.line_no,
         ref_code=line.ref_code,
+        delivery_available_date=(
+            line.delivery_available_date.isoformat() if line.delivery_available_date else None
+        ),
+        expected_inbound_date=(
+            line.expected_inbound_date.isoformat() if line.expected_inbound_date else None
+        ),
         actual_inbound_date=line.actual_inbound_date.isoformat() if line.actual_inbound_date else None,
+        actual_inbound_note=line.actual_inbound_note,
+        line_memo=line.line_memo,
         quantity=float(line.quantity),
         inbound_status=line.inbound_status,
         created_at=line.created_at.isoformat() if line.created_at else None,
