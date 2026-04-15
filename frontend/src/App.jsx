@@ -5355,7 +5355,10 @@ export default function App() {
             <div className="cautionModalHeader">
               <div>
                 <div className="cautionModalTitle">주의사항</div>
-                <div className="cautionModalSubtitle">데이터 형식이나 날짜 기준이 다르면 재고 파악이 정확하지 않을 수 있습니다.</div>
+                <div className="cautionModalSubtitle">
+                  데이터 형식·날짜 기준이 다르면 재고 파악이 어긋날 수 있습니다. 발주 화면 동작은 아래 「발주 기록」을
+                  참고하세요.
+                </div>
               </div>
               <button
                 type="button"
@@ -5408,6 +5411,48 @@ export default function App() {
                 <li>선택한 날짜에 특정 국가 데이터가 없으면 `-`로 표시됩니다.</li>
                 <li>전날 데이터나 최신 데이터를 임의로 끌어와 대체하지 않습니다.</li>
                 <li>의미 있는 비교를 위해 가능한 한 같은 기준일의 국가별 파일을 맞춰 업로드해주세요.</li>
+              </ul>
+            </div>
+
+            <div className="cautionSection">
+              <div className="cautionSectionTitle">발주 기록</div>
+              <ul className="cautionList">
+                <li>
+                  <strong>새 발주 등록</strong>: ERP PO 번호·상품코드(SKU)는 비워도 저장할 수 있습니다. 비운 값은
+                  시스템에서 내부 식별용으로 채워지며, 목록에는 값이 없는 것처럼 대시(–)로 보일 수 있습니다. 총 발주수량은
+                  올바른 숫자여야 합니다.
+                </li>
+                <li>
+                  날짜(발주일·납품가능일·입고예정일 등)는 <strong>텍스트 입력</strong>이며 YYYY-MM-DD 형식을 권장합니다.
+                  발주일은 「발주 예정」, 납품·입고예정일은 「미정」으로 날짜 없이 둘 수 있습니다.
+                </li>
+                <li>
+                  저장 직후 <strong>1차 입고 행</strong>이 자동으로 만들어져, 표에서 입고 관련 열을 바로 다룰 수 있습니다.
+                </li>
+                <li>
+                  <strong>저장된 발주</strong> 표는 연필(✎)로 연 뒤, 입력칸 밖을 누르면 저장·편집 종료됩니다. 표가 넓을 때
+                  <strong> 가로 스크롤</strong>은 맨 위 스크롤 띠에서 움직이며, 헤더·본문 가로 위치는 함께 맞춰집니다.
+                </li>
+                <li>
+                  저장된 목록 <strong>검색</strong>은 <strong>상품코드(SKU) 또는 상품명</strong>에 포함된 글자로
+                  찾습니다. ERP PO 번호만으로는 검색되지 않습니다.
+                </li>
+                <li>
+                  입고여부가 <strong>예정(X)</strong>인 차수는 납품가능일 열부터 오른쪽이 붉게 강조됩니다. 비고 칸에 메모가
+                  있으면 그 칸은 <strong>노란색</strong>이 우선입니다.
+                </li>
+                <li>
+                  이미 <strong>입고 완료(O)</strong>인 차수는 입고예정일을 바꿀 수 없으며, 연필을 누르면 안내 팝업만
+                  표시됩니다. 발주일 편집에서 「발주 예정」을 켤 때도 입고 완료 차수가 있으면 같은 안내가 나올 수 있습니다.
+                </li>
+                <li>
+                  표·카드에서 수정 후 <strong>초록색 성공 문구</strong>가 뜨지 않을 수 있습니다. 입력이 규칙에 맞지 않으면
+                  상단에 빨간 오류만 보일 수 있습니다.
+                </li>
+                <li>
+                  상세 발주 수정(카드) 화면에서는 ERP PO·SKU 등이 <strong>필수</strong>로 검사될 수 있습니다. 새 등록과
+                  동일하지 않을 수 있습니다.
+                </li>
               </ul>
             </div>
 
