@@ -2005,14 +2005,6 @@ export default function App() {
     return missing;
   }, [compareCountryData, compareSelectedDate]);
 
-  const compareKrLatestTotal = useMemo(() => {
-    const latestKrDate = getLatestDateKey(scopeResultCache.KR?.dates || []);
-    if (!latestKrDate) return 0;
-    return (scopeResultCache.KR?.rows || [])
-      .filter((row) => String(row.country || "KR") === "KR")
-      .reduce((sum, row) => sum + Number(row[latestKrDate] || 0), 0);
-  }, [scopeResultCache]);
-
   const compareRows = useMemo(() => {
     if (!compareSelectedDate || !compareCountryData.rowKeys.length) return [];
     return compareCountryData.rowKeys.map((rowKey) => {
@@ -3524,7 +3516,7 @@ export default function App() {
       )}
       {!isInventoryAdminScope && !isCompareScope && (
         <>
-      <section className="kpiRow">
+      <section className="kpiRow inventoryKpiRow">
         <div className="kpiCard">
           <div className="kpiLabel">업로드된 파일</div>
           <div className="kpiValue">{inventoryFiles.length}개</div>
@@ -3778,7 +3770,7 @@ export default function App() {
 
       {isCompareScope && (
         <>
-          <section className="kpiRow">
+          <section className="kpiRow compareKpiRow">
             <div className="kpiCard">
               <div className="kpiLabel">비교 가능 국가</div>
               <div className="kpiValue">{OVERSEAS_UPLOAD_COUNTRIES.length}개</div>
@@ -3790,10 +3782,6 @@ export default function App() {
             <div className="kpiCard">
               <div className="kpiLabel">비교 상품 수</div>
               <div className="kpiValue">{filteredCompareRows.length}개</div>
-            </div>
-            <div className="kpiCard">
-              <div className="kpiLabel">한국 총 재고</div>
-              <div className="kpiValue">{toFixed(compareKrLatestTotal, 0)}</div>
             </div>
           </section>
 
@@ -6019,7 +6007,7 @@ export default function App() {
               <ul className="cautionList">
                 <li>
                   「구분」은 같은 상품코드 안에서 서로 다른 행을 가리키는 레벨(L1 등)·창고(또는 파일의 분류 열)을
-                  슬래시(/)로 이어 붙인 값입니다. 브랜드는 넣지 않습니다.
+                  슬래시(/)로 이어 붙인 값입니다.
                 </li>
                 <li>선택한 날짜에 데이터가 없는 나라는 숫자 대신 –로 보입니다.</li>
                 <li>다른 날짜나 예전 데이터를 임의로 끌어와 채우지 않습니다.</li>

@@ -214,6 +214,14 @@ body {
   font-weight: 700;
 }
 
+.inventoryKpiRow .kpiValue {
+  font-size: 15px;
+}
+
+.compareKpiRow {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .tableCard {
   margin-top: 12px;
   background: #fff;
