@@ -154,9 +154,9 @@ class PurchaseOrderListResponse(BaseModel):
 class PurchaseOrderCreateRequest(BaseModel):
     order_date: str | None = None
     order_date_note: str | None = None
-    erp_po_number: str
+    erp_po_number: str = ""
     product_type: str = "본품"
-    sku: str
+    sku: str = ""
     brand: str = ""
     product_name: str = ""
     manufacturer: str = ""

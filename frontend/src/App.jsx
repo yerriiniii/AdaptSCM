@@ -45,6 +45,7 @@ function purchaseOrderProductTypeToFields(productType) {
 
 /** 엑셀 일괄 등록 시 ERP 없음 → DB에만 쓰이는 접두사 (화면에서는 en dash –) */
 const PO_NO_ERP_PREFIX = "__NO_ERP__";
+const PO_NO_SKU_PREFIX = "__NO_SKU__";
 
 /** 날짜는 텍스트로 입력 (브라우저 date 피커 대신) */
 const DATE_TEXT_INPUT_HINT = "YYYY-MM-DD 권장";
@@ -57,6 +58,12 @@ function purchaseOrderErpForDisplay(erp) {
   const s = String(erp || "").trim();
   if (s.startsWith(PO_NO_ERP_PREFIX)) return "\u2013";
   return s;
+}
+
+function purchaseOrderSkuForDisplay(sku) {
+  const s = String(sku || "").trim();
+  if (s.startsWith(PO_NO_SKU_PREFIX)) return "\u2013";
+  return s || "\u2013";
 }
 
 /** 저장된 발주 표 – 입고여부: 완료 O, 미완료·예정 X → 예정 */
@@ -122,6 +129,13 @@ function formatPoInboundRefPreview(erpInput, line, inboundLineCount) {
 function poLineIsInboundPending(line) {
   if (!line) return false;
   return String(line.inbound_status || "").trim().toUpperCase() === "X";
+}
+
+function poHasAnyCompletedInbound(po) {
+  if (!po?.inbound_lines?.length) return false;
+  return (po.inbound_lines || []).some(
+    (l) => String(l.inbound_status || "").trim().toUpperCase() === "O"
+  );
 }
 
 /** 입고 완료(O)면 입고예정일은 비움(표시). */
@@ -848,7 +862,7 @@ export default function App() {
   const [poEditDraft, setPoEditDraft] = useState(null);
   /** 저장된 발주: 비고 메모 편집 모달 { orderId, lineId, draft } */
   const [savedPoMemoModal, setSavedPoMemoModal] = useState(null);
-  /** { orderId, lineId, field, draft, tbd? } — 납품/입고예정일 인라인에만 tbd 사용 */
+  /** { orderId, lineId, field, draft, tbd?, orderPlanned? } — orderPlanned 은 발주일자 인라인 전용 */
   const [savedPoInline, setSavedPoInline] = useState(null);
   const savedPoInlineRef = useRef(null);
   savedPoInlineRef.current = savedPoInline;
@@ -2112,14 +2126,6 @@ export default function App() {
     const qtyRaw = String(poForm.total_quantity || "").replace(/,/g, "").trim();
     const odTrim = String(poForm.order_date || "").trim();
     const odnTrim = String(poForm.order_date_note || "").trim();
-    if (!String(poForm.erp_po_number || "").trim()) {
-      setPurchaseOrderError("ERP PO 번호는 필수입니다.");
-      return;
-    }
-    if (!String(poForm.sku || "").trim()) {
-      setPurchaseOrderError("상품코드(SKU)는 필수입니다.");
-      return;
-    }
     if (!qtyRaw || Number.isNaN(Number(qtyRaw))) {
       setPurchaseOrderError("총 발주수량을 올바른 숫자로 입력하세요.");
       return;
@@ -2322,7 +2328,6 @@ export default function App() {
         buildPurchaseOrderUpdatePayloadFromPo(po, patch)
       );
       setSavedPoInline(null);
-      setPurchaseOrderSuccess("저장되었습니다.");
       await fetchPurchaseOrdersList();
       return true;
     } catch (err) {
@@ -2545,7 +2550,6 @@ export default function App() {
           inbound_status: ln.inbound_status || "O",
         })),
       });
-      setPurchaseOrderSuccess("발주가 수정되었습니다.");
       setEditingPoId(null);
       setPoEditDraft(null);
       await fetchPurchaseOrdersList();
@@ -3547,19 +3551,12 @@ export default function App() {
 
           {purchaseOrderSubTab === "register" ? (
           <div className="poFormCard poRegisterPanel">
-            <div className="poFormCardHeadRow poRegisterHeadRow">
-              <div className="skuManualHeadActions">
-                <button type="button" className="primary" onClick={() => submitPurchaseOrder()}>
-                  발주 저장
-                </button>
-              </div>
-            </div>
             <div className="skuManualSection skuManualSectionKr poFormManualSection">
               <div className="skuManualBlock">
                 <div className="skuManualKrGrid">
                   <label className="skuManualKrField">
                     <span className="skuManualKrFieldHead">발주일자</span>
-                    <div className="skuManualKrFieldBody poExpectedInboundBody">
+                    <div className="skuManualKrFieldBody poExpectedInboundBody poRegisterDateTbdRow">
                       <input
                         type="text"
                         placeholder={DATE_TEXT_INPUT_HINT}
@@ -3677,7 +3674,7 @@ export default function App() {
                   </label>
                   <label className="skuManualKrField">
                     <span className="skuManualKrFieldHead">납품가능일</span>
-                    <div className="skuManualKrFieldBody poExpectedInboundBody">
+                    <div className="skuManualKrFieldBody poExpectedInboundBody poRegisterDateTbdRow">
                       <input
                         type="text"
                         placeholder={DATE_TEXT_INPUT_HINT}
@@ -3710,7 +3707,7 @@ export default function App() {
                   </label>
                   <div className="skuManualKrField">
                     <span className="skuManualKrFieldHead">입고예정일</span>
-                    <div className="skuManualKrFieldBody poExpectedInboundBody">
+                    <div className="skuManualKrFieldBody poExpectedInboundBody poRegisterDateTbdRow">
                       <input
                         type="text"
                         placeholder={DATE_TEXT_INPUT_HINT}
@@ -3743,6 +3740,11 @@ export default function App() {
                   </div>
                 </div>
               </div>
+            </div>
+            <div className="poRegisterFooterActions">
+              <button type="button" className="primary" onClick={() => submitPurchaseOrder()}>
+                발주 저장
+              </button>
             </div>
           </div>
           ) : null}
@@ -3922,20 +3924,69 @@ export default function App() {
                                     <span className="poSavedSsHeadDateCell">
                                       {String(savedPoInline?.orderId) === String(po.id) &&
                                       savedPoInline?.field === "order_date" ? (
-                                        <input
-                                          type="text"
-                                          className="poSavedSsInlineInput"
-                                          value={savedPoInline.draft}
-                                          placeholder="YYYY-MM-DD 또는 발주 예정"
-                                          onChange={(e) =>
-                                            setSavedPoInline((s) => (s ? { ...s, draft: e.target.value } : s))
-                                          }
-                                          onBlur={(e) => {
-                                            const patch = normalizeOrderDateInput(e.currentTarget.value);
-                                            void patchPurchaseOrderField(po.id, patch);
-                                          }}
-                                          autoFocus
-                                        />
+                                        <div className="poExpectedInboundBody poSavedSsDateColEditBody">
+                                          <input
+                                            type="text"
+                                            className="poSavedSsInlineInput"
+                                            disabled={Boolean(savedPoInline.orderPlanned)}
+                                            value={
+                                              savedPoInline.orderPlanned
+                                                ? ""
+                                                : String(savedPoInline.draft ?? "")
+                                            }
+                                            placeholder={DATE_TEXT_INPUT_HINT}
+                                            onChange={(e) =>
+                                              setSavedPoInline((s) =>
+                                                s
+                                                  ? {
+                                                      ...s,
+                                                      draft: e.target.value,
+                                                      orderPlanned: false,
+                                                    }
+                                                  : s
+                                              )
+                                            }
+                                            onBlur={(e) => {
+                                              const s = savedPoInlineRef.current;
+                                              if (!s || s.field !== "order_date") return;
+                                              if (s.orderPlanned) {
+                                                void patchPurchaseOrderField(po.id, {
+                                                  order_date: null,
+                                                  order_date_note: "발주 예정",
+                                                });
+                                                return;
+                                              }
+                                              const patch = normalizeOrderDateInput(e.currentTarget.value);
+                                              void patchPurchaseOrderField(po.id, patch);
+                                            }}
+                                            autoFocus
+                                            aria-label="발주일자 수정"
+                                          />
+                                          <label className="poExpectedInboundTbd">
+                                            <input
+                                              type="checkbox"
+                                              checked={Boolean(savedPoInline.orderPlanned)}
+                                              onMouseDown={(e) => e.preventDefault()}
+                                              onChange={(e) => {
+                                                const planned = e.target.checked;
+                                                if (planned && poHasAnyCompletedInbound(po)) {
+                                                  window.alert(PO_SAVED_EXPECTED_INBOUND_BLOCKED_O_MSG);
+                                                  return;
+                                                }
+                                                setSavedPoInline((s) =>
+                                                  s && s.field === "order_date"
+                                                    ? {
+                                                        ...s,
+                                                        orderPlanned: planned,
+                                                        draft: planned ? "" : s.draft,
+                                                      }
+                                                    : s
+                                                );
+                                              }}
+                                            />
+                                            발주 예정
+                                          </label>
+                                        </div>
                                       ) : (
                                         <span className="poSavedSsCellWithPencil">
                                           <span className="poSavedSsHeadDateText">{formatPoOrderDateDisplay(po)}</span>
@@ -3948,7 +3999,10 @@ export default function App() {
                                                 orderId: String(po.id),
                                                 lineId: null,
                                                 field: "order_date",
-                                                draft: String(po.order_date_note || po.order_date || ""),
+                                                draft: isOrderDatePlannedNote(po.order_date_note)
+                                                  ? ""
+                                                  : String(po.order_date || ""),
+                                                orderPlanned: isOrderDatePlannedNote(po.order_date_note),
                                               })
                                             }
                                           >
@@ -3964,7 +4018,7 @@ export default function App() {
                                 <td
                                   className={`poSavedSsColSku poSavedSsTd ${!head ? "poSavedSsTdSamePo" : ""}`}
                                 >
-                                  {head ? po.sku || "–" : samePoBlank}
+                                  {head ? purchaseOrderSkuForDisplay(po.sku) : samePoBlank}
                                 </td>
                                 <td className={`poSavedSsTd ${!head ? "poSavedSsTdSamePo" : ""}`}>
                                   {head ? po.brand || "–" : samePoBlank}
@@ -4874,7 +4928,7 @@ export default function App() {
                               </span>
                               <span className="poCardMetaItem">
                                 <span className="poCardMetaK">SKU</span>{" "}
-                                <span className="poCardMetaV">{po.sku || "–"}</span>
+                                <span className="poCardMetaV">{purchaseOrderSkuForDisplay(po.sku)}</span>
                               </span>
                             </div>
                           )}

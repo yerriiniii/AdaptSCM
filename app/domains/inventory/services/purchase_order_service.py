@@ -15,6 +15,7 @@ from app.domains.inventory.models.inventory_models import PurchaseInboundLine, P
 ORDER_DATE_PLANNED_CANONICAL = "발주 예정"
 ORDER_DATE_NOTE_MAX = 128
 NO_ERP_PO_PREFIX = "__NO_ERP__"
+NO_SKU_PLACEHOLDER_PREFIX = "__NO_SKU__"
 
 
 def _normalize_inbound_ref_codes(po: PurchaseOrder) -> None:
@@ -149,11 +150,11 @@ def delete_purchase_order(db: Session, order_id: uuid.UUID) -> None:
 def create_purchase_order(db: Session, payload: dict) -> PurchaseOrder:
     erp = str(payload.get("erp_po_number") or "").strip()
     if not erp:
-        raise HTTPException(status_code=400, detail="ERP PO 번호는 필수입니다.")
+        erp = f"{NO_ERP_PO_PREFIX}{uuid.uuid4().hex}"
 
     sku = str(payload.get("sku") or "").strip()
     if not sku:
-        raise HTTPException(status_code=400, detail="상품코드(SKU)는 필수입니다.")
+        sku = f"{NO_SKU_PLACEHOLDER_PREFIX}{uuid.uuid4().hex}"
 
     od, onote = _parse_order_date_and_note_from_payload(payload)
 

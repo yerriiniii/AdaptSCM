@@ -2455,6 +2455,28 @@ th {
   margin-bottom: 0;
 }
 
+/* 새 발주: 날짜 입력과 발주 예정·미정 체크를 한 줄(입력 왼쪽, 체크 오른쪽) */
+.poRegisterPanel .poRegisterDateTbdRow.poExpectedInboundBody {
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px 14px;
+}
+
+.poRegisterPanel .poRegisterDateTbdRow.poExpectedInboundBody > input[type="text"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.poRegisterFooterActions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding-top: 16px;
+  margin-top: 4px;
+}
+
 .purchaseOrderSubTitle {
   margin: 20px 0 12px;
   font-size: 16px;
@@ -2654,6 +2676,45 @@ th {
   border-right: none;
 }
 
+/* Saved PO: order date (2), delivery / expected / actual inbound (9,10,12) — same width */
+.poSavedSpreadsheet thead th:nth-child(2),
+.poSavedSpreadsheet thead th:nth-child(9),
+.poSavedSpreadsheet thead th:nth-child(10),
+.poSavedSpreadsheet thead th:nth-child(12),
+.poSavedSpreadsheet tbody td:nth-child(2),
+.poSavedSpreadsheet tbody td:nth-child(9),
+.poSavedSpreadsheet tbody td:nth-child(10),
+.poSavedSpreadsheet tbody td:nth-child(12) {
+  width: 10.5rem;
+  min-width: 10.5rem;
+  max-width: 10.5rem;
+  box-sizing: border-box;
+}
+
+.poSavedSpreadsheet tbody td:nth-child(2) .poSavedSsInlineInput,
+.poSavedSpreadsheet tbody td:nth-child(9) .poSavedSsInlineInput,
+.poSavedSpreadsheet tbody td:nth-child(10) .poSavedSsInlineInput,
+.poSavedSpreadsheet tbody td:nth-child(12) .poSavedSsInlineInput {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.poSavedSpreadsheet tbody td:nth-child(2) .poExpectedInboundBody,
+.poSavedSpreadsheet tbody td:nth-child(9) .poExpectedInboundBody,
+.poSavedSpreadsheet tbody td:nth-child(10) .poExpectedInboundBody,
+.poSavedSpreadsheet tbody td:nth-child(12) .poExpectedInboundBody {
+  width: 100%;
+  max-width: 100%;
+  justify-content: center;
+}
+
+.poSavedSpreadsheet td .poSavedSsDateColEditBody.poExpectedInboundBody {
+  justify-content: flex-start;
+  text-align: left;
+}
+
 /* ERP PO 열(입고 식별 시작) — 헤더 세로 구분과 동일(1px #eef2f7) */
 .poSavedSpreadsheet thead th:nth-child(11),
 .poSavedSpreadsheet tbody td:nth-child(11) {
@@ -2716,12 +2777,6 @@ th {
   word-break: break-word;
   overflow-wrap: break-word;
   vertical-align: middle;
-}
-
-.poSavedSpreadsheet thead th:nth-child(12),
-.poSavedSpreadsheet tbody td:nth-child(12) {
-  min-width: 112px;
-  max-width: 112px;
 }
 
 .poSavedSsTdErpCol {
@@ -2871,9 +2926,10 @@ th {
 }
 
 .poSavedSpreadsheet td .poExpectedInboundBody .poSavedSsInlineInput {
-  flex: 1 1 7.5rem;
+  flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
+  width: 100%;
 }
 
 .poSavedSsThDelete {
