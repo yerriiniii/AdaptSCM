@@ -470,6 +470,165 @@ function isIsoDateOnly(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
 }
 
+/** 저장된 발주 표 정렬용: 날짜 → 해당 일의 타임스탬프(정오 기준), 파싱 불가면 null */
+function parsePoSortDateMs(value) {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    const t = new Date(`${y}-${m}-${d}T12:00:00`).getTime();
+    return Number.isNaN(t) ? null : t;
+  }
+  const s = String(value).trim();
+  if (!s) return null;
+  const isoHead = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoHead) {
+    const day = isoHead[1];
+    if (!isIsoDateOnly(day)) return null;
+    const t = new Date(`${day}T12:00:00`).getTime();
+    return Number.isNaN(t) ? null : t;
+  }
+  const parsed = Date.parse(s);
+  if (!Number.isNaN(parsed)) {
+    const dt = new Date(parsed);
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, "0");
+    const d = String(dt.getDate()).padStart(2, "0");
+    const t = new Date(`${y}-${m}-${d}T12:00:00`).getTime();
+    return Number.isNaN(t) ? null : t;
+  }
+  return null;
+}
+
+/** 납품가능일: 차수별·발주 공통 값 중 최소·최대(다차수 대응) */
+function savedPoDeliverySortBounds(po) {
+  if (!po) return { min: null, max: null };
+  const lines = po.inbound_lines || [];
+  const vals = [];
+  const push = (raw) => {
+    const t = parsePoSortDateMs(raw);
+    if (t != null) vals.push(t);
+  };
+  if (!lines.length) {
+    push(po.delivery_available_date);
+  } else {
+    for (const line of lines) {
+      push(line.delivery_available_date || po.delivery_available_date);
+    }
+  }
+  if (!vals.length) return { min: null, max: null };
+  return { min: Math.min(...vals), max: Math.max(...vals) };
+}
+
+function poLineIsInboundCompleted(line) {
+  return String(line?.inbound_status || "").trim().toUpperCase() === "O";
+}
+
+/**
+ * 미입고 차수만, 표시와 동일: line.expected_inbound_date ?? po.expected_inbound_date
+ * (입고 완료 O는 API에서 line 날짜가 비어 있어도 여기서는 건너뜀)
+ */
+function savedPoExpectedPendingSortBounds(po) {
+  if (!po) return { min: null, max: null };
+  const lines = [...(po.inbound_lines || [])].sort(
+    (a, b) => (Number(a.line_no) || 0) - (Number(b.line_no) || 0)
+  );
+  const vals = [];
+  const pushEffectivePendingLine = (line) => {
+    if (poLineIsInboundCompleted(line)) return;
+    const raw = line.expected_inbound_date || po.expected_inbound_date;
+    const t = parsePoSortDateMs(raw);
+    if (t != null) vals.push(t);
+  };
+  if (!lines.length) {
+    const t = parsePoSortDateMs(po.expected_inbound_date);
+    if (t != null) vals.push(t);
+  } else {
+    for (const line of lines) pushEffectivePendingLine(line);
+  }
+  if (!vals.length) return { min: null, max: null };
+  return { min: Math.min(...vals), max: Math.max(...vals) };
+}
+
+/**
+ * 임박순: line_no 순으로 볼 때 첫 미입고 차수부터, 날짜가 잡힌 첫 입고예정일.
+ * (뒤 차수가 더 이른 날이어도, 앞 차수가 아직 열려 있으면 그 차수 기준 — 화면에서 위에 보이는 '다음 입고'와 맞춤)
+ */
+function savedPoExpectedInboundSortKeyImminent(po) {
+  if (!po) return null;
+  const lines = [...(po.inbound_lines || [])].sort(
+    (a, b) => (Number(a.line_no) || 0) - (Number(b.line_no) || 0)
+  );
+  if (!lines.length) return parsePoSortDateMs(po.expected_inbound_date);
+  for (const line of lines) {
+    if (poLineIsInboundCompleted(line)) continue;
+    const raw = line.expected_inbound_date || po.expected_inbound_date;
+    const t = parsePoSortDateMs(raw);
+    if (t != null) return t;
+  }
+  return null;
+}
+
+function cmpSavedPoNullableNumber(a, b, desc) {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  const d = desc ? b - a : a - b;
+  return d < 0 ? -1 : d > 0 ? 1 : 0;
+}
+
+function compareSavedPoSpreadsheetGroups(a, b, mode) {
+  let c = 0;
+  switch (mode) {
+    case "order_date_desc":
+      c = cmpSavedPoNullableNumber(
+        parsePoSortDateMs(a.po.order_date),
+        parsePoSortDateMs(b.po.order_date),
+        true
+      );
+      break;
+    case "delivery_asc": {
+      const ba = savedPoDeliverySortBounds(a.po);
+      const bb = savedPoDeliverySortBounds(b.po);
+      c = cmpSavedPoNullableNumber(ba.min, bb.min, false);
+      break;
+    }
+    case "delivery_desc": {
+      const ba = savedPoDeliverySortBounds(a.po);
+      const bb = savedPoDeliverySortBounds(b.po);
+      c = cmpSavedPoNullableNumber(ba.max, bb.max, true);
+      break;
+    }
+    case "expected_asc": {
+      const ka = savedPoExpectedInboundSortKeyImminent(a.po);
+      const kb = savedPoExpectedInboundSortKeyImminent(b.po);
+      c = cmpSavedPoNullableNumber(ka, kb, false);
+      break;
+    }
+    case "expected_desc": {
+      const ba = savedPoExpectedPendingSortBounds(a.po);
+      const bb = savedPoExpectedPendingSortBounds(b.po);
+      c = cmpSavedPoNullableNumber(ba.max, bb.max, true);
+      break;
+    }
+    case "order_date_asc":
+    default:
+      c = cmpSavedPoNullableNumber(
+        parsePoSortDateMs(a.po.order_date),
+        parsePoSortDateMs(b.po.order_date),
+        false
+      );
+      break;
+  }
+  if (c !== 0) return c;
+  const erpa = String(a.po.erp_po_number || "");
+  const erpb = String(b.po.erp_po_number || "");
+  if (erpa !== erpb) return erpa.localeCompare(erpb);
+  return String(a.po.sku || "").localeCompare(String(b.po.sku || ""));
+}
+
 function normalizeActualInboundInput(rawInput) {
   const raw = String(rawInput || "").trim();
   if (!raw) return { actual_inbound_date: null, actual_inbound_note: null };
@@ -1217,6 +1376,8 @@ export default function App() {
   const [savedPoSearch, setSavedPoSearch] = useState("");
   /** 저장된 발주: 발주일 기준 기간 (전체 | 1·3개월 | 1년) */
   const [savedPoDateRange, setSavedPoDateRange] = useState("all");
+  /** 저장된 발주 목록 정렬 (기본: 발주일 오래된순 — 기존 동작과 동일) */
+  const [savedPoSortMode, setSavedPoSortMode] = useState("order_date_asc");
   const [editingPoId, setEditingPoId] = useState(null);
   const [poEditDraft, setPoEditDraft] = useState(null);
   /** 저장된 발주: 비고 메모 편집 모달 { orderId, lineId, draft } */
@@ -1264,19 +1425,9 @@ export default function App() {
         (a, b) => (Number(a.line_no) || 0) - (Number(b.line_no) || 0)
       ),
     }));
-    groups.sort((a, b) => {
-      const da = String(a.po.order_date || "9999-12-31");
-      const db = String(b.po.order_date || "9999-12-31");
-      if (da !== db) return da.localeCompare(db);
-      const erpa = String(a.po.erp_po_number || "");
-      const erpb = String(b.po.erp_po_number || "");
-      if (erpa !== erpb) return erpa.localeCompare(erpb);
-      const ska = String(a.po.sku || "");
-      const skb = String(b.po.sku || "");
-      return ska.localeCompare(skb);
-    });
+    groups.sort((a, b) => compareSavedPoSpreadsheetGroups(a, b, savedPoSortMode));
     return groups;
-  }, [filteredPurchaseOrders]);
+  }, [filteredPurchaseOrders, savedPoSortMode]);
 
   const savedPoBulkSelectableKeysFlat = useMemo(() => {
     const keys = [];
@@ -1508,6 +1659,7 @@ export default function App() {
     purchaseOrdersLoading,
     savedPoSearch,
     savedPoDateRange,
+    savedPoSortMode,
   ]);
 
   useEffect(() => {
@@ -4355,6 +4507,19 @@ export default function App() {
                   autoComplete="off"
                 />
               </div>
+              <select
+                className="poSavedSortSelect"
+                value={savedPoSortMode}
+                onChange={(e) => setSavedPoSortMode(e.target.value)}
+                aria-label="저장된 발주 정렬"
+              >
+                <option value="order_date_asc">발주일 · 오래된순</option>
+                <option value="order_date_desc">발주일 · 최신순</option>
+                <option value="delivery_asc">납품가능일 · 오래된순</option>
+                <option value="delivery_desc">납품가능일 · 최신순</option>
+                <option value="expected_asc">입고예정일 · 임박순 (미입고)</option>
+                <option value="expected_desc">입고예정일 · 나중순 (미입고)</option>
+              </select>
               <div className="datePresetBox" role="group" aria-label="발주일 기준 기간">
                 <button
                   type="button"
@@ -4391,6 +4556,7 @@ export default function App() {
                 onClick={() => {
                   setSavedPoSearch("");
                   setSavedPoDateRange("all");
+                  setSavedPoSortMode("order_date_asc");
                 }}
               >
                 필터 초기화
