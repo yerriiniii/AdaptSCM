@@ -41,7 +41,7 @@ body {
 }
 
 .dashboardStripWhite.stickyCountryChips {
-  margin-top: 14px;
+  margin-top: 6px;
   margin-bottom: 8px;
 }
 
@@ -153,18 +153,20 @@ body {
 }
 
 .countryChips {
-  margin-top: 14px;
+  margin-top: 6px;
   margin-bottom: 25px;
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-start;
-  gap: 50px;
+  align-items: center;
+  gap: 8px 24px;
 }
 
 .stickyCountryChips {
   position: sticky;
   z-index: 25;
   background-color: #ffffff;
-  padding-top: 12px;
+  padding-top: 6px;
   padding-bottom: 10px;
 }
 
@@ -173,20 +175,65 @@ body {
 }
 
 .chip {
-  height: 30px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+  box-sizing: border-box;
+  height: auto;
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1px solid #e3e8f0;
+  border-radius: 999px;
+  background: #ffffff;
   color: #6b7280;
-  padding: 0 8px;
-  border-bottom: 2px solid transparent;
   font-weight: 600;
   font-size: 14px;
+  line-height: 1.2;
 }
 
-.chipActive {
+.chip:hover:not(:disabled):not(.chipActive) {
+  background: #f8fafc;
+  border-color: #d1d9e2;
+  color: #475569;
+}
+
+.chip.chipActive {
+  background: #edf8f2;
+  border-color: #b9e5d3;
   color: #0b8a5d;
-  border-bottom-color: #0b8a5d;
+}
+
+/* 출고 탭: 칩 한 줄, 구분선 주변은 칩 간격보다 조금 더 넓게 */
+.countryChips.countryChipsShipment {
+  flex-wrap: nowrap;
+  gap: 5px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  margin-bottom: 20px;
+}
+
+.countryChips.countryChipsShipment .chip {
+  flex-shrink: 0;
+}
+
+.shipmentChipSep {
+  flex: 0 0 auto;
+  width: 1.5px;
+  height: 22px;
+  align-self: center;
+  background: #adb7c6;
+  margin: 0 9px;
+}
+
+.overseasCountryTabs {
+  flex-wrap: wrap;
+  gap: 28px 40px;
+}
+
+/* 출고 채널 칩: KPI 아래 밖이 아니라 tableCard(흰 카드) 안 상단 */
+.countryChips.countryChipsShipment.shipmentChannelChipsInTableCard {
+  margin-top: 0;
+  margin-bottom: 5px;
+  padding: 10px 0 6px;
 }
 
 .kpiRow {
@@ -1646,14 +1693,14 @@ th {
   box-shadow: none;
 }
 
-.inventoryTable.krTable .stickyColBrand {
+.inventoryTable.krTable .stickyColCode {
   left: 0;
   width: 120px;
   min-width: 120px;
   max-width: 120px;
 }
 
-.inventoryTable.krTable .stickyColCode {
+.inventoryTable.krTable .stickyColBrand {
   left: 120px;
   width: 120px;
   min-width: 120px;
@@ -1854,6 +1901,12 @@ th {
   height: 30px;
   min-width: 108px;
   width: 108px;
+}
+
+.fileControlMuted span {
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.35;
 }
 
 .settingsHeaderRight {
@@ -2347,6 +2400,11 @@ th {
     overflow-x: auto;
   }
 
+  .poSubTabsBar {
+    gap: 20px;
+    overflow-x: auto;
+  }
+
   .skuManualHead {
     flex-direction: column;
     align-items: flex-start;
@@ -2442,9 +2500,10 @@ th {
 .poSubTabsBar {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
-  margin: 0 0 16px;
-  padding-bottom: 2px;
+  align-items: center;
+  gap: 28px;
+  margin: 0 0 18px;
+  padding: 0 2px 0;
   border-bottom: 1px solid #eef2f7;
 }
 
@@ -2452,7 +2511,6 @@ th {
   position: sticky;
   z-index: 28;
   background: #ffffff;
-  box-shadow: 0 1px 0 #eef2f7;
 }
 
 .poOrderStickySavedFilter {
@@ -2464,8 +2522,9 @@ th {
 
 .poSubTab {
   height: 36px;
-  padding: 0 10px;
+  padding: 0 4px;
   font-size: 14px;
+  font-weight: 600;
 }
 
 .poRegisterPanel {
@@ -3400,6 +3459,111 @@ th {
 .poMemoModalDeleteBtn:hover {
   background: #fee2e2;
   border-color: #f87171;
+}
+
+.shipmentVendorModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.shipmentVendorModal {
+  width: min(520px, 100%);
+  max-height: min(85vh, 640px);
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shipmentVendorModalHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shipmentVendorModalTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.shipmentVendorModalIntro {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #4b5563;
+}
+
+.shipmentVendorModalList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(48vh, 420px);
+  overflow: auto;
+  padding: 4px 2px 8px;
+}
+
+.shipmentVendorModalRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 12px;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.shipmentVendorModalRowMain {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.shipmentVendorName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  word-break: break-word;
+}
+
+.shipmentVendorLocs {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #6b7280;
+  word-break: break-word;
+}
+
+.shipmentVendorSelect {
+  flex: 0 0 auto;
+  min-width: 160px;
+  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  font-family: inherit;
+}
+
+.shipmentVendorModalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  padding-top: 4px;
+  border-top: 1px solid #e5e7eb;
 }
 
 .poSavedSsEditBtn {

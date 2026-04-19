@@ -9,6 +9,8 @@ class InventoryAggregateResponse(BaseModel):
     dates: list[str]
     rows: list[dict]
     files: list[dict] = Field(default_factory=list)
+    # 출고: 표 헤더용 채널 순서(국내 B2B …)
+    channels: list[str] = Field(default_factory=list)
 
 
 class InventoryDirectUploadFileRequest(BaseModel):
@@ -54,6 +56,12 @@ class InventoryCompleteUploadRequest(BaseModel):
     files: list[InventoryCompleteUploadFileRequest]
 
 
+class InventoryFilePatchBaseDateRequest(BaseModel):
+    """재고(인벤토리) 업로드 파일의 집계 기준일. 빈 문자열·null 이면 미지정(NULL)."""
+
+    base_date: str | None = None
+
+
 class InventorySkuMappingSummaryResponse(BaseModel):
     total_count: int
     updated_at: str | None = None
@@ -86,16 +94,22 @@ class InventorySkuMappingUpsertRequest(BaseModel):
     tw_sku: str | None = None
     hk_name: str | None = None
     hk_sku: str | None = None
-    vn_name: str | None = None
-    vn_sku: str | None = None
+    jp_name: str | None = None
+    jp_sku: str | None = None
     sg_name: str | None = None
     sg_sku: str | None = None
-    au_name: str | None = None
-    au_sku: str | None = None
+    de_name: str | None = None
+    de_sku: str | None = None
     uk_name: str | None = None
     uk_sku: str | None = None
+    au_name: str | None = None
+    au_sku: str | None = None
     ae_name: str | None = None
     ae_sku: str | None = None
+    vn_name: str | None = None
+    vn_sku: str | None = None
+    th_name: str | None = None
+    th_sku: str | None = None
 
     @field_validator("brand")
     @classmethod

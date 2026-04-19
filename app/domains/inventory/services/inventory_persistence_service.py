@@ -405,6 +405,51 @@ def list_inventory_files(db: Session) -> list[dict]:
     return [_serialize_uploaded_file(uploaded_file) for uploaded_file in uploaded_files]
 
 
+def patch_inventory_file_base_date(db: Session, file_id: str, base_date_value: str | None) -> dict:
+    """데이터 관리에서 파일 기준일 변경 시 DB·집계(InventoryAggregate)를 즉시 맞춘다."""
+    try:
+        uid = uuid.UUID(str(file_id).strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="file_id가 올바르지 않습니다.") from exc
+
+    uploaded_file = db.get(UploadedFile, uid)
+    if uploaded_file is None:
+        raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+
+    file_domain = getattr(uploaded_file, "file_domain", None) or "inventory"
+    if file_domain != "inventory":
+        raise HTTPException(status_code=400, detail="출고 파일은 기준일을 여기서 바꿀 수 없습니다.")
+
+    old_scope = (uploaded_file.country_code, uploaded_file.base_date)
+
+    if base_date_value is None or str(base_date_value).strip() == "":
+        new_date = None
+    else:
+        raw = str(base_date_value).strip()[:10]
+        try:
+            new_date = date.fromisoformat(raw)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="날짜는 YYYY-MM-DD 형식이어야 합니다.",
+            ) from exc
+
+    if uploaded_file.base_date == new_date:
+        return _serialize_uploaded_file(uploaded_file)
+
+    uploaded_file.base_date = new_date
+    try:
+        db.flush()
+        _rebuild_aggregate_scopes(db, [old_scope, (uploaded_file.country_code, new_date)])
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    db.refresh(uploaded_file)
+    return _serialize_uploaded_file(uploaded_file)
+
+
 def get_inventory_view(db: Session, country_code: str) -> dict:
     normalized_country = str(country_code or "").strip().upper()
     if not normalized_country:

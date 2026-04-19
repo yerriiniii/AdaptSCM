@@ -31,6 +31,7 @@ class UploadedFile(Base):
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="uploaded")
     error_message: Mapped[str | None] = mapped_column(Text)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
+    file_domain: Mapped[str] = mapped_column(String(20), nullable=False, default="inventory")
 
     inventory_rows: Mapped[list["InventoryRow"]] = relationship(
         back_populates="uploaded_file",
@@ -58,6 +59,8 @@ class InventoryRow(Base):
     warehouse: Mapped[str | None] = mapped_column(String(255))
     quantity: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
+    row_snapshot_date: Mapped[date | None] = mapped_column(Date)
+    row_country_code: Mapped[str | None] = mapped_column(String(10))
 
     uploaded_file: Mapped["UploadedFile"] = relationship(back_populates="inventory_rows")
 
@@ -81,6 +84,7 @@ class InventoryAggregate(Base):
     total_quantity: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
     aggregation_version: Mapped[int] = mapped_column(Integer, nullable=False)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
+    source_domain: Mapped[str] = mapped_column(String(20), nullable=False, default="INVENTORY")
 
     __table_args__ = (
         Index("ix_inventory_aggregates_country_date", "country_code", "base_date"),

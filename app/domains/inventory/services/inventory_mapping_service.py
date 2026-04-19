@@ -21,11 +21,14 @@ COUNTRY_FIELD_SPECS = [
     ("US", "us_name", "us_sku"),
     ("TW", "tw_name", "tw_sku"),
     ("HK", "hk_name", "hk_sku"),
-    ("VN", "vn_name", "vn_sku"),
+    ("JP", "jp_name", "jp_sku"),
     ("SG", "sg_name", "sg_sku"),
-    ("AU", "au_name", "au_sku"),
+    ("DE", "de_name", "de_sku"),
     ("UK", "uk_name", "uk_sku"),
+    ("AU", "au_name", "au_sku"),
     ("AE", "ae_name", "ae_sku"),
+    ("VN", "vn_name", "vn_sku"),
+    ("TH", "th_name", "th_sku"),
 ]
 # 엑셀·UI와 동일한 국가 표기 (한글 헤더 자동 생성용)
 _COUNTRY_KO_LABEL = {
@@ -33,11 +36,14 @@ _COUNTRY_KO_LABEL = {
     "US": "미국",
     "TW": "대만",
     "HK": "홍콩",
-    "VN": "베트남",
-    "SG": "싱가포르",
-    "AU": "호주",
+    "JP": "일본",
+    "SG": "싱가폴",
+    "DE": "독일",
     "UK": "영국",
+    "AU": "호주",
     "AE": "아랍에미리트",
+    "VN": "베트남",
+    "TH": "태국",
 }
 COUNTRY_ORDER = {country_code: index for index, (country_code, _, _) in enumerate(COUNTRY_FIELD_SPECS)}
 COUNTRY_CODES = [country_code for country_code, _, _ in COUNTRY_FIELD_SPECS]
@@ -758,7 +764,7 @@ def _group_conflict_summary(group_index: dict[uuid.UUID, ProductGroup], gid: uui
         return f"• item_id={gid} (메모리 인덱스에 없음 — 비정상)"
     kr = (group.kr_name or "").strip() or "(한국 대표명 없음)"
     lines: list[str] = [f"• item_id={group.id}", f"  한국 대표명(kr_name): {kr!r}"]
-    priority = ("KR", "TW", "HK", "US", "VN", "AE", "AU", "UK", "SG")
+    priority = tuple(COUNTRY_CODES)
     for cc in priority:
         for loc in sorted(
             (x for x in group.locales if x.country_code == cc),
