@@ -37,7 +37,13 @@ from app.domains.inventory.services.inventory_aggregate_service import (
     aggregate_inventory_files,
     inspect_inventory_files,
 )
+from app.domains.inventory.services.shipment_aggregate_service import (
+    build_shipment_wide_dashboard,
+    collect_shipment_long_records_from_raw,
+)
+from app.domains.inventory.services.shipment_persistence_service import get_shipment_view, persist_shipment_uploads
 from app.domains.inventory.services.inventory_persistence_service import (
+    _read_upload_bytes,
     complete_inventory_direct_uploads,
     delete_inventory_file,
     delete_inventory_files,
@@ -87,6 +93,7 @@ def aggregate_inventory(
         level_filter=level_filter,
         file_dates=file_dates,
         file_countries=file_countries,
+        db=db,
     )
     persisted_files = persist_inventory_uploads(
         db=db,
@@ -108,6 +115,40 @@ def aggregate_inventory(
         rows=rows,
         files=persisted_files,
     )
+
+
+@router.post("/shipment/aggregate", response_model=InventoryAggregateResponse)
+def shipment_aggregate(
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db_session),
+) -> InventoryAggregateResponse:
+    file_payloads: list[tuple[UploadFile, bytes, list[dict]]] = []
+    all_long: list[dict] = []
+    for uf in files:
+        raw = _read_upload_bytes(uf)
+        recs = collect_shipment_long_records_from_raw(db, raw, uf.filename or "")
+        all_long.extend(recs)
+        file_payloads.append((uf, raw, recs))
+    payload = build_shipment_wide_dashboard(all_long)
+    persisted_files: list[dict] = []
+    settings = get_runtime_settings()
+    if settings.database_enabled:
+        persisted_files = persist_shipment_uploads(db, file_payloads)
+    return InventoryAggregateResponse(
+        summary=payload["summary"],
+        countries=payload["countries"],
+        dates=payload["dates"],
+        rows=payload["rows"],
+        channels=payload["channels"],
+        files=persisted_files,
+    )
+
+
+@router.get("/shipment/view", response_model=InventoryAggregateResponse)
+def shipment_view(db: Session = Depends(get_db_session)) -> InventoryAggregateResponse:
+    if not get_runtime_settings().database_enabled:
+        raise HTTPException(status_code=503, detail="DATABASE_URL이 설정되지 않았습니다.")
+    return InventoryAggregateResponse(**get_shipment_view(db))
 
 
 @router.post("/file-metadata")

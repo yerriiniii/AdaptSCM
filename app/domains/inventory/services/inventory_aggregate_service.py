@@ -5,6 +5,7 @@ from datetime import date, datetime
 
 import pandas as pd
 from fastapi import HTTPException, UploadFile
+from sqlalchemy.orm import Session
 
 
 REQUIRED_COLUMNS = {
@@ -149,6 +150,8 @@ def _normalize_country_code(raw: str) -> str | None:
     code = str(raw or "").strip().upper()
     if not code:
         return None
+    if code == "SHIPMENT":
+        return "SHIPMENT"
     if not re.match(r"^[A-Z]{2,4}$", code):
         return None
     return code
@@ -272,6 +275,7 @@ def aggregate_inventory_files(
     level_filter: str | None = "all",
     file_dates: list[str] | None = None,
     file_countries: list[str] | None = None,
+    db: Session | None = None,
 ) -> tuple[list[dict], list[str]]:
     if not files:
         raise HTTPException(status_code=400, detail="재고 파일을 최소 1개 이상 업로드해주세요.")
@@ -366,6 +370,18 @@ def aggregate_inventory_files(
         )
         .sort_values(["country", "sku", "description", "supplier", "level", "warehouse", "date"])
     )
+
+    if db is not None:
+        from app.domains.inventory.services.inventory_item_mapping_resolve import (
+            apply_db_locale_columns_to_inventory_merged,
+        )
+
+        apply_db_locale_columns_to_inventory_merged(db, merged)
+        merged = (
+            merged.groupby(["date", "sku", "description", "supplier", "level", "warehouse", "country"], as_index=False)
+            .agg(quantity=("quantity", "sum"))
+            .sort_values(["country", "sku", "description", "supplier", "level", "warehouse", "date"])
+        )
 
     max_date = merged["date"].max()
     if date_range == "7d":

@@ -21,6 +21,8 @@ from app.domains.inventory.services.inventory_aggregate_service import (
     _read_inventory_file,
 )
 from app.domains.inventory.services.inventory_item_mapping_resolve import (
+    apply_db_locale_columns_to_inventory_merged,
+    apply_db_locale_columns_to_raw_inventory_df,
     attach_item_mapping_kr_to_inventory_rows,
     validate_inventory_row_frame_item_mapping,
 )
@@ -147,6 +149,7 @@ def _next_aggregation_version(db: Session) -> int:
 
 
 def _serialize_uploaded_file(uploaded_file: UploadedFile, client_id: str | None = None) -> dict:
+    fd = getattr(uploaded_file, "file_domain", None) or "inventory"
     return {
         "client_id": client_id,
         "file_id": str(uploaded_file.id),
@@ -155,13 +158,26 @@ def _serialize_uploaded_file(uploaded_file: UploadedFile, client_id: str | None 
         "date": uploaded_file.base_date.isoformat() if uploaded_file.base_date else "",
         "size": uploaded_file.size or 0,
         "status": uploaded_file.status,
+        "file_domain": fd,
     }
 
 
 def _scope_filter(country_code: str, base_date: date | None):
+    inv_only = or_(
+        InventoryAggregate.source_domain == "INVENTORY",
+        InventoryAggregate.source_domain.is_(None),
+    )
     if base_date is None:
-        return and_(InventoryAggregate.country_code == country_code, InventoryAggregate.base_date.is_(None))
-    return and_(InventoryAggregate.country_code == country_code, InventoryAggregate.base_date == base_date)
+        return and_(
+            InventoryAggregate.country_code == country_code,
+            InventoryAggregate.base_date.is_(None),
+            inv_only,
+        )
+    return and_(
+        InventoryAggregate.country_code == country_code,
+        InventoryAggregate.base_date == base_date,
+        inv_only,
+    )
 
 
 def _uploaded_file_scope_filter(country_code: str, base_date: date | None):
@@ -206,6 +222,8 @@ def _s3_prefix_for_country_scope(settings, country_code: str) -> str:
     cc = str(country_code or "").strip().upper()
     if not cc:
         return ""
+    if cc == "SHIPMENT":
+        return f"{root}/shipment/"
     ct = "kr" if cc == "KR" else "overseas"
     return f"{root}/{ct}/{cc.lower()}/"
 
@@ -292,6 +310,7 @@ def _rebuild_aggregate_scope(db: Session, country_code: str, base_date: date | N
                 warehouse=_nullable_string(record["warehouse"]),
                 total_quantity=int(record["quantity"]),
                 aggregation_version=aggregation_version,
+                source_domain="INVENTORY",
             )
         )
 
@@ -354,6 +373,7 @@ def _persist_dataframe(
     db.add(uploaded_file)
     db.flush()
 
+    apply_db_locale_columns_to_raw_inventory_df(db, df, country_code)
     row_frame = _build_row_frame(df)
     for record in row_frame.to_dict(orient="records"):
         db.add(
@@ -390,6 +410,10 @@ def get_inventory_view(db: Session, country_code: str) -> dict:
     if not normalized_country:
         raise HTTPException(status_code=400, detail="country_code가 필요합니다.")
 
+    inv_domain = or_(
+        InventoryAggregate.source_domain == "INVENTORY",
+        InventoryAggregate.source_domain.is_(None),
+    )
     rows = db.execute(
         select(
             InventoryAggregate.country_code,
@@ -400,7 +424,10 @@ def get_inventory_view(db: Session, country_code: str) -> dict:
             InventoryAggregate.level,
             InventoryAggregate.warehouse,
             InventoryAggregate.total_quantity,
-        ).where(InventoryAggregate.country_code == normalized_country)
+        ).where(
+            InventoryAggregate.country_code == normalized_country,
+            inv_domain,
+        )
     ).all()
 
     if not rows:
@@ -435,6 +462,16 @@ def get_inventory_view(db: Session, country_code: str) -> dict:
             "dates": [],
             "rows": [],
         }
+
+    # 이미 저장된 집계라도 SKU·국가 기준 마스터 상품명·브랜드로 맞추고 동일 키는 수량 합산 (재업로드 없이 대시보드 정합)
+    apply_db_locale_columns_to_inventory_merged(db, frame)
+    frame = (
+        frame.groupby(
+            ["country", "date_key", "sku", "description", "supplier", "level", "warehouse"],
+            as_index=False,
+        )["quantity"]
+        .sum()
+    )
 
     pivot = (
         frame.pivot_table(
@@ -598,6 +635,7 @@ def persist_inventory_uploads(
                         warehouse=_nullable_string(record["warehouse"]),
                         total_quantity=int(record["quantity"]),
                         aggregation_version=aggregation_version,
+                        source_domain="INVENTORY",
                     )
                 )
 
@@ -773,6 +811,7 @@ def complete_inventory_direct_uploads(db: Session, files: list[dict]) -> list[di
                         warehouse=_nullable_string(record["warehouse"]),
                         total_quantity=int(record["quantity"]),
                         aggregation_version=aggregation_version,
+                        source_domain="INVENTORY",
                     )
                 )
 
@@ -797,9 +836,15 @@ def delete_inventory_file(db: Session, file_id: str) -> None:
     _delete_s3_object(b, k)
 
     affected_scope = (uploaded_file.country_code, uploaded_file.base_date)
+    file_domain = getattr(uploaded_file, "file_domain", None) or "inventory"
     db.delete(uploaded_file)
     db.flush()
-    _rebuild_aggregate_scopes(db, [affected_scope])
+    if file_domain == "shipment":
+        from app.domains.inventory.services.shipment_persistence_service import _rebuild_all_shipment_aggregates
+
+        _rebuild_all_shipment_aggregates(db)
+    else:
+        _rebuild_aggregate_scopes(db, [affected_scope])
     db.commit()
 
 
@@ -828,14 +873,24 @@ def delete_inventory_files(db: Session, country_code: str | None = None) -> dict
                     _delete_s3_prefix(settings.s3_bucket, p)
         return {"deleted_count": 0}
 
-    scopes = [(file.country_code, file.base_date) for file in uploaded_files]
+    ship_touched = any((getattr(f, "file_domain", None) or "inventory") == "shipment" for f in uploaded_files)
+    inv_scopes_unique = {
+        (f.country_code, f.base_date)
+        for f in uploaded_files
+        if (getattr(f, "file_domain", None) or "inventory") != "shipment"
+    }
     for uploaded_file in uploaded_files:
         b, k = _resolved_upload_s3_bucket_and_key(uploaded_file)
         _delete_s3_object(b, k)
         db.delete(uploaded_file)
 
     db.flush()
-    _rebuild_aggregate_scopes(db, scopes)
+    if inv_scopes_unique:
+        _rebuild_aggregate_scopes(db, list(inv_scopes_unique))
+    if ship_touched:
+        from app.domains.inventory.services.shipment_persistence_service import _rebuild_all_shipment_aggregates
+
+        _rebuild_all_shipment_aggregates(db)
     db.commit()
 
     if is_s3_configured() and settings.s3_bucket:
