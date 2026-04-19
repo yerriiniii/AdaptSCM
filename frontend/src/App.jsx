@@ -10,10 +10,10 @@ const PURCHASE_ORDERS_LIST_TIMEOUT_MS = 45_000;
 const INVENTORY_MATCH_TOP_SCROLL_STRIP_FALLBACK_PX = 16;
 const INVENTORY_MATCH_TOP_SCROLL_MARGIN_BELOW_PX = 6;
 const DEFAULT_DATE_RANGE = "10d";
-const OVERSEAS_UPLOAD_COUNTRIES = ["US", "TW", "HK", "VN", "SG", "AU", "UK", "AE"];
+const OVERSEAS_UPLOAD_COUNTRIES = ["US", "TW", "HK", "JP", "SG", "DE", "UK", "AU", "AE", "VN", "TH"];
 /** hydrate 시 해외 `/view` 동시 요청 수 — DB·연결 풀 부하 시 전체가 한꺼번에 막히는 것 완화 */
 const HYDRATE_OVERSEAS_VIEW_CONCURRENCY = 3;
-const SETTINGS_COUNTRY_ORDER = ["KR", "US", "TW", "HK", "VN", "SG", "AU", "UK", "AE", "SHIPMENT"];
+const SETTINGS_COUNTRY_ORDER = ["KR", "US", "TW", "HK", "JP", "SG", "DE", "UK", "AU", "AE", "VN", "TH", "SHIPMENT"];
 /** 출고 탭 채널(백엔드 SHIPMENT_CHANNEL_LABELS와 동일 순서) */
 const SHIPMENT_SHEET_CHANNELS = [
   "국내 B2B",
@@ -44,11 +44,14 @@ const SKU_MAPPING_FIELDS = [
   { code: "US", label: "미국", nameKey: "us_name", skuKey: "us_sku" },
   { code: "TW", label: "대만", nameKey: "tw_name", skuKey: "tw_sku" },
   { code: "HK", label: "홍콩", nameKey: "hk_name", skuKey: "hk_sku" },
-  { code: "VN", label: "베트남", nameKey: "vn_name", skuKey: "vn_sku" },
-  { code: "SG", label: "싱가포르", nameKey: "sg_name", skuKey: "sg_sku" },
-  { code: "AU", label: "호주", nameKey: "au_name", skuKey: "au_sku" },
+  { code: "JP", label: "일본", nameKey: "jp_name", skuKey: "jp_sku" },
+  { code: "SG", label: "싱가폴", nameKey: "sg_name", skuKey: "sg_sku" },
+  { code: "DE", label: "독일", nameKey: "de_name", skuKey: "de_sku" },
   { code: "UK", label: "영국", nameKey: "uk_name", skuKey: "uk_sku" },
+  { code: "AU", label: "호주", nameKey: "au_name", skuKey: "au_sku" },
   { code: "AE", label: "아랍에미리트", nameKey: "ae_name", skuKey: "ae_sku" },
+  { code: "VN", label: "베트남", nameKey: "vn_name", skuKey: "vn_sku" },
+  { code: "TH", label: "태국", nameKey: "th_name", skuKey: "th_sku" },
 ];
 const SKU_MAPPING_TEMPLATE_COLUMNS = SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [nameKey, skuKey]);
 const SKU_MAPPING_OPTIONAL_COLUMNS = ["option", "brand", "barcode"];
@@ -1003,10 +1006,13 @@ function detectCountry(name = "") {
   if (n.includes("hongkong") || n.includes("hong kong") || n.includes("香港") || n.includes("홍콩")) return "HK";
   if (n.includes("us") || n.includes("usa") || n.includes("미국")) return "US";
   if (n.includes("vn") || n.includes("vietnam") || n.includes("베트남")) return "VN";
-  if (n.includes("sg") || n.includes("singapore") || n.includes("싱가포르")) return "SG";
+  if (n.includes("sg") || n.includes("singapore") || n.includes("싱가포르") || n.includes("싱가폴")) return "SG";
   if (n.includes("au") || n.includes("australia") || n.includes("호주")) return "AU";
   if (n.includes("uk") || n.includes("england") || n.includes("britain") || n.includes("영국")) return "UK";
   if (n.includes("ae") || n.includes("uae") || n.includes("dubai") || n.includes("아랍에미리트")) return "AE";
+  if (n.includes("jp") || n.includes("japan") || n.includes("일본")) return "JP";
+  if (n.includes("de") || n.includes("germany") || n.includes("독일")) return "DE";
+  if (n.includes("th") || n.includes("thailand") || n.includes("태국")) return "TH";
   return "KR";
 }
 
@@ -1189,10 +1195,13 @@ function countryLabel(code = "KR") {
   if (code === "HK") return "홍콩";
   if (code === "US") return "미국";
   if (code === "VN") return "베트남";
-  if (code === "SG") return "싱가포르";
+  if (code === "SG") return "싱가폴";
   if (code === "AU") return "호주";
   if (code === "UK") return "영국";
   if (code === "AE") return "아랍에미리트";
+  if (code === "JP") return "일본";
+  if (code === "DE") return "독일";
+  if (code === "TH") return "태국";
   return code;
 }
 
@@ -1788,8 +1797,7 @@ export default function App() {
     if (isOverseasScope) return showKrCompare ? 960 : 852;
     return 0;
   }, [isShipmentScope, isKRScope, isOverseasScope, showKrCompare]);
-  const activeCountryChipsHeight =
-    isOverseasScope || isShipmentScope ? stickyHeights.countryChips : 0;
+  const activeCountryChipsHeight = isOverseasScope ? stickyHeights.countryChips : 0;
   const activeFilterStickyTop = stickyHeights.topbar + activeCountryChipsHeight;
   const activeFilterHeight = isCompareScope ? stickyHeights.compareFilter : stickyHeights.inventoryFilter;
   const activeTopScrollHeight = showTopScroll ? stickyHeights.topScroll : 0;
@@ -2563,8 +2571,9 @@ export default function App() {
     }
     return (
       <>
+        {isKRScope && <th className="stickyCol stickyColCode">상품코드</th>}
         {isKRScope && <th className="stickyCol stickyColBrand">브랜드</th>}
-        <th className="stickyCol stickyColCode">상품코드</th>
+        {!isKRScope && <th className="stickyCol stickyColCode">상품코드</th>}
         <th className="stickyCol stickyColName stickyColBoundary">상품명</th>
         {isOverseasScope && (
           <th className="stickyCol stickyColKrName stickyColBoundary">한국상품명</th>
@@ -4080,12 +4089,6 @@ export default function App() {
             한국 재고
           </button>
           <button
-            className={`tab ${countryTabMode === "SHIPMENT" ? "active" : ""}`}
-            onClick={() => setCountryTabMode("SHIPMENT")}
-          >
-            출고
-          </button>
-          <button
             className={`tab ${countryTabMode === "OVERSEAS" ? "active" : ""}`}
             onClick={() => {
               setCountryTabMode("OVERSEAS");
@@ -4099,6 +4102,12 @@ export default function App() {
             onClick={() => setCountryTabMode("COMPARE")}
           >
             재고 비교
+          </button>
+          <button
+            className={`tab ${countryTabMode === "SHIPMENT" ? "active" : ""}`}
+            onClick={() => setCountryTabMode("SHIPMENT")}
+          >
+            출고 기록
           </button>
           <button
             className={`tab ${countryTabMode === "PURCHASE_ORDERS" ? "active" : ""}`}
@@ -4127,68 +4136,24 @@ export default function App() {
         </div>
       </header>
 
-      {(countryTabMode === "OVERSEAS" || countryTabMode === "SHIPMENT") && (
+      {countryTabMode === "OVERSEAS" && (
         <div
           ref={countryChipsRef}
-          className={`countryChips stickyCountryChips dashboardStripWhite isBottomCapsule${
-            countryTabMode === "SHIPMENT" ? " countryChipsShipment" : ""
-          }`}
+          className="countryChips stickyCountryChips dashboardStripWhite isBottomCapsule"
           style={{ top: stickyHeights.topbar }}
         >
-          {countryTabMode === "OVERSEAS" ? (
-            overseasCountries.map((code) => (
+          <div className="tabs overseasCountryTabs">
+            {overseasCountries.map((code) => (
               <button
                 key={code}
-                className={`chip ${selectedOverseasCountry === code ? "chipActive" : ""}`}
+                type="button"
+                className={`tab ${selectedOverseasCountry === code ? "active" : ""}`}
                 onClick={() => setSelectedOverseasCountry(code)}
               >
                 {countryLabel(code)}
               </button>
-            ))
-          ) : (
-            <>
-              <button
-                type="button"
-                className={`chip ${selectedShipmentChannel === "all" ? "chipActive" : ""}`}
-                onClick={() => setSelectedShipmentChannel("all")}
-              >
-                전체
-              </button>
-              <span className="shipmentChipSep" aria-hidden />
-              {SHIPMENT_CHIP_DOMESTIC.map((ch) => (
-                <button
-                  type="button"
-                  key={ch}
-                  className={`chip ${selectedShipmentChannel === ch ? "chipActive" : ""}`}
-                  onClick={() => setSelectedShipmentChannel(ch)}
-                >
-                  {ch}
-                </button>
-              ))}
-              <span className="shipmentChipSep" aria-hidden />
-              {SHIPMENT_CHIP_OVERSEAS.map((ch) => (
-                <button
-                  type="button"
-                  key={ch}
-                  className={`chip ${selectedShipmentChannel === ch ? "chipActive" : ""}`}
-                  onClick={() => setSelectedShipmentChannel(ch)}
-                >
-                  {ch}
-                </button>
-              ))}
-              <span className="shipmentChipSep" aria-hidden />
-              {SHIPMENT_CHIP_SPECIAL.map((ch) => (
-                <button
-                  type="button"
-                  key={ch}
-                  className={`chip ${selectedShipmentChannel === ch ? "chipActive" : ""}`}
-                  onClick={() => setSelectedShipmentChannel(ch)}
-                >
-                  {ch}
-                </button>
-              ))}
-            </>
-          )}
+            ))}
+          </div>
         </div>
       )}
       {!isInventoryAdminScope && !isCompareScope && (
@@ -4217,6 +4182,50 @@ export default function App() {
       </section>
 
       <section className="tableCard">
+        {isShipmentScope && (
+          <div className="countryChips countryChipsShipment shipmentChannelChipsInTableCard">
+            <button
+              type="button"
+              className={`chip ${selectedShipmentChannel === "all" ? "chipActive" : ""}`}
+              onClick={() => setSelectedShipmentChannel("all")}
+            >
+              전체
+            </button>
+            <span className="shipmentChipSep" aria-hidden />
+            {SHIPMENT_CHIP_DOMESTIC.map((ch) => (
+              <button
+                type="button"
+                key={ch}
+                className={`chip ${selectedShipmentChannel === ch ? "chipActive" : ""}`}
+                onClick={() => setSelectedShipmentChannel(ch)}
+              >
+                {ch}
+              </button>
+            ))}
+            <span className="shipmentChipSep" aria-hidden />
+            {SHIPMENT_CHIP_OVERSEAS.map((ch) => (
+              <button
+                type="button"
+                key={ch}
+                className={`chip ${selectedShipmentChannel === ch ? "chipActive" : ""}`}
+                onClick={() => setSelectedShipmentChannel(ch)}
+              >
+                {ch}
+              </button>
+            ))}
+            <span className="shipmentChipSep" aria-hidden />
+            {SHIPMENT_CHIP_SPECIAL.map((ch) => (
+              <button
+                type="button"
+                key={ch}
+                className={`chip ${selectedShipmentChannel === ch ? "chipActive" : ""}`}
+                onClick={() => setSelectedShipmentChannel(ch)}
+              >
+                {ch}
+              </button>
+            ))}
+          </div>
+        )}
         <div
           ref={inventoryFilterBarRef}
           className="filterBar stickyFilterBar"
@@ -4351,7 +4360,7 @@ export default function App() {
                 <table
                   className={`inventoryTable stickyHeaderTable ${
                     isKRScope || isShipmentScope ? "krTable" : "overseasTable"
-                  }${isShipmentScope ? " shipmentKrTable" : ""}`}
+                  }`}
                   style={{ minWidth: inventoryTableWidth }}
                 >
                   <thead>
@@ -4369,7 +4378,7 @@ export default function App() {
             <table
               className={`inventoryTable bodyTable ${
                 isKRScope || isShipmentScope ? "krTable" : "overseasTable"
-              }${isShipmentScope ? " shipmentKrTable" : ""}`}
+              }`}
               style={{ minWidth: inventoryTableWidth }}
             >
               <tbody>
@@ -4408,17 +4417,31 @@ export default function App() {
                       </>
                     ) : (
                       <>
+                    {isKRScope && (
+                      <td
+                        className="stickyCol stickyColCode"
+                        title={
+                          String(row.mapped_barcode || "").trim()
+                            ? `바코드: ${String(row.mapped_barcode).trim()}`
+                            : "등록된 바코드가 없습니다"
+                        }
+                      >
+                        {getRowSku(row)}
+                      </td>
+                    )}
                     {isKRScope && <td className="stickyCol stickyColBrand">{row.supplier}</td>}
-                    <td
-                      className="stickyCol stickyColCode"
-                      title={
-                        String(row.mapped_barcode || "").trim()
-                          ? `바코드: ${String(row.mapped_barcode).trim()}`
-                          : "등록된 바코드가 없습니다"
-                      }
-                    >
-                      {getRowSku(row)}
-                    </td>
+                    {!isKRScope && (
+                      <td
+                        className="stickyCol stickyColCode"
+                        title={
+                          String(row.mapped_barcode || "").trim()
+                            ? `바코드: ${String(row.mapped_barcode).trim()}`
+                            : "등록된 바코드가 없습니다"
+                        }
+                      >
+                        {getRowSku(row)}
+                      </td>
+                    )}
                     <td className="stickyCol stickyColName stickyColBoundary">
                       <span className="nameCellText">{row.description || "(상품명 없음)"}</span>
                     </td>
@@ -6964,7 +6987,7 @@ export default function App() {
               return oa - ob || a.localeCompare(b);
             })
             .map(([country, entries]) => (
-              <details key={country} className="settingsGroup" open>
+              <details key={country} className="settingsGroup">
                 <summary className="settingsHeader">
                   <span>
                     {countryLabel(country)}

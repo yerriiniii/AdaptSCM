@@ -88,16 +88,22 @@ class InventorySkuMappingUpsertRequest(BaseModel):
     tw_sku: str | None = None
     hk_name: str | None = None
     hk_sku: str | None = None
-    vn_name: str | None = None
-    vn_sku: str | None = None
+    jp_name: str | None = None
+    jp_sku: str | None = None
     sg_name: str | None = None
     sg_sku: str | None = None
-    au_name: str | None = None
-    au_sku: str | None = None
+    de_name: str | None = None
+    de_sku: str | None = None
     uk_name: str | None = None
     uk_sku: str | None = None
+    au_name: str | None = None
+    au_sku: str | None = None
     ae_name: str | None = None
     ae_sku: str | None = None
+    vn_name: str | None = None
+    vn_sku: str | None = None
+    th_name: str | None = None
+    th_sku: str | None = None
 
     @field_validator("brand")
     @classmethod

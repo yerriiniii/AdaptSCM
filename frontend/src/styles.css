@@ -224,6 +224,18 @@ body {
   margin: 0 9px;
 }
 
+.overseasCountryTabs {
+  flex-wrap: wrap;
+  gap: 28px 40px;
+}
+
+/* 출고 채널 칩: KPI 아래 밖이 아니라 tableCard(흰 카드) 안 상단 */
+.countryChips.countryChipsShipment.shipmentChannelChipsInTableCard {
+  margin-top: 0;
+  margin-bottom: 5px;
+  padding: 10px 0 6px;
+}
+
 .kpiRow {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1681,14 +1693,14 @@ th {
   box-shadow: none;
 }
 
-.inventoryTable.krTable .stickyColBrand {
+.inventoryTable.krTable .stickyColCode {
   left: 0;
   width: 120px;
   min-width: 120px;
   max-width: 120px;
 }
 
-.inventoryTable.krTable .stickyColCode {
+.inventoryTable.krTable .stickyColBrand {
   left: 120px;
   width: 120px;
   min-width: 120px;
@@ -1700,19 +1712,6 @@ th {
   width: 300px;
   min-width: 300px;
   max-width: 300px;
-}
-
-/* 출고 표: 열 순서가 상품코드 → 브랜드 → 상품명 (한국 재고는 브랜드 → 상품코드) */
-.inventoryTable.shipmentKrTable .stickyColCode {
-  left: 0;
-}
-
-.inventoryTable.shipmentKrTable .stickyColBrand {
-  left: 120px;
-}
-
-.inventoryTable.shipmentKrTable .stickyColName {
-  left: 240px;
 }
 
 .inventoryTable.krTable .stickyColTrend {
@@ -2401,6 +2400,11 @@ th {
     overflow-x: auto;
   }
 
+  .poSubTabsBar {
+    gap: 20px;
+    overflow-x: auto;
+  }
+
   .skuManualHead {
     flex-direction: column;
     align-items: flex-start;
@@ -2496,9 +2500,10 @@ th {
 .poSubTabsBar {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
-  margin: 0 0 16px;
-  padding-bottom: 2px;
+  align-items: center;
+  gap: 28px;
+  margin: 0 0 18px;
+  padding: 0 2px 0;
   border-bottom: 1px solid #eef2f7;
 }
 
@@ -2506,7 +2511,6 @@ th {
   position: sticky;
   z-index: 28;
   background: #ffffff;
-  box-shadow: 0 1px 0 #eef2f7;
 }
 
 .poOrderStickySavedFilter {
@@ -2518,8 +2522,9 @@ th {
 
 .poSubTab {
   height: 36px;
-  padding: 0 10px;
+  padding: 0 4px;
   font-size: 14px;
+  font-weight: 600;
 }
 
 .poRegisterPanel {

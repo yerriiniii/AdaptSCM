@@ -83,11 +83,14 @@ COUNTRY_PATTERNS = {
     "TW": ["tw", "taiwan", "대만", "taipei"],
     "US": ["us", "usa", "america", "미국"],
     "VN": ["vn", "vietnam", "베트남", "hanoi", "ho chi minh"],
-    "SG": ["sg", "singapore", "싱가포르"],
+    "SG": ["sg", "singapore", "싱가포르", "싱가폴"],
     "AU": ["au", "australia", "호주", "sydney", "melbourne"],
     "UK": ["uk", "unitedkingdom", "britain", "england", "영국", "london"],
     "AE": ["ae", "uae", "dubai", "abudhabi", "아랍에미리트"],
     "HK": ["hk", "hongkong", "hong kong", "香港", "홍콩"],
+    "JP": ["jp", "japan", "일본", "tokyo", "osaka"],
+    "DE": ["de", "germany", "german", "독일", "berlin"],
+    "TH": ["th", "thailand", "태국", "bangkok"],
 }
 
 
