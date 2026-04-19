@@ -56,6 +56,12 @@ class InventoryCompleteUploadRequest(BaseModel):
     files: list[InventoryCompleteUploadFileRequest]
 
 
+class InventoryFilePatchBaseDateRequest(BaseModel):
+    """재고(인벤토리) 업로드 파일의 집계 기준일. 빈 문자열·null 이면 미지정(NULL)."""
+
+    base_date: str | None = None
+
+
 class InventorySkuMappingSummaryResponse(BaseModel):
     total_count: int
     updated_at: str | None = None

@@ -362,8 +362,15 @@ async function downloadSkuMappingCountryTemplatesZip() {
   URL.revokeObjectURL(a.href);
 }
 
-/** 날짜는 텍스트로 입력 (브라우저 date 피커 대신) */
-const DATE_TEXT_INPUT_HINT = "YYYY-MM-DD 권장";
+/** 데이터 관리 파일 기준일: 캘린더 피커 툴팁. 기타 화면 텍스트 입력 힌트로도 사용 */
+const DATE_TEXT_INPUT_HINT = "YYYY-MM-DD";
+
+function toDateInputValue(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : "";
+}
 const ACTUAL_INBOUND_TEXT_PLACEHOLDER = "YYYY-MM-DD 또는 직접 입력";
 /** 저장된 발주(표·발주 수정 모달): 날짜 입력란 힌트 없음. 새 발주 등록 탭은 위 상수 유지 */
 const PO_SAVED_DATE_PLACEHOLDER = "";
@@ -3857,8 +3864,35 @@ export default function App() {
     }
   }
 
+  async function patchInventoryFileBaseDate(entry, nextIso) {
+    if (!entry?.dbFileId) return;
+    const prevIso = entry.date || "";
+    setSettingsMutating(true);
+    setFileEntries((prev) => prev.map((x) => (x.id === entry.id ? { ...x, date: nextIso } : x)));
+    try {
+      await axios.patch(`${API_BASE}/api/inventory/files/${entry.dbFileId}`, {
+        base_date: nextIso && String(nextIso).trim() ? String(nextIso).trim() : null,
+      });
+      await hydratePersistedState({ preserveLocalOnly: true });
+    } catch (err) {
+      setFileEntries((prev) => prev.map((x) => (x.id === entry.id ? { ...x, date: prevIso } : x)));
+      const detail = err?.response?.data?.detail;
+      window.alert(Array.isArray(detail) ? detail.join("\n") : detail || err?.message || "기준일 저장 실패");
+    } finally {
+      setSettingsMutating(false);
+    }
+  }
+
   async function clearFilesByCountry(country, entries) {
     if (!entries?.length) return;
+    const label = countryLabel(country);
+    if (
+      !window.confirm(
+        `「${label}」에 저장된 파일과 재고 데이터를 모두 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`
+      )
+    ) {
+      return;
+    }
     try {
       setSettingsMutating(true);
       await axios.delete(`${API_BASE}/api/inventory/files`, {
@@ -6989,9 +7023,7 @@ export default function App() {
             .map(([country, entries]) => (
               <details key={country} className="settingsGroup">
                 <summary className="settingsHeader">
-                  <span>
-                    {countryLabel(country)}
-                  </span>
+                  <span>{countryLabel(country)}</span>
                   <span className="settingsHeaderRight">
                     <span>{entries.length}개 파일</span>
                     <button
@@ -7027,14 +7059,19 @@ export default function App() {
                         <div className="fileControl">
                           <span>날짜</span>
                           <input
-                            type="text"
-                            placeholder={DATE_TEXT_INPUT_HINT}
-                            value={entry.date}
+                            type="date"
+                            title={DATE_TEXT_INPUT_HINT}
+                            value={toDateInputValue(entry.date)}
+                            disabled={settingsMutating || !entry.dbFileId}
                             onChange={(e) => {
                               const next = e.target.value;
-                              setFileEntries((prev) =>
-                                prev.map((x) => (x.id === entry.id ? { ...x, date: next } : x))
-                              );
+                              if (entry.dbFileId) {
+                                void patchInventoryFileBaseDate(entry, next);
+                              } else {
+                                setFileEntries((prev) =>
+                                  prev.map((x) => (x.id === entry.id ? { ...x, date: next } : x))
+                                );
+                              }
                             }}
                           />
                         </div>
@@ -7051,7 +7088,6 @@ export default function App() {
                 </div>
               </details>
             ))}
-
         </section>
       )}
 

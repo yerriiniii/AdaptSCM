@@ -10,6 +10,7 @@ from app.domains.inventory.dto.inventory_api_dto import (
     InventoryCompleteUploadRequest,
     InventoryDirectUploadPreparedResponse,
     InventoryDirectUploadRequest,
+    InventoryFilePatchBaseDateRequest,
     InventorySkuMappingListResponse,
     InventorySkuMappingItemResponse,
     InventorySkuMappingSummaryResponse,
@@ -53,6 +54,7 @@ from app.domains.inventory.services.inventory_persistence_service import (
     delete_inventory_files,
     get_inventory_view,
     list_inventory_files,
+    patch_inventory_file_base_date,
     prepare_inventory_direct_uploads,
     persist_inventory_uploads,
 )
@@ -215,6 +217,15 @@ def inventory_complete_upload(
 @router.get("/files")
 def inventory_files(db: Session = Depends(get_db_session)) -> dict:
     return {"files": list_inventory_files(db)}
+
+
+@router.patch("/files/{file_id}")
+def inventory_patch_file(
+    file_id: str,
+    payload: InventoryFilePatchBaseDateRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    return {"file": patch_inventory_file_base_date(db=db, file_id=file_id, base_date_value=payload.base_date)}
 
 
 @router.get("/view", response_model=InventoryAggregateResponse)
