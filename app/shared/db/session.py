@@ -46,13 +46,19 @@ def _ensure_inventory_columns(engine: Engine) -> None:
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())
     column_specs = {
+        "uploaded_files": {
+            "file_domain": "VARCHAR(20) NOT NULL DEFAULT 'inventory'",
+        },
         "inventory_rows": {
             "sku": "VARCHAR(255)",
             "warehouse": "VARCHAR(255)",
+            "row_snapshot_date": "DATE",
+            "row_country_code": "VARCHAR(10)",
         },
         "inventory_aggregates": {
             "sku": "VARCHAR(255)",
             "warehouse": "VARCHAR(255)",
+            "source_domain": "VARCHAR(20) NOT NULL DEFAULT 'INVENTORY'",
         },
         "item": {
             "brand": "VARCHAR(255)",
@@ -252,6 +258,18 @@ def _ensure_inventory_columns(engine: Engine) -> None:
                                 "updated_at": updated_at,
                             },
                         )
+
+        if engine.dialect.name == "postgresql" and "uploaded_files" in existing_tables:
+            # 출고 파일은 country_type=SHIPMENT — 기존 DB는 KR/OVERSEAS 만 허용하는 CHECK 가 있을 수 있음
+            connection.execute(
+                text('ALTER TABLE uploaded_files DROP CONSTRAINT IF EXISTS "uploaded_files_country_type_check"')
+            )
+            connection.execute(
+                text(
+                    'ALTER TABLE uploaded_files ADD CONSTRAINT "uploaded_files_country_type_check" '
+                    "CHECK (country_type IN ('KR', 'OVERSEAS', 'SHIPMENT'))"
+                )
+            )
 
 
 def is_database_configured() -> bool:

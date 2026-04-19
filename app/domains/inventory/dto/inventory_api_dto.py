@@ -9,6 +9,8 @@ class InventoryAggregateResponse(BaseModel):
     dates: list[str]
     rows: list[dict]
     files: list[dict] = Field(default_factory=list)
+    # 출고: 표 헤더용 채널 순서(국내 B2B …)
+    channels: list[str] = Field(default_factory=list)
 
 
 class InventoryDirectUploadFileRequest(BaseModel):

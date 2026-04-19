@@ -41,7 +41,7 @@ body {
 }
 
 .dashboardStripWhite.stickyCountryChips {
-  margin-top: 14px;
+  margin-top: 6px;
   margin-bottom: 8px;
 }
 
@@ -153,18 +153,20 @@ body {
 }
 
 .countryChips {
-  margin-top: 14px;
+  margin-top: 6px;
   margin-bottom: 25px;
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-start;
-  gap: 50px;
+  align-items: center;
+  gap: 8px 24px;
 }
 
 .stickyCountryChips {
   position: sticky;
   z-index: 25;
   background-color: #ffffff;
-  padding-top: 12px;
+  padding-top: 6px;
   padding-bottom: 10px;
 }
 
@@ -173,20 +175,53 @@ body {
 }
 
 .chip {
-  height: 30px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+  box-sizing: border-box;
+  height: auto;
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1px solid #e3e8f0;
+  border-radius: 999px;
+  background: #ffffff;
   color: #6b7280;
-  padding: 0 8px;
-  border-bottom: 2px solid transparent;
   font-weight: 600;
   font-size: 14px;
+  line-height: 1.2;
 }
 
-.chipActive {
+.chip:hover:not(:disabled):not(.chipActive) {
+  background: #f8fafc;
+  border-color: #d1d9e2;
+  color: #475569;
+}
+
+.chip.chipActive {
+  background: #edf8f2;
+  border-color: #b9e5d3;
   color: #0b8a5d;
-  border-bottom-color: #0b8a5d;
+}
+
+/* 출고 탭: 칩 한 줄, 구분선 주변은 칩 간격보다 조금 더 넓게 */
+.countryChips.countryChipsShipment {
+  flex-wrap: nowrap;
+  gap: 5px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  margin-bottom: 20px;
+}
+
+.countryChips.countryChipsShipment .chip {
+  flex-shrink: 0;
+}
+
+.shipmentChipSep {
+  flex: 0 0 auto;
+  width: 1.5px;
+  height: 22px;
+  align-self: center;
+  background: #adb7c6;
+  margin: 0 9px;
 }
 
 .kpiRow {
@@ -1667,6 +1702,19 @@ th {
   max-width: 300px;
 }
 
+/* 출고 표: 열 순서가 상품코드 → 브랜드 → 상품명 (한국 재고는 브랜드 → 상품코드) */
+.inventoryTable.shipmentKrTable .stickyColCode {
+  left: 0;
+}
+
+.inventoryTable.shipmentKrTable .stickyColBrand {
+  left: 120px;
+}
+
+.inventoryTable.shipmentKrTable .stickyColName {
+  left: 240px;
+}
+
 .inventoryTable.krTable .stickyColTrend {
   left: 540px;
   width: 140px;
@@ -1854,6 +1902,12 @@ th {
   height: 30px;
   min-width: 108px;
   width: 108px;
+}
+
+.fileControlMuted span {
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.35;
 }
 
 .settingsHeaderRight {
@@ -3400,6 +3454,111 @@ th {
 .poMemoModalDeleteBtn:hover {
   background: #fee2e2;
   border-color: #f87171;
+}
+
+.shipmentVendorModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.shipmentVendorModal {
+  width: min(520px, 100%);
+  max-height: min(85vh, 640px);
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shipmentVendorModalHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shipmentVendorModalTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.shipmentVendorModalIntro {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #4b5563;
+}
+
+.shipmentVendorModalList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(48vh, 420px);
+  overflow: auto;
+  padding: 4px 2px 8px;
+}
+
+.shipmentVendorModalRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 12px;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.shipmentVendorModalRowMain {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.shipmentVendorName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  word-break: break-word;
+}
+
+.shipmentVendorLocs {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #6b7280;
+  word-break: break-word;
+}
+
+.shipmentVendorSelect {
+  flex: 0 0 auto;
+  min-width: 160px;
+  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  font-family: inherit;
+}
+
+.shipmentVendorModalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  padding-top: 4px;
+  border-top: 1px solid #e5e7eb;
 }
 
 .poSavedSsEditBtn {

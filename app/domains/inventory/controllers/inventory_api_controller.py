@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
@@ -38,8 +39,11 @@ from app.domains.inventory.services.inventory_aggregate_service import (
     inspect_inventory_files,
 )
 from app.domains.inventory.services.shipment_aggregate_service import (
+    _load_kr_sku_brand_name,
+    _load_own_mall_brand_bases,
     build_shipment_wide_dashboard,
     collect_shipment_long_records_from_raw,
+    preflight_shipment_files_vendor_gaps,
 )
 from app.domains.inventory.services.shipment_persistence_service import get_shipment_view, persist_shipment_uploads
 from app.domains.inventory.services.inventory_persistence_service import (
@@ -120,13 +124,45 @@ def aggregate_inventory(
 @router.post("/shipment/aggregate", response_model=InventoryAggregateResponse)
 def shipment_aggregate(
     files: list[UploadFile] = File(...),
+    vendor_channel_overrides: str | None = Form(default=None),
     db: Session = Depends(get_db_session),
 ) -> InventoryAggregateResponse:
+    overrides_dict: dict[str, str] | None = None
+    if vendor_channel_overrides and str(vendor_channel_overrides).strip():
+        try:
+            parsed = json.loads(vendor_channel_overrides)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"vendor_channel_overrides JSON 파싱 실패: {exc}",
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise HTTPException(status_code=400, detail="vendor_channel_overrides는 JSON 객체여야 합니다.")
+        overrides_dict = {str(k): str(v) for k, v in parsed.items()}
+
+    kr_sku_map = _load_kr_sku_brand_name(db)
+    own_mall_bases = _load_own_mall_brand_bases(db)
+    paired: list[tuple[UploadFile, bytes]] = [(uf, _read_upload_bytes(uf)) for uf in files]
+
+    if overrides_dict is None and len(paired) > 1:
+        preflight_shipment_files_vendor_gaps(
+            db,
+            [(uf.filename or "", raw) for uf, raw in paired],
+            kr_sku_brand_name=kr_sku_map,
+            own_mall_brand_bases=own_mall_bases,
+        )
+
     file_payloads: list[tuple[UploadFile, bytes, list[dict]]] = []
     all_long: list[dict] = []
-    for uf in files:
-        raw = _read_upload_bytes(uf)
-        recs = collect_shipment_long_records_from_raw(db, raw, uf.filename or "")
+    for uf, raw in paired:
+        recs = collect_shipment_long_records_from_raw(
+            db,
+            raw,
+            uf.filename or "",
+            kr_sku_brand_name=kr_sku_map,
+            own_mall_brand_bases=own_mall_bases,
+            vendor_channel_overrides=overrides_dict,
+        )
         all_long.extend(recs)
         file_payloads.append((uf, raw, recs))
     payload = build_shipment_wide_dashboard(all_long)
