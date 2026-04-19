@@ -982,6 +982,14 @@ function toFixed(value, digits = 2) {
   return parsed.toFixed(digits);
 }
 
+/** 화면 표시용 정수·천 단위 콤마 (내보내기·저장용은 `toFixed` 등 유지) */
+function formatInt(value) {
+  if (value === null || value === undefined) return "-";
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) return String(value);
+  return parsed.toLocaleString("ko-KR", { maximumFractionDigits: 0 });
+}
+
 /** 재고 표 날짜 열 헤더 문자열 — `renderDateHeader`와 동일한 한 셀 표기 */
 function formatInventoryDateHeaderForExport(dateKey) {
   const [y, m, d] = String(dateKey).split("-");
@@ -993,18 +1001,24 @@ function toSigned(value, digits = 0) {
   if (value === null || value === undefined) return "-";
   const parsed = Number(value);
   if (Number.isNaN(parsed)) return String(value);
-  const fixed = parsed.toFixed(digits);
-  if (parsed > 0) return `+${fixed}`;
-  return fixed;
+  const formatted = parsed.toLocaleString("ko-KR", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  if (parsed > 0) return `+${formatted}`;
+  return formatted;
 }
 
 function toPercent(value, digits = 1) {
   if (value === null || value === undefined) return "-";
   const parsed = Number(value);
   if (Number.isNaN(parsed)) return "-";
-  const fixed = parsed.toFixed(digits);
-  if (parsed > 0) return `+${fixed}%`;
-  return `${fixed}%`;
+  const formatted = parsed.toLocaleString("ko-KR", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  if (parsed > 0) return `+${formatted}%`;
+  return `${formatted}%`;
 }
 
 function detectCountry(name = "") {
@@ -1270,7 +1284,7 @@ function formatShipmentWideDateCell(val) {
   const n = shipmentCellNumericTotal(val);
   if (n === 0) return "–";
   if (typeof val === "string" && val.includes("창고이동")) return val;
-  if (typeof val === "number" && !Number.isNaN(val)) return toFixed(val, 0);
+  if (typeof val === "number" && !Number.isNaN(val)) return formatInt(val);
   return String(val ?? "–");
 }
 
@@ -1427,8 +1441,8 @@ export default function App() {
   const [inboundDrafts, setInboundDrafts] = useState({});
   /** 저장된 발주 표: 발주별 하단 인라인 신규 입고 차수 초안 (orderId 문자열 키) */
   const [savedPoNewLineDraftByOrderId, setSavedPoNewLineDraftByOrderId] = useState({});
-  /** 발주 기록 탭 내부: 발주 파일 업로드 | 새 등록 | 저장된 목록 */
-  const [purchaseOrderSubTab, setPurchaseOrderSubTab] = useState("register");
+  /** 발주 기록 탭 내부: 발주 파일 업로드 | 새 등록 | 저장된 목록 (기본: 저장된 발주) */
+  const [purchaseOrderSubTab, setPurchaseOrderSubTab] = useState("saved");
   const [poInboundUploadBusy, setPoInboundUploadBusy] = useState(false);
   const [poInboundFileKey, setPoInboundFileKey] = useState(0);
   const poSavedTableScrollRef = useRef(null);
@@ -3049,7 +3063,7 @@ export default function App() {
     }
     const lineFiltered = linePairs.filter(({ orderId }) => !wholePo.has(orderId));
     const n = wholePo.size + lineFiltered.length;
-    if (!window.confirm(`선택한 입고 ${n}건을 삭제할까요? 되돌릴 수 없습니다.`)) {
+    if (!window.confirm(`선택한 입고 ${formatInt(n)}건을 삭제할까요? 되돌릴 수 없습니다.`)) {
       return;
     }
 
@@ -3189,7 +3203,7 @@ export default function App() {
         return;
       }
       await axios.post(`${API_BASE}/api/inventory/purchase-orders/import`, { rows });
-      setPurchaseOrderSuccess(`${rows.length}건이 저장된 발주에 반영되었습니다.`);
+      setPurchaseOrderSuccess(`${formatInt(rows.length)}건이 저장된 발주에 반영되었습니다.`);
       setPurchaseOrderSubTab("saved");
       await fetchPurchaseOrdersList();
     } catch (err) {
@@ -3793,8 +3807,8 @@ export default function App() {
       setMappingInputKey((prev) => prev + 1);
       await hydratePersistedState();
       window.alert(
-        `${Number(res?.data?.processed_file_count || 0)}개 파일에서 ${Number(
-          res?.data?.merged_item_count || 0
+        `${formatInt(Number(res?.data?.processed_file_count || 0))}개 파일에서 ${formatInt(
+          Number(res?.data?.merged_item_count || 0)
         )}개의 SKU 매핑을 병합 반영했습니다.`
       );
     } catch (err) {
@@ -4196,7 +4210,7 @@ export default function App() {
         <div className="kpiCard">
           <div className="kpiLabel">업로드된 파일</div>
           <div className="kpiValue">
-            {isShipmentScope ? shipmentFileEntries.length : inventoryFiles.length}개
+            {formatInt(isShipmentScope ? shipmentFileEntries.length : inventoryFiles.length)}개
           </div>
         </div>
         <div className="kpiCard">
@@ -4210,7 +4224,7 @@ export default function App() {
         <div className="kpiCard">
           <div className="kpiLabel">분석 상품 수</div>
           <div className="kpiValue">
-            {(isShipmentScope ? shipmentDisplayRows : filteredRows).length}개
+            {formatInt((isShipmentScope ? shipmentDisplayRows : filteredRows).length)}개
           </div>
         </div>
       </section>
@@ -4514,7 +4528,7 @@ export default function App() {
                     {isOverseasScope && showKrCompare && (
                       <td className="krCompareCol stickyCol stickyColCompare stickyColBoundary">
                         {krCompareMap.size
-                          ? toFixed(krCompareMap.get(getCanonicalMatchCode(row)) || 0, 0)
+                          ? formatInt(krCompareMap.get(getCanonicalMatchCode(row)) || 0)
                           : "-"}
                       </td>
                     )}
@@ -4528,7 +4542,7 @@ export default function App() {
                             : undefined
                         }
                       >
-                        {toFixed(row[dt], 0)}
+                        {formatInt(row[dt])}
                       </td>
                     ))}
                       </>
@@ -4566,7 +4580,7 @@ export default function App() {
           <section className="kpiRow compareKpiRow">
             <div className="kpiCard">
               <div className="kpiLabel">비교 가능 국가</div>
-              <div className="kpiValue">{OVERSEAS_UPLOAD_COUNTRIES.length}개</div>
+              <div className="kpiValue">{formatInt(OVERSEAS_UPLOAD_COUNTRIES.length)}개</div>
             </div>
             <div className="kpiCard">
               <div className="kpiLabel">최신 기준일</div>
@@ -4574,7 +4588,7 @@ export default function App() {
             </div>
             <div className="kpiCard">
               <div className="kpiLabel">비교 상품 수</div>
-              <div className="kpiValue">{filteredCompareRows.length}개</div>
+              <div className="kpiValue">{formatInt(filteredCompareRows.length)}개</div>
             </div>
           </section>
 
@@ -4667,13 +4681,13 @@ export default function App() {
                         </td>
                         <td className="compareMetaCol">{row["구분"] || "-"}</td>
                         <td className="compareCountryCol krCompareCol">
-                          {row["한국 현 재고"] === null ? "-" : toFixed(row["한국 현 재고"], 0)}
+                          {row["한국 현 재고"] === null ? "-" : formatInt(row["한국 현 재고"])}
                         </td>
                         {OVERSEAS_UPLOAD_COUNTRIES.map((code) => (
                           <td key={`${row._compareKey}-${code}`} className="compareCountryCol">
                             {row[countryLabel(code)] === null
                               ? "-"
-                              : toFixed(row[countryLabel(code)], 0)}
+                              : formatInt(row[countryLabel(code)])}
                           </td>
                         ))}
                       </tr>
@@ -4718,7 +4732,7 @@ export default function App() {
             <div className="trendSummaryGrid">
               <div className="trendSummaryCard">
                 <div className="trendSummaryLabel">최신 재고</div>
-                <div className="trendSummaryValue">{toFixed(activeTrendData.latestQty, 0)}</div>
+                <div className="trendSummaryValue">{formatInt(activeTrendData.latestQty)}</div>
               </div>
               <div className="trendSummaryCard">
                 <div className="trendSummaryLabel">직전 데이터 대비 증감</div>
@@ -4783,11 +4797,11 @@ export default function App() {
                 )}
                 {activeTrendData.points.map((point, pointIdx) => (
                   <g key={point.dateKey}>
-                    <title>{`${point.dateKey} | 재고 ${toFixed(point.qty, 0)}`}</title>
+                    <title>{`${point.dateKey} | 재고 ${formatInt(point.qty)}`}</title>
                     <circle cx={point.x} cy={point.y} r="5" className="trendDot" />
                     {activeTrendData.showPointValueLabels && (
                       <text x={point.x} y={point.y - 12} textAnchor="middle" className="trendDotLabel">
-                        {toFixed(point.qty, 0)}
+                        {formatInt(point.qty)}
                       </text>
                     )}
                     {pointIdx % activeTrendData.xLabelStep === 0 && (
@@ -4821,7 +4835,7 @@ export default function App() {
                     {activeTrendData.series.map((point) => (
                       <tr key={`trend-${point.dateKey}`}>
                         <td>{point.dateKey}</td>
-                        <td>{toFixed(point.qty, 0)}</td>
+                        <td>{formatInt(point.qty)}</td>
                         <td>{toSigned(point.delta, 0)}</td>
                         <td>{toPercent(point.deltaRate, 1)}</td>
                       </tr>
@@ -5473,7 +5487,7 @@ export default function App() {
                                     ) : (
                                       <span className="poSavedSsCellWithPencil">
                                         <span>
-                                          {po.total_quantity != null ? String(po.total_quantity) : "–"}
+                                          {po.total_quantity != null ? formatInt(po.total_quantity) : "–"}
                                         </span>
                                         <button
                                           type="button"
@@ -5831,7 +5845,7 @@ export default function App() {
                                     />
                                   ) : (
                                     <span className="poSavedSsCellWithPencil">
-                                      <span>{line.quantity != null ? String(line.quantity) : "–"}</span>
+                                      <span>{line.quantity != null ? formatInt(line.quantity) : "–"}</span>
                                       <button
                                         type="button"
                                         className="poSavedSsPencilBtn poSavedPreventPoRowDbl"
@@ -6499,7 +6513,7 @@ export default function App() {
                         </div>
                         <div>
                           <dt>총 발주수량</dt>
-                          <dd>{po.total_quantity != null ? String(po.total_quantity) : "–"}</dd>
+                          <dd>{po.total_quantity != null ? formatInt(po.total_quantity) : "–"}</dd>
                         </div>
                         <div>
                           <dt>납품가능일</dt>
@@ -6688,7 +6702,7 @@ export default function App() {
                                   </td>
                                   <td>{formatPoLineExpectedInboundDisplay(line, po)}</td>
                                   <td>{formatPoInboundActualDisplay(line)}</td>
-                                  <td>{line.quantity != null ? String(line.quantity) : "–"}</td>
+                                  <td>{line.quantity != null ? formatInt(line.quantity) : "–"}</td>
                                   <td>{line.inbound_status}</td>
                                 </tr>
                               )
@@ -7025,7 +7039,7 @@ export default function App() {
                 <summary className="settingsHeader">
                   <span>{countryLabel(country)}</span>
                   <span className="settingsHeaderRight">
-                    <span>{entries.length}개 파일</span>
+                    <span>{formatInt(entries.length)}개 파일</span>
                     <button
                       type="button"
                       className="ghost settingsCountryResetBtn"
