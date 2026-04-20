@@ -284,6 +284,54 @@ async function downloadInventoryDashboardXlsx(filename, sheetName, rows) {
   URL.revokeObjectURL(a.href);
 }
 
+/** 출고 등: 시트가 여러 개인 .xlsx (각 시트 동일 스타일) */
+async function downloadInventoryDashboardXlsxMultiSheets(filename, sheets) {
+  const ExcelJS = (await import("exceljs")).default;
+  const FONT_9 = { name: "맑은 고딕", size: 9 };
+  const thinBorder = {
+    top: { style: "thin" },
+    left: { style: "thin" },
+    bottom: { style: "thin" },
+    right: { style: "thin" },
+  };
+  const wb = new ExcelJS.Workbook();
+  const nonEmpty = (sheets || []).filter((s) => s?.rows?.length);
+  if (!nonEmpty.length) return;
+  for (const { sheetName, rows } of nonEmpty) {
+    const ws = wb.addWorksheet(String(sheetName || "Sheet1").slice(0, 31), {
+      views: [{ showGridLines: true }],
+    });
+    const headers = Object.keys(rows[0]);
+    ws.addRow(headers);
+    for (const r of rows) {
+      ws.addRow(headers.map((h) => r[h]));
+    }
+    ws.eachRow((row, rowNumber) => {
+      row.eachCell((cell) => {
+        cell.font = { ...FONT_9, bold: rowNumber === 1 };
+        cell.border = thinBorder;
+        if (rowNumber === 1) {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFFFFF00" },
+          };
+        }
+      });
+    });
+  }
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const base = String(filename || "").replace(/\.xlsx$/i, "");
+  a.download = `${base}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 /** SKU 탭: 한·미·대·홍 전용 .xlsx를 ZIP으로 내려받기 (파일마다 첫 시트만 업로드 시 읽힘) */
 const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
   {
@@ -1408,6 +1456,10 @@ export default function App() {
   const [shipmentVendorDraft, setShipmentVendorDraft] = useState({});
   const [countryTabMode, setCountryTabMode] = useState("KR");
   const [selectedShipmentChannel, setSelectedShipmentChannel] = useState("all");
+  /** 출고: 일자 열 월 필터 — "" 이면 아래 useEffect로 데이터에 맞는 월로 보정, "__ALL__" 이면 전체 기간 */
+  const [shipmentDisplayMonth, setShipmentDisplayMonth] = useState("");
+  /** 출고: 일자별 와이드 표 | 판매처별 월 합계 피벗 */
+  const [shipmentViewMode, setShipmentViewMode] = useState("daily");
   const [selectedOverseasCountry, setSelectedOverseasCountry] = useState(OVERSEAS_UPLOAD_COUNTRIES[0]);
   const [selectedKrTrendRowKey, setSelectedKrTrendRowKey] = useState("");
   const [selectedOverseasTrendRowKey, setSelectedOverseasTrendRowKey] = useState("");
@@ -1980,10 +2032,56 @@ export default function App() {
     }
   }
 
+  const shipmentAvailableMonths = useMemo(() => {
+    const s = new Set();
+    for (const d of rawInventoryDates) {
+      const m = String(d).slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(m)) s.add(m);
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [rawInventoryDates]);
+
+  useEffect(() => {
+    if (!isShipmentScope) return;
+    if (!shipmentAvailableMonths.length) return;
+    const last = shipmentAvailableMonths[shipmentAvailableMonths.length - 1];
+    setShipmentDisplayMonth((prev) => {
+      if (prev === "__ALL__") return prev;
+      if (prev && shipmentAvailableMonths.includes(prev)) return prev;
+      return last;
+    });
+  }, [isShipmentScope, shipmentAvailableMonths]);
+
+  /** 출고 일자 열: null 이면 전체 기간( __ALL__ ) */
+  const shipmentMonthForDailyFilter = useMemo(() => {
+    if (!isShipmentScope) return null;
+    if (shipmentDisplayMonth === "__ALL__") return null;
+    if (shipmentDisplayMonth && shipmentAvailableMonths.includes(shipmentDisplayMonth)) return shipmentDisplayMonth;
+    return shipmentAvailableMonths.length ? shipmentAvailableMonths[shipmentAvailableMonths.length - 1] : null;
+  }, [isShipmentScope, shipmentDisplayMonth, shipmentAvailableMonths]);
+
+  /** 출고 판매처별 월 합계: 전체 기간 선택 시에도 집계 기준 월은 데이터상 최신 월 */
+  const shipmentPivotMonth = useMemo(() => {
+    if (!isShipmentScope) return null;
+    if (!shipmentAvailableMonths.length) return null;
+    if (shipmentDisplayMonth === "__ALL__") return shipmentAvailableMonths[shipmentAvailableMonths.length - 1];
+    if (shipmentDisplayMonth && shipmentAvailableMonths.includes(shipmentDisplayMonth)) return shipmentDisplayMonth;
+    return shipmentAvailableMonths[shipmentAvailableMonths.length - 1];
+  }, [isShipmentScope, shipmentDisplayMonth, shipmentAvailableMonths]);
+
+  /** `<select>` 표시용: 빈 값·무효 값은 데이터상 최신 월로 표시 */
+  const shipmentMonthSelectValue = useMemo(() => {
+    if (shipmentDisplayMonth === "__ALL__") return "__ALL__";
+    if (shipmentDisplayMonth && shipmentAvailableMonths.includes(shipmentDisplayMonth)) return shipmentDisplayMonth;
+    return shipmentAvailableMonths.length ? shipmentAvailableMonths[shipmentAvailableMonths.length - 1] : "";
+  }, [shipmentDisplayMonth, shipmentAvailableMonths]);
+
   const filteredDateColumns = useMemo(() => {
     if (!rawInventoryDates.length) return [];
     if (isShipmentScope) {
-      return [...rawInventoryDates].sort((a, b) => String(a).localeCompare(String(b)));
+      const sorted = [...rawInventoryDates].sort((a, b) => String(a).localeCompare(String(b)));
+      if (shipmentMonthForDailyFilter == null) return sorted;
+      return sorted.filter((d) => String(d).startsWith(shipmentMonthForDailyFilter));
     }
 
     const rowHasQtyOnDate = (row, dateKey) => {
@@ -2051,6 +2149,7 @@ export default function App() {
     countryTabMode,
     selectedOverseasCountry,
     isShipmentScope,
+    shipmentMonthForDailyFilter,
     inventoryDateRange,
     inventoryStartDate,
     inventoryEndDate,
@@ -2275,13 +2374,69 @@ export default function App() {
     });
   }, [isShipmentScope, filteredRows, selectedShipmentChannel, rawInventoryDates, filteredDateColumns]);
 
+  /** 출고: 선택 월·filteredRows 기준 상품(SKU) × 판매처(채널) 합계 */
+  const shipmentMonthlyPivotRows = useMemo(() => {
+    if (!isShipmentScope || !shipmentPivotMonth) return [];
+    const dateKeys = rawInventoryDates.filter((d) => String(d).startsWith(shipmentPivotMonth));
+    if (!dateKeys.length) return [];
+    const bySku = new Map();
+    for (const row of filteredRows) {
+      const sku = getRowSku(row);
+      if (!sku) continue;
+      const ch = String(row.channel || "").trim();
+      if (!bySku.has(sku)) {
+        bySku.set(sku, {
+          sku: row.sku,
+          mapped_kr_sku: row.mapped_kr_sku,
+          brand: row.brand,
+          description: row.description,
+          mapped_barcode: row.mapped_barcode,
+          channels: Object.fromEntries(SHIPMENT_SHEET_CHANNELS.map((c) => [c, 0])),
+        });
+      }
+      const agg = bySku.get(sku);
+      let rowSum = 0;
+      for (const dk of dateKeys) {
+        rowSum += shipmentCellNumericTotal(row[dk]);
+      }
+      if (SHIPMENT_SHEET_CHANNELS.includes(ch)) {
+        agg.channels[ch] = (agg.channels[ch] || 0) + rowSum;
+      }
+    }
+    const out = [];
+    for (const agg of bySku.values()) {
+      let rowTotal = 0;
+      for (const c of SHIPMENT_SHEET_CHANNELS) {
+        rowTotal += agg.channels[c] || 0;
+      }
+      if (rowTotal <= 0) continue;
+      out.push({
+        ...agg,
+        rowTotal,
+        trendRowKey: `SHIP-MONTH-${getRowSku(agg)}`,
+      });
+    }
+    return out.sort((a, b) => {
+      const d = (b.rowTotal || 0) - (a.rowTotal || 0);
+      if (d !== 0) return d;
+      return String(getRowSku(a) || "").localeCompare(String(getRowSku(b) || ""), "ko");
+    });
+  }, [isShipmentScope, shipmentPivotMonth, rawInventoryDates, filteredRows]);
+
   const hasTableData = useMemo(() => {
-    if (isShipmentScope)
+    if (isShipmentScope) {
+      if (shipmentViewMode === "monthlyPivot") {
+        return shipmentMonthlyPivotRows.length > 0 && Boolean(shipmentPivotMonth);
+      }
       return shipmentDisplayRows.length > 0 && (rawInventoryDates.length > 0 || filteredDateColumns.length > 0);
+    }
     if (isKRScope) return krDisplayRows.length > 0 && filteredDateColumns.length > 0;
     return filteredRows.length > 0 && filteredDateColumns.length > 0;
   }, [
     isShipmentScope,
+    shipmentViewMode,
+    shipmentMonthlyPivotRows,
+    shipmentPivotMonth,
     shipmentDisplayRows,
     isKRScope,
     krDisplayRows,
@@ -2437,11 +2592,14 @@ export default function App() {
   }, [filteredDateColumns, isOverseasScope, showKrCompare]);
   const inventoryTableWidth = useMemo(() => {
     if (isShipmentScope) {
+      if (shipmentViewMode === "monthlyPivot") {
+        return Math.max(980, 720 + SHIPMENT_SHEET_CHANNELS.length * 88 + 96);
+      }
       return Math.max(980, 720 + filteredDateColumns.length * 88);
     }
     if (isKRScope) return Math.max(980, 824 + filteredDateColumns.length * 88);
     return tableMinWidth;
-  }, [isShipmentScope, isKRScope, filteredDateColumns, tableMinWidth]);
+  }, [isShipmentScope, shipmentViewMode, filteredDateColumns, tableMinWidth]);
   const compareTableWidth = useMemo(
     () => Math.max(1280, 590 + (OVERSEAS_UPLOAD_COUNTRIES.length + 1) * 96),
     []
@@ -2487,6 +2645,8 @@ export default function App() {
     isKRScope,
     isOverseasScope,
     isCompareScope,
+    isShipmentScope,
+    shipmentViewMode,
     showTopScroll,
   ]);
 
@@ -2577,6 +2737,21 @@ export default function App() {
 
   function renderInventoryHeaderCells() {
     if (isShipmentScope) {
+      if (shipmentViewMode === "monthlyPivot") {
+        return (
+          <>
+            <th className="stickyCol stickyColCode">상품코드</th>
+            <th className="stickyCol stickyColBrand">브랜드</th>
+            <th className="stickyCol stickyColName stickyColBoundary">상품명</th>
+            {SHIPMENT_SHEET_CHANNELS.map((ch) => (
+              <th key={ch} className="dateCol">
+                {ch}
+              </th>
+            ))}
+            <th className="dateCol">행 합계</th>
+          </>
+        );
+      }
       return (
         <>
           <th className="stickyCol stickyColCode">상품코드</th>
@@ -2782,7 +2957,7 @@ export default function App() {
       if (!shipmentDisplayRows.length) return;
       const dateCols =
         filteredDateColumns.length > 0 ? filteredDateColumns : rawInventoryDates;
-      const rows = shipmentDisplayRows.map((row) => {
+      const dailyRows = shipmentDisplayRows.map((row) => {
         const out = {
           상품코드: getRowSku(row) || "–",
           브랜드: String(row.brand || "").trim() || "–",
@@ -2797,7 +2972,31 @@ export default function App() {
         }
         return out;
       });
-      await downloadInventoryDashboardXlsx("출고_대시보드", "출고", rows);
+      const pivotRows =
+        shipmentPivotMonth && shipmentMonthlyPivotRows.length
+          ? shipmentMonthlyPivotRows.map((row) => {
+              const out = {
+                집계월: shipmentPivotMonth,
+                상품코드: getRowSku(row) || "–",
+                브랜드: String(row.brand || "").trim() || "–",
+                상품명: row.description ? row.description : "(상품명 없음)",
+              };
+              for (const ch of SHIPMENT_SHEET_CHANNELS) {
+                const v = row.channels?.[ch] ?? 0;
+                out[ch] = v ? toFixed(v, 0) : "-";
+              }
+              out["행 합계"] = toFixed(row.rowTotal ?? 0, 0);
+              return out;
+            })
+          : [];
+      if (pivotRows.length) {
+        await downloadInventoryDashboardXlsxMultiSheets("출고_대시보드", [
+          { sheetName: "일자별", rows: dailyRows },
+          { sheetName: "월별판매처합계", rows: pivotRows },
+        ]);
+      } else {
+        await downloadInventoryDashboardXlsx("출고_대시보드", "출고", dailyRows);
+      }
       return;
     }
     if (isCompareScope) {
@@ -4224,12 +4423,25 @@ export default function App() {
         <div className="kpiCard">
           <div className="kpiLabel">분석 상품 수</div>
           <div className="kpiValue">
-            {formatInt((isShipmentScope ? shipmentDisplayRows : filteredRows).length)}개
+            {formatInt(
+              isShipmentScope
+                ? shipmentViewMode === "monthlyPivot"
+                  ? shipmentMonthlyPivotRows.length
+                  : shipmentDisplayRows.length
+                : filteredRows.length
+            )}
+            개
           </div>
         </div>
       </section>
 
       <section className="tableCard">
+        {isShipmentScope && shipmentViewMode === "monthlyPivot" && shipmentPivotMonth && (
+          <p className="shipmentPivotHint">
+            월별 판매처 합계 기준 월: {shipmentPivotMonth}
+            {shipmentDisplayMonth === "__ALL__" ? " (일자별는 전체 기간일 때, 합계는 최신 월 기준)" : ""}
+          </p>
+        )}
         {isShipmentScope && (
           <div className="countryChips countryChipsShipment shipmentChannelChipsInTableCard">
             <button
@@ -4295,6 +4507,43 @@ export default function App() {
               }
             />
           </div>
+          {isShipmentScope && (
+            <>
+              <label className="sr-only" htmlFor="shipment-month-select">
+                출고 표시 월
+              </label>
+              <select
+                id="shipment-month-select"
+                className="inventoryFilterDate"
+                value={shipmentMonthSelectValue}
+                onChange={(e) => setShipmentDisplayMonth(e.target.value)}
+                title="일자별 열에 표시할 월(전체 기간은 모든 일자)"
+              >
+                <option value="__ALL__">전체 기간</option>
+                {shipmentAvailableMonths.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              <div className="datePresetBox" role="group" aria-label="출고 보기 모드">
+                <button
+                  type="button"
+                  className={shipmentViewMode === "daily" ? "preset active" : "preset"}
+                  onClick={() => setShipmentViewMode("daily")}
+                >
+                  일자별
+                </button>
+                <button
+                  type="button"
+                  className={shipmentViewMode === "monthlyPivot" ? "preset active" : "preset"}
+                  onClick={() => setShipmentViewMode("monthlyPivot")}
+                >
+                  월별 판매처 합계
+                </button>
+              </div>
+            </>
+          )}
           <>
             {!isKRScope && hasInventoryLevels && (
               <select value={inventoryLevelFilter} onChange={(e) => setInventoryLevelFilter(e.target.value)}>
@@ -4378,6 +4627,10 @@ export default function App() {
               setInventoryStartDate("");
               setInventoryEndDate("");
               setInventoryLevelFilter(defaultInventoryLevelFilter);
+              if (isShipmentScope) {
+                setShipmentDisplayMonth("");
+                setShipmentViewMode("daily");
+              }
             }}
           >
             필터 초기화
@@ -4431,7 +4684,9 @@ export default function App() {
             >
               <tbody>
                 {(isShipmentScope
-                  ? shipmentDisplayRows
+                  ? shipmentViewMode === "monthlyPivot"
+                    ? shipmentMonthlyPivotRows
+                    : shipmentDisplayRows
                   : isKRScope
                     ? krDisplayRows
                     : isOverseasScope
@@ -4441,27 +4696,59 @@ export default function App() {
                   <tr key={row.trendRowKey || `${row.country}-${getRowSku(row)}-${row.description}-${row.level}-${row.warehouse}-${idx}`}>
                     {isShipmentScope ? (
                       <>
-                        <td
-                          className="stickyCol stickyColCode"
-                          title={
-                            String(row.mapped_barcode || "").trim()
-                              ? `바코드: ${String(row.mapped_barcode).trim()}`
-                              : "등록된 바코드가 없습니다"
-                          }
-                        >
-                          {getRowSku(row) || "–"}
-                        </td>
-                        <td className="stickyCol stickyColBrand">
-                          {String(row.brand || "").trim() || "–"}
-                        </td>
-                        <td className="stickyCol stickyColName stickyColBoundary">
-                          <span className="nameCellText">{row.description || "(상품명 없음)"}</span>
-                        </td>
-                        {filteredDateColumns.map((dt) => (
-                          <td key={dt} className="dateCol">
-                            {formatShipmentWideDateCell(row[dt])}
-                          </td>
-                        ))}
+                        {shipmentViewMode === "monthlyPivot" ? (
+                          <>
+                            <td
+                              className="stickyCol stickyColCode"
+                              title={
+                                String(row.mapped_barcode || "").trim()
+                                  ? `바코드: ${String(row.mapped_barcode).trim()}`
+                                  : "등록된 바코드가 없습니다"
+                              }
+                            >
+                              {getRowSku(row) || "–"}
+                            </td>
+                            <td className="stickyCol stickyColBrand">
+                              {String(row.brand || "").trim() || "–"}
+                            </td>
+                            <td className="stickyCol stickyColName stickyColBoundary">
+                              <span className="nameCellText">{row.description || "(상품명 없음)"}</span>
+                            </td>
+                            {SHIPMENT_SHEET_CHANNELS.map((ch) => {
+                              const v = row.channels?.[ch] ?? 0;
+                              return (
+                                <td key={ch} className="dateCol">
+                                  {v ? formatInt(v) : "–"}
+                                </td>
+                              );
+                            })}
+                            <td className="dateCol">{formatInt(row.rowTotal ?? 0)}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td
+                              className="stickyCol stickyColCode"
+                              title={
+                                String(row.mapped_barcode || "").trim()
+                                  ? `바코드: ${String(row.mapped_barcode).trim()}`
+                                  : "등록된 바코드가 없습니다"
+                              }
+                            >
+                              {getRowSku(row) || "–"}
+                            </td>
+                            <td className="stickyCol stickyColBrand">
+                              {String(row.brand || "").trim() || "–"}
+                            </td>
+                            <td className="stickyCol stickyColName stickyColBoundary">
+                              <span className="nameCellText">{row.description || "(상품명 없음)"}</span>
+                            </td>
+                            {filteredDateColumns.map((dt) => (
+                              <td key={dt} className="dateCol">
+                                {formatShipmentWideDateCell(row[dt])}
+                              </td>
+                            ))}
+                          </>
+                        )}
                       </>
                     ) : (
                       <>
