@@ -181,7 +181,11 @@ def persist_shipment_uploads(
 
 
 def get_shipment_view(db: Session) -> dict:
-    """원본 출고 행(판매처 원문 포함)으로 복원 — 집계 테이블에는 판매처가 없음."""
+    """원본 출고 행(판매처 원문 포함)으로 복원 — 집계 테이블에는 판매처가 없음.
+
+    DB에서 행 단위 전량을 앱으로 올리면 대용량 시 타임아웃되므로, 동일 키는 SQL에서 SUM으로 묶어
+    전송량·파이썬 루프 비용을 줄인다(와이드 대시보드 결과는 동일하게 합산됨).
+    """
     rows = db.execute(
         select(
             InventoryRow.row_snapshot_date,
@@ -190,7 +194,7 @@ def get_shipment_view(db: Session) -> dict:
             InventoryRow.supplier,
             InventoryRow.level,
             InventoryRow.warehouse,
-            InventoryRow.quantity,
+            func.sum(InventoryRow.quantity).label("quantity_sum"),
             InventoryRow.vendor_raw,
             InventoryRow.row_country_code,
         )
@@ -198,6 +202,16 @@ def get_shipment_view(db: Session) -> dict:
         .where(
             UploadedFile.file_domain == FILE_DOMAIN_SHIPMENT,
             InventoryRow.row_snapshot_date.isnot(None),
+        )
+        .group_by(
+            InventoryRow.row_snapshot_date,
+            InventoryRow.sku,
+            InventoryRow.description,
+            InventoryRow.supplier,
+            InventoryRow.level,
+            InventoryRow.warehouse,
+            InventoryRow.vendor_raw,
+            InventoryRow.row_country_code,
         )
     ).all()
 
@@ -215,7 +229,7 @@ def get_shipment_view(db: Session) -> dict:
         if row.row_snapshot_date is None:
             continue
         try:
-            qty_i = int(round(float(row.quantity or 0)))
+            qty_i = int(round(float(getattr(row, "quantity_sum", None) or 0)))
         except (TypeError, ValueError):
             qty_i = 0
         long_recs.append(

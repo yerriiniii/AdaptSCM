@@ -28,6 +28,7 @@ const SHIPMENT_SHEET_CHANNELS = [
   "독일",
   "영국",
   "호주",
+  "UAE",
   "동남아",
   "태국",
   "휠라선",
@@ -2427,24 +2428,6 @@ export default function App() {
     return SHIPMENT_SHEET_CHANNELS;
   }, [scopeResultCache.SHIPMENT?.channels]);
 
-  /** 고정 16탭(국내4·해외10·특수2) + 그 뒤에 이어지는 직접 입력·수동 매핑 탭 */
-  const shipmentChannelChipsDomestic = useMemo(
-    () => effectiveShipmentChannels.slice(0, 4),
-    [effectiveShipmentChannels]
-  );
-  const shipmentChannelChipsOverseas = useMemo(
-    () => effectiveShipmentChannels.slice(4, 14),
-    [effectiveShipmentChannels]
-  );
-  const shipmentChannelChipsSpecial = useMemo(
-    () => effectiveShipmentChannels.slice(14, 16),
-    [effectiveShipmentChannels]
-  );
-  const shipmentChannelChipsExtra = useMemo(
-    () => effectiveShipmentChannels.slice(16),
-    [effectiveShipmentChannels]
-  );
-
   /** 출고: 선택 월·전체 채널 행 기준 상품(SKU) × 판매처(채널) 합계(판매처 칩 미적용) */
   const shipmentMonthlyPivotRows = useMemo(() => {
     if (!isShipmentScope || !shipmentPivotMonth) return [];
@@ -4583,7 +4566,11 @@ export default function App() {
 
       <section className="tableCard">
         {isShipmentScope && shipmentViewMode === "daily" && (
-          <div className="countryChips countryChipsShipment shipmentChannelChipsInTableCard">
+          <div
+            className="countryChips countryChipsShipment shipmentChannelChipsInTableCard shipmentChannelChipsCompact"
+            role="toolbar"
+            aria-label="출고 판매처 채널"
+          >
             <button
               type="button"
               className={`chip ${selectedShipmentChannel === "all" ? "chipActive" : ""}`}
@@ -4592,53 +4579,18 @@ export default function App() {
               전체
             </button>
             <span className="shipmentChipSep" aria-hidden />
-            {shipmentChannelChipsDomestic.map((ch) => (
-              <button
-                type="button"
-                key={ch}
-                className={`chip ${selectedShipmentChannel === ch ? "chipActive" : ""}`}
-                onClick={() => setSelectedShipmentChannel(ch)}
-              >
-                {ch}
-              </button>
+            {effectiveShipmentChannels.map((ch) => (
+              <Fragment key={ch}>
+                {ch === "휠라선" ? <span className="shipmentChipSep" aria-hidden /> : null}
+                <button
+                  type="button"
+                  className={`chip ${selectedShipmentChannel === ch ? "chipActive" : ""}`}
+                  onClick={() => setSelectedShipmentChannel(ch)}
+                >
+                  {ch}
+                </button>
+              </Fragment>
             ))}
-            <span className="shipmentChipSep" aria-hidden />
-            {shipmentChannelChipsOverseas.map((ch) => (
-              <button
-                type="button"
-                key={ch}
-                className={`chip ${selectedShipmentChannel === ch ? "chipActive" : ""}`}
-                onClick={() => setSelectedShipmentChannel(ch)}
-              >
-                {ch}
-              </button>
-            ))}
-            <span className="shipmentChipSep" aria-hidden />
-            {shipmentChannelChipsSpecial.map((ch) => (
-              <button
-                type="button"
-                key={ch}
-                className={`chip ${selectedShipmentChannel === ch ? "chipActive" : ""}`}
-                onClick={() => setSelectedShipmentChannel(ch)}
-              >
-                {ch}
-              </button>
-            ))}
-            {shipmentChannelChipsExtra.length > 0 ? (
-              <>
-                <span className="shipmentChipSep" aria-hidden />
-                {shipmentChannelChipsExtra.map((ch) => (
-                  <button
-                    type="button"
-                    key={ch}
-                    className={`chip ${selectedShipmentChannel === ch ? "chipActive" : ""}`}
-                    onClick={() => setSelectedShipmentChannel(ch)}
-                  >
-                    {ch}
-                  </button>
-                ))}
-              </>
-            ) : null}
           </div>
         )}
         <div

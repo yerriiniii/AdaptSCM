@@ -40,6 +40,7 @@ class UploadedFile(Base):
 
     __table_args__ = (
         Index("ix_uploaded_files_country_scope", "country_type", "country_code", "base_date"),
+        Index("ix_uploaded_files_file_domain", "file_domain"),
     )
 
 
@@ -68,6 +69,7 @@ class InventoryRow(Base):
 
     __table_args__ = (
         Index("ix_inventory_rows_uploaded_file_id", "uploaded_file_id"),
+        Index("ix_inventory_rows_upload_snapshot", "uploaded_file_id", "row_snapshot_date"),
         Index("ix_inventory_rows_sku", "sku"),
     )
 

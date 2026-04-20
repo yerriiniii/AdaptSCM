@@ -31,6 +31,7 @@ SHIPMENT_CHANNEL_LABELS: tuple[str, ...] = (
     "독일",
     "영국",
     "호주",
+    "UAE",
     "동남아",
     "태국",
     "휠라선",
@@ -225,8 +226,10 @@ def _try_classify_shipment_vendor_text(
             return "국내 자사몰", warehouse_move
 
     region_pairs = (
+        ("아랍에미리트", "UAE"),
         ("동남아", "동남아"),
         ("싱가폴", "싱가폴"),
+        ("UAE", "UAE"),
         ("휠라선", "휠라선"),
         ("홍콩", "홍콩"),
         ("대만", "대만"),

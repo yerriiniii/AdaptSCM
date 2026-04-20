@@ -200,19 +200,39 @@ body {
   color: #0b8a5d;
 }
 
-/* 출고 탭: 칩 한 줄, 구분선 주변은 칩 간격보다 조금 더 넓게 */
+/* 출고 탭: 한 줄·작은 칩(넘치면 가로 스크롤, 스크롤바는 숨김) */
 .countryChips.countryChipsShipment {
   flex-wrap: nowrap;
-  gap: 5px 10px;
+  gap: 4px 6px;
+  align-items: center;
+  margin-bottom: 20px;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  margin-bottom: 20px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.countryChips.countryChipsShipment::-webkit-scrollbar {
+  display: none;
 }
 
 .countryChips.countryChipsShipment .chip {
   flex-shrink: 0;
+}
+
+/* 일자 뷰: 한 줄 유지하면서 터치·가독성 확보 */
+.countryChips.countryChipsShipment.shipmentChannelChipsCompact .chip {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.countryChips.countryChipsShipment.shipmentChannelChipsCompact .shipmentChipSep {
+  height: 20px;
+  margin: 0 6px;
 }
 
 .shipmentChipSep {
