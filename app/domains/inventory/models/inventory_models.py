@@ -57,6 +57,8 @@ class InventoryRow(Base):
     supplier: Mapped[str | None] = mapped_column(String(255))
     level: Mapped[str | None] = mapped_column(String(20))
     warehouse: Mapped[str | None] = mapped_column(String(255))
+    # 출고 엑셀 「판매처」 원문(탭 분류 후에도 추적). 일반 재고 업로드는 미사용.
+    vendor_raw: Mapped[str | None] = mapped_column(Text, nullable=True)
     quantity: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
     row_snapshot_date: Mapped[date | None] = mapped_column(Date)

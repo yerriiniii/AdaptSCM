@@ -9,7 +9,7 @@ from typing import Any
 
 import pandas as pd
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, literal, select
 from sqlalchemy.orm import Session
 
 from app.domains.inventory.models import InventoryAggregate, InventoryRow, UploadedFile
@@ -36,73 +36,65 @@ def _shipment_s3_key(prefix: str, stored_name: str) -> str:
 
 
 def _rebuild_all_shipment_aggregates(db: Session) -> None:
+    """출고 inventory_rows 전량을 메모리에 올리지 않고 DB에서 GROUP BY 후 집계 행만 적재."""
     db.execute(delete(InventoryAggregate).where(InventoryAggregate.source_domain == SOURCE_SHIPMENT))
 
-    # ORM 전체 로드 대신 필요한 컬럼만 조회 + 집계 행은 bulk insert
-    row_tuples = db.execute(
+    co_country = func.coalesce(InventoryRow.row_country_code, literal("KR"))
+    stmt = (
         select(
+            co_country.label("country_code"),
+            InventoryRow.row_snapshot_date.label("base_date"),
             InventoryRow.sku,
             InventoryRow.description,
             InventoryRow.supplier,
             InventoryRow.level,
             InventoryRow.warehouse,
-            InventoryRow.quantity,
-            InventoryRow.row_snapshot_date,
-            InventoryRow.row_country_code,
+            func.sum(InventoryRow.quantity).label("total_quantity"),
         )
         .join(UploadedFile, InventoryRow.uploaded_file_id == UploadedFile.id)
-        .where(UploadedFile.file_domain == FILE_DOMAIN_SHIPMENT)
-    ).all()
-    if not row_tuples:
+        .where(
+            UploadedFile.file_domain == FILE_DOMAIN_SHIPMENT,
+            InventoryRow.row_snapshot_date.isnot(None),
+        )
+        .group_by(
+            co_country,
+            InventoryRow.row_snapshot_date,
+            InventoryRow.sku,
+            InventoryRow.description,
+            InventoryRow.supplier,
+            InventoryRow.level,
+            InventoryRow.warehouse,
+        )
+    )
+    rows = db.execute(stmt).all()
+    if not rows:
         return
 
-    frame = pd.DataFrame(
-        [
-            {
-                "country_code": r.row_country_code or "KR",
-                "base_date": r.row_snapshot_date,
-                "sku": str(r.sku or "").strip(),
-                "description": r.description or "",
-                "supplier": (r.supplier or "").strip(),
-                "level": r.level,
-                "warehouse": r.warehouse or "",
-                "quantity": int(r.quantity or 0),
-            }
-            for r in row_tuples
-            if r.row_snapshot_date is not None
-        ]
-    )
-    if frame.empty:
-        return
-
-    grouped = (
-        frame.groupby(
-            ["country_code", "base_date", "sku", "description", "supplier", "level", "warehouse"],
-            dropna=False,
-            as_index=False,
-        )["quantity"]
-        .sum()
-    )
     ver = _next_aggregation_version(db)
     now = datetime.now(timezone.utc)
     mappings: list[dict[str, Any]] = []
-    for record in grouped.to_dict(orient="records"):
-        bd = record["base_date"]
+    for r in rows:
+        bd = r.base_date
         if bd is None:
             continue
-        if not isinstance(bd, date):
-            bd = pd.to_datetime(bd).date()
+        if hasattr(bd, "date"):
+            bd = bd.date()
+        qty = r.total_quantity
+        try:
+            qty_i = int(round(float(qty)))
+        except (TypeError, ValueError):
+            qty_i = 0
         mappings.append(
             {
                 "id": uuid.uuid4(),
-                "country_code": str(record["country_code"]),
+                "country_code": str(r.country_code or "KR"),
                 "base_date": bd,
-                "sku": str(record["sku"] or ""),
-                "description": _nullable_string(record["description"]),
-                "supplier": _nullable_string(record["supplier"]),
-                "level": _nullable_string(record["level"]),
-                "warehouse": _nullable_string(record["warehouse"]),
-                "total_quantity": int(record["quantity"] or 0),
+                "sku": str(r.sku or ""),
+                "description": _nullable_string(r.description),
+                "supplier": _nullable_string(r.supplier),
+                "level": _nullable_string(r.level),
+                "warehouse": _nullable_string(r.warehouse),
+                "total_quantity": qty_i,
                 "aggregation_version": ver,
                 "uploaded_at": now,
                 "source_domain": SOURCE_SHIPMENT,
@@ -169,6 +161,7 @@ def persist_shipment_uploads(
                         "supplier": _nullable_string(rec.get("brand")),
                         "level": _nullable_string(rec.get("level")),
                         "warehouse": _nullable_string(rec.get("channel")),
+                        "vendor_raw": _nullable_string(rec.get("vendor_raw")),
                         "quantity": float(int(rec.get("quantity") or 0)),
                         "uploaded_at": row_ts,
                         "row_snapshot_date": d,
@@ -188,17 +181,24 @@ def persist_shipment_uploads(
 
 
 def get_shipment_view(db: Session) -> dict:
+    """원본 출고 행(판매처 원문 포함)으로 복원 — 집계 테이블에는 판매처가 없음."""
     rows = db.execute(
         select(
-            InventoryAggregate.country_code,
-            InventoryAggregate.base_date,
-            InventoryAggregate.sku,
-            InventoryAggregate.description,
-            InventoryAggregate.supplier,
-            InventoryAggregate.level,
-            InventoryAggregate.warehouse,
-            InventoryAggregate.total_quantity,
-        ).where(InventoryAggregate.source_domain == SOURCE_SHIPMENT)
+            InventoryRow.row_snapshot_date,
+            InventoryRow.sku,
+            InventoryRow.description,
+            InventoryRow.supplier,
+            InventoryRow.level,
+            InventoryRow.warehouse,
+            InventoryRow.quantity,
+            InventoryRow.vendor_raw,
+            InventoryRow.row_country_code,
+        )
+        .join(UploadedFile, InventoryRow.uploaded_file_id == UploadedFile.id)
+        .where(
+            UploadedFile.file_domain == FILE_DOMAIN_SHIPMENT,
+            InventoryRow.row_snapshot_date.isnot(None),
+        )
     ).all()
 
     if not rows:
@@ -212,18 +212,23 @@ def get_shipment_view(db: Session) -> dict:
 
     long_recs: list[dict[str, Any]] = []
     for row in rows:
-        if row.base_date is None:
+        if row.row_snapshot_date is None:
             continue
+        try:
+            qty_i = int(round(float(row.quantity or 0)))
+        except (TypeError, ValueError):
+            qty_i = 0
         long_recs.append(
             {
-                "country": row.country_code,
+                "country": str(row.row_country_code or "KR").strip().upper() or "KR",
                 "channel": row.warehouse or "",
                 "sku": row.sku or "",
                 "description": row.description or "",
                 "brand": row.supplier or "",
-                "date": row.base_date,
-                "quantity": int(row.total_quantity or 0),
+                "date": row.row_snapshot_date,
+                "quantity": qty_i,
                 "level": row.level,
+                "vendor_raw": (row.vendor_raw or "").strip() if row.vendor_raw is not None else "",
             }
         )
     if not long_recs:

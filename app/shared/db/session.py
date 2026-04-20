@@ -54,6 +54,7 @@ def _ensure_inventory_columns(engine: Engine) -> None:
             "warehouse": "VARCHAR(255)",
             "row_snapshot_date": "DATE",
             "row_country_code": "VARCHAR(10)",
+            "vendor_raw": "TEXT",
         },
         "inventory_aggregates": {
             "sku": "VARCHAR(255)",

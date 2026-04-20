@@ -236,12 +236,6 @@ body {
   padding: 10px 0 6px;
 }
 
-.shipmentPivotHint {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: #6b7280;
-}
-
 .sr-only {
   position: absolute;
   width: 1px;
