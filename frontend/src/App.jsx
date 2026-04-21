@@ -5,6 +5,7 @@ import {
   Barcode,
   ClipboardList,
   Database,
+  FileText,
   GitCompare,
   Globe2,
   Home,
@@ -88,6 +89,29 @@ const EMPTY_SKU_MAPPING_FORM = Object.fromEntries([
   ["barcode", ""],
   ["option", ""],
 ]);
+
+/** 검색 입력 옆 돋보기 — Lucide Search와 같은 원·두께, 대각 손잡이만 더 길게 */
+function SearchFieldIcon({ className, size = 16, strokeWidth = 2, ...rest }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+      {...rest}
+    >
+      <circle cx="11" cy="11" r="8" />
+      <path d="M 23.15 23.15 L 16.65 16.65" />
+    </svg>
+  );
+}
 
 /** 저장된 발주 수정 시 상품유형 → 프리셋/직접입력 */
 function purchaseOrderProductTypeToFields(productType) {
@@ -1540,6 +1564,11 @@ function buildShipmentChannelBarLayout(rows, chartWidth = 560) {
   const chartBottomPad = 20;
   const chartHeight = padTop + list.length * (barH + gap) + chartBottomPad;
   const innerW = chartWidth - padLeft - padRight;
+  /** 세로 축과 막대 시작점 사이 — 막대가 축 선을 덮지 않게 */
+  const barAxisGap = 0.6;
+  const axisX = padLeft - 6;
+  const barLeft = axisX + barAxisGap;
+  const plotBarWidth = innerW + 6 - barAxisGap;
   const rowsWithMax = list.map((r) => ({
     ...r,
     isMax: (Number(r.qty) || 0) > 0 && (Number(r.qty) || 0) === maxQty,
@@ -1556,6 +1585,9 @@ function buildShipmentChannelBarLayout(rows, chartWidth = 560) {
     chartWidth,
     chartHeight,
     innerW,
+    axisX,
+    barLeft,
+    plotBarWidth,
   };
 }
 
@@ -2617,7 +2649,7 @@ export default function App() {
     return base;
   }, [effectiveShipmentChannels, shipmentMonthlyPivotRows]);
 
-  /** 출고 차트 사이드바: 검색어로 상품코드 접두 일치 목록 */
+  /** 출고 차트 사이드바: 상품코드 접두 또는 상품명 부분 일치 */
   const shipmentChartPrefixRows = useMemo(() => {
     if (!isShipmentScope || !rawInventoryRows.length) return [];
     const needle = shipmentChartSearchKeyword.trim();
@@ -2627,7 +2659,9 @@ export default function App() {
       if (!matchesCountryScope(row.country)) return false;
       const sku = String(getRowSku(row) ?? "").trim();
       if (!sku) return false;
-      return sku.toLowerCase().startsWith(needleLower);
+      const skuLower = sku.toLowerCase();
+      const descLower = String(row.description ?? "").trim().toLowerCase();
+      return skuLower.startsWith(needleLower) || (descLower && descLower.includes(needleLower));
     });
   }, [isShipmentScope, rawInventoryRows, shipmentChartSearchKeyword, countryTabMode, selectedOverseasCountry]);
 
@@ -4808,7 +4842,7 @@ export default function App() {
             className={`tab tabWithIcon ${countryTabMode === "PRODUCT_SEARCH" ? "active" : ""}`}
             onClick={() => setCountryTabMode("PRODUCT_SEARCH")}
           >
-            <Link2 className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+            <Link2 className="tabIcon tabIconProductMapping" size={TOP_TAB_ICON_SIZE_PX + 2} strokeWidth={2} aria-hidden />
             <span>상품 매핑</span>
           </button>
           <button
@@ -4816,7 +4850,7 @@ export default function App() {
             className={`tab tabWithIcon ${countryTabMode === "SETTINGS" ? "active" : ""}`}
             onClick={() => setCountryTabMode("SETTINGS")}
           >
-            <Database className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+            <Database className="tabIcon tabIconDataManagement" size={TOP_TAB_ICON_SIZE_PX - 1} strokeWidth={2} aria-hidden />
             <span>데이터 관리</span>
           </button>
           <button
@@ -5022,9 +5056,7 @@ export default function App() {
           style={{ top: activeFilterStickyTop }}
         >
           <div className="searchWrap">
-            <span className="searchIcon" aria-hidden="true">
-              🔍
-            </span>
+            <SearchFieldIcon className="searchIcon" size={16} strokeWidth={2} />
             <input
               className="searchInput"
               type="text"
@@ -5166,16 +5198,14 @@ export default function App() {
                     <div className="shipmentChartSidebarTitle">상품 검색</div>
                     <div className="shipmentChartSidebarSearch">
                       <div className="searchWrap productMappingSearchWrap shipmentChartSidebarSearchWrap">
-                        <span className="searchIcon shipmentChartSearchIcon" aria-hidden="true">
-                          🔍
-                        </span>
+                        <SearchFieldIcon className="searchIcon shipmentChartSearchIcon" size={16} strokeWidth={2} />
                         <input
                           className="searchInput productMappingSearchInput"
                           type="search"
                           enterKeyHint="search"
                           value={shipmentChartSearchKeyword}
                           onChange={(e) => setShipmentChartSearchKeyword(e.target.value)}
-                          placeholder="상품코드 일부를 입력하세요"
+                          placeholder="상품코드 또는 상품명 검색"
                         />
                       </div>
                     </div>
@@ -5260,7 +5290,7 @@ export default function App() {
                 <div className="shipmentChartMain">
                   {!shipmentChartSearchKeyword.trim() ? (
                     <div className="shipmentChartMainPlaceholder">
-                      왼쪽에서 상품코드를 검색한 뒤 목록에서 상품을 선택하면 차트가 표시됩니다.
+                      왼쪽에서 상품코드 또는 상품명을 검색한 뒤 목록에서 상품을 선택하면 차트가 표시됩니다.
                     </div>
                   ) : !shipmentChartSkuOptions.length ? (
                     <div className="productMappingNoResult shipmentChartMainMessage">
@@ -5326,14 +5356,14 @@ export default function App() {
                             aria-label="판매처별 출고 막대 그래프"
                           >
                             <line
-                              x1={shipmentChartBarLayout.padLeft - 6}
+                              x1={shipmentChartBarLayout.axisX}
                               y1={8}
-                              x2={shipmentChartBarLayout.padLeft - 6}
+                              x2={shipmentChartBarLayout.axisX}
                               y2={shipmentChartBarLayout.chartHeight - 8}
                               className="trendAxis shipmentChannelBarYAxis"
                             />
                             <line
-                              x1={shipmentChartBarLayout.padLeft - 6}
+                              x1={shipmentChartBarLayout.axisX}
                               y1={8}
                               x2={shipmentChartBarLayout.chartWidth - 12}
                               y2={8}
@@ -5342,8 +5372,8 @@ export default function App() {
                             {shipmentChartBarLayout.rows.map((row, i) => {
                               const y =
                                 shipmentChartBarLayout.padTop + i * (shipmentChartBarLayout.barH + shipmentChartBarLayout.gap);
-                              const barLeft = shipmentChartBarLayout.padLeft - 6;
-                              const plotW = shipmentChartBarLayout.innerW + 6;
+                              const barLeft = shipmentChartBarLayout.barLeft;
+                              const plotW = shipmentChartBarLayout.plotBarWidth;
                               const w = (row.qty / shipmentChartBarLayout.maxQty) * plotW;
                               const label = String(row.channel).length > 14
                                 ? `${String(row.channel).slice(0, 14)}…`
@@ -5352,7 +5382,7 @@ export default function App() {
                                 <g key={`${row.channel}-${i}`}>
                                   <title>{`${row.channel}: ${formatInt(row.qty)}`}</title>
                                   <text
-                                    x={shipmentChartBarLayout.padLeft - 6 - 10}
+                                    x={shipmentChartBarLayout.axisX - 10}
                                     y={y + shipmentChartBarLayout.barH / 2 + 4}
                                     textAnchor="end"
                                     className="shipmentChannelBarLabel"
@@ -5788,9 +5818,7 @@ export default function App() {
               style={{ top: activeFilterStickyTop }}
             >
               <div className="searchWrap">
-                <span className="searchIcon" aria-hidden="true">
-                  🔍
-                </span>
+                <SearchFieldIcon className="searchIcon" size={16} strokeWidth={2} />
                 <input
                   className="searchInput"
                   type="text"
@@ -6338,9 +6366,7 @@ export default function App() {
               style={{ top: poStickySavedFilterTop }}
             >
               <div className="searchWrap">
-                <span className="searchIcon" aria-hidden="true">
-                  🔍
-                </span>
+                <SearchFieldIcon className="searchIcon" size={16} strokeWidth={2} />
                 <input
                   className="searchInput poSavedFilterSearch"
                   type="search"
@@ -8253,14 +8279,7 @@ export default function App() {
                 <summary className="settingsHeader">
                   <span className="settingsHeaderLead">
                     <span className="settingsFileThumb" aria-hidden="true">
-                      {INVENTORY_KPI_CARD_ICON_SRC.uploadedFiles ? (
-                        <img
-                          src={INVENTORY_KPI_CARD_ICON_SRC.uploadedFiles}
-                          alt=""
-                          width={34}
-                          height={34}
-                        />
-                      ) : null}
+                      <FileText className="settingsFileThumbIcon" size={20} strokeWidth={2} />
                     </span>
                     <span>{countryLabel(country)}</span>
                   </span>
@@ -8584,15 +8603,13 @@ export default function App() {
               </div>
               <div className="productMappingSearchRow">
                 <div className="searchWrap productMappingSearchWrap">
-                  <span className="searchIcon" aria-hidden="true">
-                    🔍
-                  </span>
+                  <SearchFieldIcon className="searchIcon" size={16} strokeWidth={2} />
                   <input
                     className="searchInput productMappingSearchInput"
                     type="text"
                     value={mappingSearchKeyword}
                     onChange={(e) => setMappingSearchKeyword(e.target.value)}
-                    placeholder="상품명 또는 SKU 입력..."
+                    placeholder="상품코드 또는 상품명 검색"
                   />
                 </div>
               </div>
