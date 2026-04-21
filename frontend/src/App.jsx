@@ -1,6 +1,16 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
+import {
+  Barcode,
+  ClipboardList,
+  Database,
+  GitCompare,
+  Globe2,
+  Home,
+  Link2,
+  Truck,
+} from "lucide-react";
 import * as XLSX from "xlsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -49,8 +59,10 @@ const COMPARE_KPI_CARD_ICON_SRC = {
   latestBaseDate: "/image/최신기준일.png",
   compareSkuCount: "/image/분석상품수.png",
 };
+/** 상단 메인 탭 아이콘 크기 — Lucide SVG (`styles.css` `.tabIcon`과 맞춤). */
+const TOP_TAB_ICON_SIZE_PX = 20;
 /** `.kpiCardIcon` 표시 크기와 동기화 (`styles.css`). */
-const KPI_CARD_ICON_DISPLAY_PX = 60;
+const KPI_CARD_ICON_DISPLAY_PX = 50;
 const SKU_MAPPING_FIELDS = [
   { code: "KR", label: "한국", nameKey: "kr_name", skuKey: "kr_sku" },
   { code: "US", label: "미국", nameKey: "us_name", skuKey: "us_sku" },
@@ -4749,55 +4761,71 @@ export default function App() {
       >
         <div className="tabs">
           <button
-            className={`tab ${countryTabMode === "KR" ? "active" : ""}`}
+            type="button"
+            className={`tab tabWithIcon ${countryTabMode === "KR" ? "active" : ""}`}
             onClick={() => setCountryTabMode("KR")}
           >
-            한국 재고
+            <Home className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+            <span>한국 재고</span>
           </button>
           <button
-            className={`tab ${countryTabMode === "OVERSEAS" ? "active" : ""}`}
+            type="button"
+            className={`tab tabWithIcon ${countryTabMode === "OVERSEAS" ? "active" : ""}`}
             onClick={() => {
               setCountryTabMode("OVERSEAS");
               setSelectedOverseasCountry((prev) => prev || OVERSEAS_UPLOAD_COUNTRIES[0]);
             }}
           >
-            해외 재고
+            <Globe2 className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+            <span>해외 재고</span>
           </button>
           <button
-            className={`tab ${countryTabMode === "COMPARE" ? "active" : ""}`}
+            type="button"
+            className={`tab tabWithIcon ${countryTabMode === "COMPARE" ? "active" : ""}`}
             onClick={() => setCountryTabMode("COMPARE")}
           >
-            재고 비교
+            <GitCompare className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+            <span>재고 비교</span>
           </button>
           <button
-            className={`tab ${countryTabMode === "SHIPMENT" ? "active" : ""}`}
+            type="button"
+            className={`tab tabWithIcon ${countryTabMode === "SHIPMENT" ? "active" : ""}`}
             onClick={() => setCountryTabMode("SHIPMENT")}
           >
-            출고 기록
+            <Truck className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+            <span>출고 기록</span>
           </button>
           <button
-            className={`tab ${countryTabMode === "PURCHASE_ORDERS" ? "active" : ""}`}
+            type="button"
+            className={`tab tabWithIcon ${countryTabMode === "PURCHASE_ORDERS" ? "active" : ""}`}
             onClick={() => setCountryTabMode("PURCHASE_ORDERS")}
           >
-            발주 기록
+            <ClipboardList className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+            <span>발주 기록</span>
           </button>
           <button
-            className={`tab ${countryTabMode === "PRODUCT_SEARCH" ? "active" : ""}`}
+            type="button"
+            className={`tab tabWithIcon ${countryTabMode === "PRODUCT_SEARCH" ? "active" : ""}`}
             onClick={() => setCountryTabMode("PRODUCT_SEARCH")}
           >
-            상품 매핑
+            <Link2 className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+            <span>상품 매핑</span>
           </button>
           <button
-            className={`tab ${countryTabMode === "SETTINGS" ? "active" : ""}`}
+            type="button"
+            className={`tab tabWithIcon ${countryTabMode === "SETTINGS" ? "active" : ""}`}
             onClick={() => setCountryTabMode("SETTINGS")}
           >
-            데이터 관리
+            <Database className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+            <span>데이터 관리</span>
           </button>
           <button
-            className={`tab ${countryTabMode === "SKU_MAPPING" ? "active" : ""}`}
+            type="button"
+            className={`tab tabWithIcon ${countryTabMode === "SKU_MAPPING" ? "active" : ""}`}
             onClick={() => setCountryTabMode("SKU_MAPPING")}
           >
-            SKU 관리
+            <Barcode className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+            <span>SKU 관리</span>
           </button>
         </div>
       </header>
@@ -5696,11 +5724,11 @@ export default function App() {
                 <div className="kpiCardIcon" aria-hidden="true">
                   {COMPARE_KPI_CARD_ICON_SRC.compareCountries ? (
                     <img
-                    src={COMPARE_KPI_CARD_ICON_SRC.compareCountries}
-                    alt=""
-                    width={KPI_CARD_ICON_DISPLAY_PX}
-                    height={KPI_CARD_ICON_DISPLAY_PX}
-                  />
+                      src={COMPARE_KPI_CARD_ICON_SRC.compareCountries}
+                      alt=""
+                      width={KPI_CARD_ICON_DISPLAY_PX}
+                      height={KPI_CARD_ICON_DISPLAY_PX}
+                    />
                   ) : null}
                 </div>
                 <div className="kpiCardMain">
@@ -5717,11 +5745,11 @@ export default function App() {
                 <div className="kpiCardIcon" aria-hidden="true">
                   {COMPARE_KPI_CARD_ICON_SRC.latestBaseDate ? (
                     <img
-                    src={COMPARE_KPI_CARD_ICON_SRC.latestBaseDate}
-                    alt=""
-                    width={KPI_CARD_ICON_DISPLAY_PX}
-                    height={KPI_CARD_ICON_DISPLAY_PX}
-                  />
+                      src={COMPARE_KPI_CARD_ICON_SRC.latestBaseDate}
+                      alt=""
+                      width={KPI_CARD_ICON_DISPLAY_PX}
+                      height={KPI_CARD_ICON_DISPLAY_PX}
+                    />
                   ) : null}
                 </div>
                 <div className="kpiCardMain">
@@ -5735,11 +5763,11 @@ export default function App() {
                 <div className="kpiCardIcon" aria-hidden="true">
                   {COMPARE_KPI_CARD_ICON_SRC.compareSkuCount ? (
                     <img
-                    src={COMPARE_KPI_CARD_ICON_SRC.compareSkuCount}
-                    alt=""
-                    width={KPI_CARD_ICON_DISPLAY_PX}
-                    height={KPI_CARD_ICON_DISPLAY_PX}
-                  />
+                      src={COMPARE_KPI_CARD_ICON_SRC.compareSkuCount}
+                      alt=""
+                      width={KPI_CARD_ICON_DISPLAY_PX}
+                      height={KPI_CARD_ICON_DISPLAY_PX}
+                    />
                   ) : null}
                 </div>
                 <div className="kpiCardMain">
@@ -8223,7 +8251,19 @@ export default function App() {
             .map(([country, entries]) => (
               <details key={country} className="settingsGroup">
                 <summary className="settingsHeader">
-                  <span>{countryLabel(country)}</span>
+                  <span className="settingsHeaderLead">
+                    <span className="settingsFileThumb" aria-hidden="true">
+                      {INVENTORY_KPI_CARD_ICON_SRC.uploadedFiles ? (
+                        <img
+                          src={INVENTORY_KPI_CARD_ICON_SRC.uploadedFiles}
+                          alt=""
+                          width={34}
+                          height={34}
+                        />
+                      ) : null}
+                    </span>
+                    <span>{countryLabel(country)}</span>
+                  </span>
                   <span className="settingsHeaderRight">
                     <span>{formatInt(entries.length)}개 파일</span>
                     <button
