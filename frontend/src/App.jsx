@@ -296,54 +296,6 @@ async function downloadInventoryDashboardXlsx(filename, sheetName, rows) {
   URL.revokeObjectURL(a.href);
 }
 
-/** 출고 등: 시트가 여러 개인 .xlsx (각 시트 동일 스타일) */
-async function downloadInventoryDashboardXlsxMultiSheets(filename, sheets) {
-  const ExcelJS = (await import("exceljs")).default;
-  const FONT_9 = { name: "맑은 고딕", size: 9 };
-  const thinBorder = {
-    top: { style: "thin" },
-    left: { style: "thin" },
-    bottom: { style: "thin" },
-    right: { style: "thin" },
-  };
-  const wb = new ExcelJS.Workbook();
-  const nonEmpty = (sheets || []).filter((s) => s?.rows?.length);
-  if (!nonEmpty.length) return;
-  for (const { sheetName, rows } of nonEmpty) {
-    const ws = wb.addWorksheet(String(sheetName || "Sheet1").slice(0, 31), {
-      views: [{ showGridLines: true }],
-    });
-    const headers = Object.keys(rows[0]);
-    ws.addRow(headers);
-    for (const r of rows) {
-      ws.addRow(headers.map((h) => r[h]));
-    }
-    ws.eachRow((row, rowNumber) => {
-      row.eachCell((cell) => {
-        cell.font = { ...FONT_9, bold: rowNumber === 1 };
-        cell.border = thinBorder;
-        if (rowNumber === 1) {
-          cell.fill = {
-            type: "pattern",
-            pattern: "solid",
-            fgColor: { argb: "FFFFFF00" },
-          };
-        }
-      });
-    });
-  }
-  const buf = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buf], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  const base = String(filename || "").replace(/\.xlsx$/i, "");
-  a.download = `${base}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
 /** SKU 탭: 한·미·대·홍 전용 .xlsx를 ZIP으로 내려받기 (파일마다 첫 시트만 업로드 시 읽힘) */
 const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
   {
@@ -3393,6 +3345,29 @@ export default function App() {
   async function exportCurrentView() {
     if (isShipmentScope) {
       if (shipmentViewMode === "chart") return;
+      if (shipmentViewMode === "monthlyPivot") {
+        if (!shipmentPivotMonth || !shipmentMonthlyPivotRows.length) return;
+        const pivotRows = shipmentMonthlyPivotRows.map((row) => {
+          const out = {
+            집계월: shipmentPivotMonth,
+            상품코드: getRowSku(row) || "–",
+            브랜드: String(row.brand || "").trim() || "–",
+            상품명: row.description ? row.description : "(상품명 없음)",
+          };
+          for (const ch of shipmentMonthlyPivotChannelColumns) {
+            const v = row.channels?.[ch] ?? 0;
+            out[ch] = v ? toFixed(v, 0) : "-";
+          }
+          out["행 합계"] = toFixed(row.rowTotal ?? 0, 0);
+          return out;
+        });
+        await downloadInventoryDashboardXlsx(
+          "출고_판매처별 월 합계",
+          "판매처별월합계",
+          pivotRows
+        );
+        return;
+      }
       if (!shipmentDisplayRows.length) return;
       const dateCols =
         filteredDateColumns.length > 0 ? filteredDateColumns : rawInventoryDates;
@@ -3411,31 +3386,11 @@ export default function App() {
         }
         return out;
       });
-      const pivotRows =
-        shipmentPivotMonth && shipmentMonthlyPivotRows.length
-          ? shipmentMonthlyPivotRows.map((row) => {
-              const out = {
-                집계월: shipmentPivotMonth,
-                상품코드: getRowSku(row) || "–",
-                브랜드: String(row.brand || "").trim() || "–",
-                상품명: row.description ? row.description : "(상품명 없음)",
-              };
-              for (const ch of shipmentMonthlyPivotChannelColumns) {
-                const v = row.channels?.[ch] ?? 0;
-                out[ch] = v ? toFixed(v, 0) : "-";
-              }
-              out["행 합계"] = toFixed(row.rowTotal ?? 0, 0);
-              return out;
-            })
-          : [];
-      if (pivotRows.length) {
-        await downloadInventoryDashboardXlsxMultiSheets("출고_대시보드", [
-          { sheetName: "일자별", rows: dailyRows },
-          { sheetName: "월별판매처합계", rows: pivotRows },
-        ]);
-      } else {
-        await downloadInventoryDashboardXlsx("출고_대시보드", "출고", dailyRows);
-      }
+      await downloadInventoryDashboardXlsx(
+        "출고_일자별 배송확정",
+        "일자별배송확정",
+        dailyRows
+      );
       return;
     }
     if (isCompareScope) {
