@@ -1,6 +1,6 @@
 services:
   backend:
-    image: yerriiniii/inventory-backend:latest
+    image: ${DOCKER_HUB_USER:-yerriiniii}/inventory-backend:latest
     container_name: inventory-backend
     restart: always
     pull_policy: always
@@ -10,7 +10,7 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
 
   frontend:
-    image: yerriiniii/inventory-frontend:latest
+    image: ${DOCKER_HUB_USER:-yerriiniii}/inventory-frontend:latest
     container_name: inventory-frontend
     restart: always
     pull_policy: always
