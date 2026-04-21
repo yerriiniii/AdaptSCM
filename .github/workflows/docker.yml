@@ -42,7 +42,7 @@ jobs:
   deploy:
     needs: docker
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/develop' && secrets.EC2_HOST != '' && secrets.EC2_USER != '' && secrets.EC2_SSH_KEY != '' }}
+    if: github.ref == 'refs/heads/develop'
 
     steps:
       # EC2 보안 그룹: TCP 22 인바운드 허용 필요. GitHub 호스티드 러너 IP는 매번 바뀌므로
