@@ -1348,6 +1348,42 @@ function shipmentDateCellVendorTitle(row, dateKey) {
   return lines.length ? lines.join("\n") : undefined;
 }
 
+/** 동일 SKU 다행·일자별 차트 점: 판매처 분해 합산(분해 없으면 행 channel로 합계 표시) */
+function shipmentDateCellVendorTitleAggregated(rows, dateKey) {
+  if (!rows?.length) return undefined;
+  const byVendor = new Map();
+  for (const row of rows) {
+    const br = row?.date_vendor_breakdown?.[dateKey];
+    if (!Array.isArray(br)) continue;
+    for (const part of br) {
+      const vendor = String(part?.vendor ?? "");
+      const sale = Number(part?.sale) || 0;
+      const wh = Number(part?.wh) || 0;
+      if (!vendor && !sale && !wh) continue;
+      const cur = byVendor.get(vendor) || { sale: 0, wh: 0 };
+      byVendor.set(vendor, { sale: cur.sale + sale, wh: cur.wh + wh });
+    }
+  }
+  const lines = [];
+  for (const [vendor, { sale, wh }] of byVendor) {
+    if (sale) lines.push(`${vendor}: ${formatInt(sale)}`);
+    if (wh) lines.push(`${vendor} (창고이동): ${formatInt(wh)}`);
+  }
+  if (lines.length) return lines.join("\n");
+  const byCh = new Map();
+  for (const row of rows) {
+    const n = shipmentCellNumericTotal(row[dateKey]);
+    if (!n) continue;
+    const ch = String(row.channel || "").trim() || "(미지정)";
+    byCh.set(ch, (byCh.get(ch) || 0) + n);
+  }
+  const fb = [];
+  for (const [ch, q] of byCh) {
+    if (q) fb.push(`${ch}: ${formatInt(q)}`);
+  }
+  return fb.length ? fb.join("\n") : undefined;
+}
+
 /** 출고: 선택 기간 내 날짜 열 합계(정렬·합계용) */
 function shipmentRowSumInDateCols(row, dateCols) {
   return dateCols.reduce((s, d) => s + shipmentCellNumericTotal(row[d]), 0);
@@ -1457,6 +1493,7 @@ function buildShipmentQtyLineChart(points, options = {}) {
     labelShort:
       p.labelShort ??
       (p.key.length >= 10 ? String(Number(p.key.slice(8))) : p.key.slice(5)),
+    vendorTooltip: p.vendorTooltip,
   }));
   const maxQty = Math.max(...series.map((p) => p.qty), 1);
   const chartWidth =
@@ -2665,7 +2702,8 @@ export default function App() {
       const dd = String(d).padStart(2, "0");
       const dk = `${shipmentChartMonth}-${dd}`;
       const qty = shipmentChartRowsForSku.reduce((sum, row) => sum + shipmentCellNumericTotal(row[dk]), 0);
-      out.push({ key: dk, qty, labelShort: String(d) });
+      const vendorTooltip = shipmentDateCellVendorTitleAggregated(shipmentChartRowsForSku, dk);
+      out.push({ key: dk, qty, labelShort: String(d), vendorTooltip });
     }
     return out;
   }, [shipmentChartMonth, shipmentChartRowsForSku]);
@@ -2691,9 +2729,10 @@ export default function App() {
   }, [shipmentChartRowsForSku, rawInventoryDates, shipmentChartDatesByMonth]);
 
   const shipmentChartChannelSeries = useMemo(() => {
-    let dateCols = filteredDateColumns.length ? filteredDateColumns : rawInventoryDates;
+    /* 표 상단 월 필터(filteredDateColumns)는 한 달만 쓸 수 있어, 차트에서 고른 월은 rawInventoryDates 기준으로 집계 */
+    let dateCols = [];
     if (shipmentChartMonth) {
-      dateCols = dateCols.filter((dk) => String(dk).startsWith(`${shipmentChartMonth}-`));
+      dateCols = rawInventoryDates.filter((dk) => String(dk).startsWith(`${shipmentChartMonth}-`));
     } else {
       return [];
     }
@@ -2716,13 +2755,7 @@ export default function App() {
         if (ia !== ib) return ia - ib;
         return (b.qty || 0) - (a.qty || 0);
       });
-  }, [
-    filteredDateColumns,
-    rawInventoryDates,
-    shipmentChartRowsForSku,
-    effectiveShipmentChannels,
-    shipmentChartMonth,
-  ]);
+  }, [rawInventoryDates, shipmentChartRowsForSku, effectiveShipmentChannels, shipmentChartMonth]);
 
   const shipmentChartTitleLabel = useMemo(() => {
     const r = shipmentChartRowsForSku[0];
@@ -5356,7 +5389,11 @@ export default function App() {
                           )}
                           {shipmentChartLineData.points.map((point, pointIdx) => (
                             <g key={point.dateKey}>
-                              <title>{`${point.dateKey} | ${formatInt(point.qty)}`}</title>
+                              <title>
+                                {shipmentChartAxis === "daily" && point.vendorTooltip
+                                  ? `${point.dateKey} | 합계 ${formatInt(point.qty)}\n${point.vendorTooltip}`
+                                  : `${point.dateKey} | ${formatInt(point.qty)}`}
+                              </title>
                               <circle
                                 cx={point.x}
                                 cy={point.y}
