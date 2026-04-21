@@ -52,7 +52,7 @@ async def on_startup() -> None:
 
 
 @app.get("/health")
-def health() -> dict[str, str | bool]:
+def health() -> dict[str, str | bool | list[str]]:
     database_status = "disabled"
     if is_database_configured():
         try:
