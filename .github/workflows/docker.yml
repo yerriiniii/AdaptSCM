@@ -38,3 +38,25 @@ jobs:
             --build-arg VITE_API_BASE_URL="$API_URL" \
             -t ${{ secrets.DOCKER_USERNAME }}/inventory-frontend:latest ./frontend
           docker push ${{ secrets.DOCKER_USERNAME }}/inventory-frontend:latest
+
+  deploy:
+    needs: docker
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/develop' && secrets.EC2_HOST != '' && secrets.EC2_USER != '' && secrets.EC2_SSH_KEY != '' }}
+
+    steps:
+      - name: Deploy on EC2 (git sync + docker compose)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd ~/Inventory-System
+            git fetch origin develop
+            git checkout develop
+            git reset --hard origin/develop
+            docker compose pull
+            docker compose up -d
