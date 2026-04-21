@@ -45,12 +45,17 @@ jobs:
     if: ${{ github.ref == 'refs/heads/develop' && secrets.EC2_HOST != '' && secrets.EC2_USER != '' && secrets.EC2_SSH_KEY != '' }}
 
     steps:
+      # EC2 보안 그룹: TCP 22 인바운드 허용 필요. GitHub 호스티드 러너 IP는 매번 바뀌므로
+      # "내 IP만"만 열려 있으면 SSH 연결이 거절됩니다. (테스트: 0.0.0.0/0 또는 GitHub meta IP 대역)
       - name: Deploy on EC2 (git sync + docker compose)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          timeout: 60s
+          command_timeout: 30m
           script_stop: true
           script: |
             set -e
