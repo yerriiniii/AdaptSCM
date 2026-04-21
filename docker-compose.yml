@@ -4,6 +4,8 @@ services:
     container_name: inventory-backend
     restart: always
     pull_policy: always
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     labels:
