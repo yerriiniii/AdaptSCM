@@ -542,11 +542,17 @@ def _shipment_workbook_raw_context(
             missing_skus.add(ex_norm)
 
     if missing_skus:
-        lines = [
-            "다음 상품코드는 DB(item_mapping · KR)에 없습니다. SKU 관리에 등록한 뒤 다시 업로드해 주세요.",
-            *[f"- {c}" for c in sorted(missing_skus)],
-        ]
-        raise HTTPException(status_code=400, detail=lines)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "UNKNOWN_SKUS",
+                "message": (
+                    "데이터베이스에 등록되어 있지 않은 상품코드가 있습니다. "
+                    "아래 코드를 SKU 관리 탭에서 한국 SKU로 먼저 등록한 뒤 다시 업로드해 주세요."
+                ),
+                "skus": sorted(missing_skus),
+            },
+        )
 
     return target_name, raw_rows, sku_map, own_mall_brands
 

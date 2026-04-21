@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session, selectinload
 from app.domains.inventory.models import ProductGroup, ProductLocale
 from app.domains.inventory.services.inventory_aggregate_service import _normalize_item_code
 
+UNKNOWN_SKUS_DETAIL_CODE = "UNKNOWN_SKUS"
+
 
 def _normalized_sku_allowlist_for_country(db: Session, country_code: str, cache: dict[str, set[str]]) -> set[str]:
     cc = str(country_code or "").strip().upper()
@@ -35,23 +37,35 @@ def validate_inventory_row_frame_item_mapping(
     if row_frame.empty:
         return
     allowed = _normalized_sku_allowlist_for_country(db, cc, allowlist_cache)
-    unknown: set[str] = set()
+    empty_rows: list[str] = []
+    missing_pairs: set[tuple[str, str]] = set()
     for record in row_frame.itertuples(index=False):
         raw_sku = str(getattr(record, "sku", "") or "").strip()
         norm = _normalize_item_code(raw_sku)
         desc = str(getattr(record, "description", "") or "").strip()
         desc_bit = f" 상품명={desc!r}" if desc else ""
         if not norm:
-            unknown.add(f"{source_label}: SKU가 비어 있습니다.{desc_bit}")
+            empty_rows.append(f"{source_label}: SKU가 비어 있습니다.{desc_bit}")
             continue
         if norm not in allowed:
-            unknown.add(f"{source_label}: 미등록 SKU 국가={cc} SKU={norm!r}{desc_bit}")
-    if unknown:
-        lines = [
-            "item / item_mapping 에 등록되지 않은 상품이 있습니다. SKU 마스터에서 해당 국가 SKU를 먼저 등록한 뒤 재고 파일을 올려주세요.",
-            *sorted(unknown),
+            missing_pairs.add((cc, norm))
+    if missing_pairs:
+        items: list[dict[str, str]] = [
+            {"country_code": c, "sku": s} for c, s in sorted(missing_pairs)
         ]
-        raise HTTPException(status_code=400, detail=lines)
+        detail: dict[str, Any] = {
+            "code": UNKNOWN_SKUS_DETAIL_CODE,
+            "message": (
+                "데이터베이스에 등록되어 있지 않은 상품코드가 있습니다. "
+                "아래 국가·코드를 SKU 관리 탭에서 먼저 등록한 뒤 재고 통합을 다시 실행해 주세요."
+            ),
+            "items": items,
+        }
+        if empty_rows:
+            detail["sku_empty_rows"] = sorted(empty_rows)
+        raise HTTPException(status_code=400, detail=detail)
+    if empty_rows:
+        raise HTTPException(status_code=400, detail=sorted(empty_rows))
 
 
 def _locale_display_and_brand_maps_for_country(db: Session, country_code: str) -> tuple[dict[str, str], dict[str, str]]:

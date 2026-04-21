@@ -1433,6 +1433,35 @@ function formatPersistedLoadError(err, apiBase) {
   return parts.filter(Boolean).join(" · ") || "저장된 데이터를 불러오는 중 오류";
 }
 
+/** 백엔드 UNKNOWN_SKUS(재고·출고 통합) — 사용자 알림·에러 배너용 한 덩어리 문장 */
+function formatUnknownSkusUserMessage(detail) {
+  if (!detail || typeof detail !== "object" || detail.code !== "UNKNOWN_SKUS") return null;
+  const intro = String(detail.message || "").trim();
+  const blocks = [];
+  if (intro) blocks.push(intro);
+  const items = Array.isArray(detail.items) ? detail.items : [];
+  if (items.length) {
+    blocks.push("", "등록이 필요한 상품코드:");
+    for (const it of items) {
+      const cc = String(it.country_code || it.country || "").trim();
+      const sku = it.sku != null ? String(it.sku) : "";
+      const where = cc ? `${countryLabel(cc)} (${cc})` : "";
+      blocks.push(where ? `- ${where} · ${sku}` : `- ${sku}`);
+    }
+  }
+  const skus = Array.isArray(detail.skus) ? detail.skus : [];
+  if (skus.length && !items.length) {
+    blocks.push("", "등록이 필요한 상품코드:");
+    for (const s of skus) blocks.push(`- ${s}`);
+  }
+  const emptyRows = Array.isArray(detail.sku_empty_rows) ? detail.sku_empty_rows : [];
+  if (emptyRows.length) {
+    blocks.push("", "함께 확인할 행(비어 있거나 인식되지 않은 SKU):");
+    for (const line of emptyRows) blocks.push(String(line));
+  }
+  return blocks.join("\n");
+}
+
 function buildTrendData(row, dateColumns = []) {
   if (!row || !dateColumns.length) return null;
 
@@ -3268,9 +3297,16 @@ export default function App() {
       await hydratePersistedState();
     } catch (err) {
       const detail = err?.response?.data?.detail;
-      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "재고 통합 중 오류";
-      setInventoryError(msg);
-      setScopeErrorCache((prev) => ({ ...prev, [scopeKey]: msg }));
+      const unknownSkusMsg = formatUnknownSkusUserMessage(detail);
+      if (unknownSkusMsg) {
+        window.alert(unknownSkusMsg);
+        setInventoryError(unknownSkusMsg);
+        setScopeErrorCache((prev) => ({ ...prev, [scopeKey]: unknownSkusMsg }));
+      } else {
+        const msg = Array.isArray(detail) ? detail.join("\n") : detail || "재고 통합 중 오류";
+        setInventoryError(msg);
+        setScopeErrorCache((prev) => ({ ...prev, [scopeKey]: msg }));
+      }
     } finally {
       setInventoryLoading(false);
     }
@@ -3329,6 +3365,13 @@ export default function App() {
     } catch (err) {
       const res = err?.response;
       const detail = res?.data?.detail;
+      const unknownSkusMsg = formatUnknownSkusUserMessage(detail);
+      if (unknownSkusMsg) {
+        window.alert(unknownSkusMsg);
+        setInventoryError(unknownSkusMsg);
+        setScopeErrorCache((prev) => ({ ...prev, SHIPMENT: unknownSkusMsg }));
+        return false;
+      }
       if (
         res?.status === 422 &&
         detail &&
@@ -8128,7 +8171,10 @@ export default function App() {
             <div className="cautionSection">
               <div className="cautionSectionTitle">공통 (재고·파일)</div>
               <ul className="cautionList">
-                <li>한국·해외 재고 탭에서 파일 업로드 후에는 재고 통합 실행을 눌러야 표에 반영됩니다.</li>
+                <li>
+                  한국·해외 재고 탭에서 파일 업로드 후에는 재고 통합 실행을, 출고 탭에서는 출고 통합 실행을 눌러야 각
+                  화면에 반영됩니다.
+                </li>
                 <li>이미 올린 것과 같은 파일 이름은 다시 올라가지 않습니다.</li>
                 <li>
                   재고 엑셀에 넣은 상품코드는 SKU 관리에서 그 국가로 먼저 등록되어 있어야 합니다. 하나라도 빠지면 그 파일
@@ -8175,6 +8221,25 @@ export default function App() {
                 <li>선택한 날짜에 데이터가 없는 나라는 숫자 대신 –로 보입니다.</li>
                 <li>다른 날짜나 예전 데이터를 임의로 끌어와 채우지 않습니다.</li>
                 <li>반드시 같은 날짜의 데이터로만 비교합니다.</li>
+              </ul>
+            </div>
+
+            <div className="cautionSection">
+              <div className="cautionSectionTitle">출고</div>
+              <ul className="cautionList">
+                <li>파일 내에 「1월 출고 ALL」~「12월 출고 ALL」 형식으로 된 시트만 읽습니다.</li>
+                <li>상품코드·상품수량·배송일·판매처·주문일 컬럼을 읽습니다.</li>
+                <li>
+                  상품코드는 SKU 관리에 한국 기준으로 등록된 코드와 맞아야 합니다. 없는 코드가 있으면 그 파일 통합이
+                  거절될 수 있습니다.
+                </li>
+                <li>
+                  판매처는 규칙에 따라 국내 B2B·자사몰·해외 채널 등으로 자동 분류됩니다. 규칙에 없는 이름이나 빈
+                  판매처는 통합 시 뜨는 창에서 출고 채널을 직접 지정할 수 있습니다.
+                </li>
+                <li>
+                  통합 후에는 일자별 배송 확정 표, 판매처별 월 합계, 차트 분석 등에서 기간·채널을 바꿔 볼 수 있습니다.
+                </li>
               </ul>
             </div>
 
