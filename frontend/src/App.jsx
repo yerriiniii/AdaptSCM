@@ -36,6 +36,21 @@ const SHIPMENT_SHEET_CHANNELS = [
 ];
 /** 출고 수동 매핑: 판매처 빈 칸 → 백엔드 SHIPMENT_VENDOR_OVERRIDE_EMPTY_KEY */
 const SHIPMENT_VENDOR_OVERRIDE_EMPTY_KEY = "__EMPTY__";
+/** 한국·해외·출고(일자/월별 뷰) KPI 카드 아이콘 — `frontend/public/image/` (URL `/image/...`). */
+const INVENTORY_KPI_CARD_ICON_SRC = {
+  uploadedFiles: "/image/업로드된파일.png",
+  latestBaseDate: "/image/최신기준일.png",
+  inventoryBasis: "/image/재고파악기준.png",
+  analyzedSkuCount: "/image/분석상품수.png",
+};
+/** 재고 비교 탭 KPI (전용 아이콘이 없으면 위와 동일 파일 재사용). */
+const COMPARE_KPI_CARD_ICON_SRC = {
+  compareCountries: "/image/비교국가수.png",
+  latestBaseDate: "/image/최신기준일.png",
+  compareSkuCount: "/image/분석상품수.png",
+};
+/** `.kpiCardIcon` 표시 크기와 동기화 (`styles.css`). */
+const KPI_CARD_ICON_DISPLAY_PX = 60;
 const SKU_MAPPING_FIELDS = [
   { code: "KR", label: "한국", nameKey: "kr_name", skuKey: "kr_sku" },
   { code: "US", label: "미국", nameKey: "us_name", skuKey: "us_sku" },
@@ -4894,30 +4909,91 @@ export default function App() {
       {!(isShipmentScope && shipmentViewMode === "chart") && (
       <section className="kpiRow inventoryKpiRow">
         <div className="kpiCard">
-          <div className="kpiLabel">업로드된 파일</div>
-          <div className="kpiValue">
-            {formatInt(isShipmentScope ? shipmentFileEntries.length : inventoryFiles.length)}개
+          <div className="kpiCardLayout">
+            <div className="kpiCardIcon" aria-hidden="true">
+              {INVENTORY_KPI_CARD_ICON_SRC.uploadedFiles ? (
+                <img
+                  src={INVENTORY_KPI_CARD_ICON_SRC.uploadedFiles}
+                  alt=""
+                  width={KPI_CARD_ICON_DISPLAY_PX}
+                  height={KPI_CARD_ICON_DISPLAY_PX}
+                />
+              ) : null}
+            </div>
+            <div className="kpiCardMain">
+              <div className="kpiLabel">업로드된 파일</div>
+              <div className="kpiValue kpiValueWithSuffix">
+                <span className="kpiValueNum">
+                  {formatInt(isShipmentScope ? shipmentFileEntries.length : inventoryFiles.length)}
+                </span>
+                <span className="kpiValueSuffix">개</span>
+              </div>
+            </div>
           </div>
         </div>
         <div className="kpiCard">
-          <div className="kpiLabel">최신 기준일</div>
-          <div className="kpiValue">{latestScopeDateLabel}</div>
+          <div className="kpiCardLayout">
+            <div className="kpiCardIcon" aria-hidden="true">
+              {INVENTORY_KPI_CARD_ICON_SRC.latestBaseDate ? (
+                <img
+                  src={INVENTORY_KPI_CARD_ICON_SRC.latestBaseDate}
+                  alt=""
+                  width={KPI_CARD_ICON_DISPLAY_PX}
+                  height={KPI_CARD_ICON_DISPLAY_PX}
+                />
+              ) : null}
+            </div>
+            <div className="kpiCardMain">
+              <div className="kpiLabel">최신 기준일</div>
+              <div className="kpiValue kpiValuePlain">{latestScopeDateLabel}</div>
+            </div>
+          </div>
         </div>
         <div className="kpiCard">
-          <div className="kpiLabel">재고 파악 기준</div>
-          <div className="kpiValue">{inventoryBasisLabel}</div>
+          <div className="kpiCardLayout">
+            <div className="kpiCardIcon" aria-hidden="true">
+              {INVENTORY_KPI_CARD_ICON_SRC.inventoryBasis ? (
+                <img
+                  src={INVENTORY_KPI_CARD_ICON_SRC.inventoryBasis}
+                  alt=""
+                  width={KPI_CARD_ICON_DISPLAY_PX}
+                  height={KPI_CARD_ICON_DISPLAY_PX}
+                />
+              ) : null}
+            </div>
+            <div className="kpiCardMain">
+              <div className="kpiLabel">재고 파악 기준</div>
+              <div className="kpiValue kpiValuePlain">{inventoryBasisLabel}</div>
+            </div>
+          </div>
         </div>
         <div className="kpiCard">
-          <div className="kpiLabel">분석 상품 수</div>
-          <div className="kpiValue">
-            {formatInt(
-              isShipmentScope
-                ? shipmentViewMode === "monthlyPivot"
-                  ? shipmentMonthlyPivotRows.length
-                  : shipmentDisplayRows.length
-                : filteredRows.length
-            )}
-            개
+          <div className="kpiCardLayout">
+            <div className="kpiCardIcon" aria-hidden="true">
+              {INVENTORY_KPI_CARD_ICON_SRC.analyzedSkuCount ? (
+                <img
+                  src={INVENTORY_KPI_CARD_ICON_SRC.analyzedSkuCount}
+                  alt=""
+                  width={KPI_CARD_ICON_DISPLAY_PX}
+                  height={KPI_CARD_ICON_DISPLAY_PX}
+                />
+              ) : null}
+            </div>
+            <div className="kpiCardMain">
+              <div className="kpiLabel">분석 상품 수</div>
+              <div className="kpiValue kpiValueWithSuffix">
+                <span className="kpiValueNum">
+                  {formatInt(
+                    isShipmentScope
+                      ? shipmentViewMode === "monthlyPivot"
+                        ? shipmentMonthlyPivotRows.length
+                        : shipmentDisplayRows.length
+                      : filteredRows.length
+                  )}
+                </span>
+                <span className="kpiValueSuffix">개</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -5661,16 +5737,64 @@ export default function App() {
         <>
           <section className="kpiRow compareKpiRow">
             <div className="kpiCard">
-              <div className="kpiLabel">비교 가능 국가</div>
-              <div className="kpiValue">{formatInt(OVERSEAS_UPLOAD_COUNTRIES.length)}개</div>
+              <div className="kpiCardLayout">
+                <div className="kpiCardIcon" aria-hidden="true">
+                  {COMPARE_KPI_CARD_ICON_SRC.compareCountries ? (
+                    <img
+                    src={COMPARE_KPI_CARD_ICON_SRC.compareCountries}
+                    alt=""
+                    width={KPI_CARD_ICON_DISPLAY_PX}
+                    height={KPI_CARD_ICON_DISPLAY_PX}
+                  />
+                  ) : null}
+                </div>
+                <div className="kpiCardMain">
+                  <div className="kpiLabel">비교 가능 국가</div>
+                  <div className="kpiValue kpiValueWithSuffix">
+                    <span className="kpiValueNum">{formatInt(OVERSEAS_UPLOAD_COUNTRIES.length)}</span>
+                    <span className="kpiValueSuffix">개</span>
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="kpiCard">
-              <div className="kpiLabel">최신 기준일</div>
-              <div className="kpiValue">{compareLatestDateLabel}</div>
+              <div className="kpiCardLayout">
+                <div className="kpiCardIcon" aria-hidden="true">
+                  {COMPARE_KPI_CARD_ICON_SRC.latestBaseDate ? (
+                    <img
+                    src={COMPARE_KPI_CARD_ICON_SRC.latestBaseDate}
+                    alt=""
+                    width={KPI_CARD_ICON_DISPLAY_PX}
+                    height={KPI_CARD_ICON_DISPLAY_PX}
+                  />
+                  ) : null}
+                </div>
+                <div className="kpiCardMain">
+                  <div className="kpiLabel">최신 기준일</div>
+                  <div className="kpiValue kpiValuePlain">{compareLatestDateLabel}</div>
+                </div>
+              </div>
             </div>
             <div className="kpiCard">
-              <div className="kpiLabel">비교 상품 수</div>
-              <div className="kpiValue">{formatInt(filteredCompareRows.length)}개</div>
+              <div className="kpiCardLayout">
+                <div className="kpiCardIcon" aria-hidden="true">
+                  {COMPARE_KPI_CARD_ICON_SRC.compareSkuCount ? (
+                    <img
+                    src={COMPARE_KPI_CARD_ICON_SRC.compareSkuCount}
+                    alt=""
+                    width={KPI_CARD_ICON_DISPLAY_PX}
+                    height={KPI_CARD_ICON_DISPLAY_PX}
+                  />
+                  ) : null}
+                </div>
+                <div className="kpiCardMain">
+                  <div className="kpiLabel">비교 상품 수</div>
+                  <div className="kpiValue kpiValueWithSuffix">
+                    <span className="kpiValueNum">{formatInt(filteredCompareRows.length)}</span>
+                    <span className="kpiValueSuffix">개</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 
