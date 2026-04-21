@@ -47,6 +47,7 @@ from app.domains.inventory.services.shipment_aggregate_service import (
     build_shipment_wide_dashboard,
     collect_shipment_long_records_from_raw,
     collect_shipment_vendor_gaps_from_raw_rows,
+    shipment_sheet_storage_key,
 )
 from app.domains.inventory.services.shipment_persistence_service import get_shipment_view, persist_shipment_uploads
 from app.domains.inventory.services.inventory_persistence_service import (
@@ -177,9 +178,11 @@ def shipment_aggregate(
         if frags:
             raise HTTPException(status_code=422, detail=_shipment_vendor_unmapped_payload(frags))
 
-    file_payloads: list[tuple[UploadFile, bytes, list[dict]]] = []
+    file_payloads: list[tuple[UploadFile, bytes, str, list[dict]]] = []
     all_long: list[dict] = []
     for (uf, raw), ctx in zip(paired, contexts):
+        target_sheet_name, *_rest = ctx
+        sheet_key = shipment_sheet_storage_key(target_sheet_name or "")
         recs = collect_shipment_long_records_from_raw(
             db,
             raw,
@@ -190,12 +193,14 @@ def shipment_aggregate(
             preloaded_workbook_context=ctx,
         )
         all_long.extend(recs)
-        file_payloads.append((uf, raw, recs))
-    payload = build_shipment_wide_dashboard(all_long)
+        file_payloads.append((uf, raw, sheet_key, recs))
     persisted_files: list[dict] = []
     settings = get_runtime_settings()
     if settings.database_enabled:
         persisted_files = persist_shipment_uploads(db, file_payloads)
+        payload = get_shipment_view(db)
+    else:
+        payload = build_shipment_wide_dashboard(all_long)
     return InventoryAggregateResponse(
         summary=payload["summary"],
         countries=payload["countries"],

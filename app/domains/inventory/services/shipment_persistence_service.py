@@ -30,6 +30,41 @@ FILE_DOMAIN_SHIPMENT = "shipment"
 SHIPMENT_BUCKET_COUNTRY = "SHIPMENT"
 
 
+def _normalize_shipment_order_at(val: Any) -> datetime:
+    """엑셀 주문일·DB 값 → 중복 비교용(초 단위, 마이크로초·tz 제거)."""
+    if isinstance(val, datetime):
+        dt = val
+    elif isinstance(val, date) and not isinstance(val, datetime):
+        dt = datetime.combine(val, datetime.min.time())
+    else:
+        dt = pd.to_datetime(val).to_pydatetime()
+    if dt.tzinfo is not None:
+        dt = dt.replace(tzinfo=None)
+    return dt.replace(microsecond=0)
+
+
+def _load_existing_shipment_order_times_for_sheet(
+    db: Session, sheet_key: str, order_times: list[datetime]
+) -> set[datetime]:
+    """같은 시트 키로 이미 저장된 주문일 시각(초 단위)."""
+    clean = [_normalize_shipment_order_at(t) for t in order_times if t is not None]
+    if not sheet_key or not clean:
+        return set()
+    t_min, t_max = min(clean), max(clean)
+    stmt = (
+        select(InventoryRow.shipment_order_at)
+        .join(UploadedFile, InventoryRow.uploaded_file_id == UploadedFile.id)
+        .where(
+            UploadedFile.file_domain == FILE_DOMAIN_SHIPMENT,
+            UploadedFile.shipment_sheet_key == sheet_key,
+            InventoryRow.shipment_order_at.isnot(None),
+            InventoryRow.shipment_order_at >= t_min,
+            InventoryRow.shipment_order_at <= t_max,
+        )
+    )
+    return {_normalize_shipment_order_at(t) for t in db.execute(stmt).scalars().all() if t is not None}
+
+
 def _shipment_s3_key(prefix: str, stored_name: str) -> str:
     root = (prefix or "inventory").strip().strip("/")
     return f"{root}/shipment/{stored_name}"
@@ -106,9 +141,13 @@ def _rebuild_all_shipment_aggregates(db: Session) -> None:
 
 def persist_shipment_uploads(
     db: Session,
-    file_payloads: list[tuple[UploadFile, bytes, list[dict[str, Any]]]],
+    file_payloads: list[tuple[UploadFile, bytes, str, list[dict[str, Any]]]],
 ) -> list[dict]:
-    """이미 파싱된 롱 레코드와 원본 바이트로 S3·inventory_rows 저장(엑셀 재파싱 없음)."""
+    """파싱된 롱 레코드와 원본 바이트로 S3·inventory_rows 저장(엑셀 재파싱 없음).
+
+    동일 「N월 출고 ALL」시트에서 **주문일(일시·초)** 이 DB에 이미 있으면 스킵하고, 없는 시각만 적재한다.
+    같은 통합 요청 안에서도 동일 주문일이 두 번 나오면 한 번만 넣는다.
+    """
     settings = get_runtime_settings()
     if not settings.database_enabled:
         return []
@@ -119,9 +158,22 @@ def persist_shipment_uploads(
     persisted: list[dict] = []
     row_ts = datetime.now(timezone.utc)
     try:
-        for upload_file, raw, records in file_payloads:
+        for upload_file, raw, sheet_key, records in file_payloads:
             if not records:
                 continue
+            batch_times = [rec["order_at"] for rec in records if rec.get("order_at") is not None]
+            seen = _load_existing_shipment_order_times_for_sheet(db, sheet_key, batch_times)
+            new_records: list[dict[str, Any]] = []
+            for rec in records:
+                oa = _normalize_shipment_order_at(rec["order_at"])
+                if oa in seen:
+                    continue
+                seen.add(oa)
+                new_records.append(rec)
+            if not new_records:
+                continue
+            records = new_records
+
             stored_name = f"{uuid.uuid4()}{os.path.splitext(upload_file.filename or '')[1] or '.xlsx'}"
             s3_key = _shipment_s3_key(settings.s3_prefix or "inventory", stored_name)
             s3.put_object(
@@ -143,6 +195,7 @@ def persist_shipment_uploads(
                 status="parsed",
                 error_message=None,
                 file_domain=FILE_DOMAIN_SHIPMENT,
+                shipment_sheet_key=sheet_key or None,
             )
             db.add(uploaded_file)
             db.flush()
@@ -162,6 +215,7 @@ def persist_shipment_uploads(
                         "level": _nullable_string(rec.get("level")),
                         "warehouse": _nullable_string(rec.get("channel")),
                         "vendor_raw": _nullable_string(rec.get("vendor_raw")),
+                        "shipment_order_at": rec["order_at"],
                         "quantity": float(int(rec.get("quantity") or 0)),
                         "uploaded_at": row_ts,
                         "row_snapshot_date": d,

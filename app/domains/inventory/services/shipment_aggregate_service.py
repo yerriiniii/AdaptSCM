@@ -1,4 +1,4 @@
-"""출고: 「N월 출고 ALL」(N=1~12) 단일 시트(상품코드·수량·배송일·판매처) 파싱 및 와이드 피벗."""
+"""출고: 「N월 출고 ALL」(N=1~12) 단일 시트(상품코드·수량·배송일·판매처·주문일) 파싱 및 와이드 피벗."""
 
 from __future__ import annotations
 
@@ -94,6 +94,11 @@ SHIPMENT_SHEET_NAME_PATTERN_HINT = "「1월 출고 ALL」~「12월 출고 ALL」
 
 def _is_shipment_workbook_sheet_name(sheet_name: str) -> bool:
     return bool(_SHIPMENT_SHEET_NAME_RE.match(_norm_sheet_token(sheet_name)))
+
+
+def shipment_sheet_storage_key(sheet_display_name: str) -> str:
+    """「N월 출고 ALL」표시명 → DB shipment_sheet_key·동일 시트 중복 판별용 (예: 3월출고all)."""
+    return _norm_sheet_token(sheet_display_name)
 
 
 def _normalize_header_cell_text(raw: object) -> str:
@@ -344,8 +349,35 @@ def _parse_delivery_date(val: object) -> date:
     return parsed.date()
 
 
+def _parse_order_datetime(
+    val: object,
+    *,
+    filename: str = "",
+    sheet_name: str = "",
+    excel_row_1based: int | None = None,
+) -> datetime:
+    """주문일 열: 날짜·시간·초까지 구분(마이크로초는 제거해 동일 출고 비교)."""
+    if isinstance(val, datetime):
+        dt = val
+    elif isinstance(val, pd.Timestamp):
+        dt = val.to_pydatetime()
+    elif isinstance(val, date) and not isinstance(val, datetime):
+        dt = datetime.combine(val, datetime.min.time())
+    else:
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            raise ValueError("empty order datetime")
+        parsed = pd.to_datetime(val, errors="coerce")
+        if pd.isna(parsed):
+            raise ValueError(str(val))
+        dt = parsed.to_pydatetime()
+    if dt.tzinfo is not None:
+        dt = dt.replace(tzinfo=None)
+    return dt.replace(microsecond=0)
+
+
 def _match_header_aliases(alias_norms: dict[str, set[str]], cells: list[object]) -> dict[str, int] | None:
-    """한 행(또는 컬럼 이름 목록)에서 네 필드 열 인덱스. 모두 있으면 dict, 아니면 None."""
+    """헤더 한 행에서 alias_norms 키마다 열 인덱스를 찾는다. 전부 있으면 dict, 아니면 None."""
+    need = len(alias_norms)
     mapping: dict[str, int] = {}
     for c, cell in enumerate(cells):
         norm = _normalize_header_cell_text(cell)
@@ -357,11 +389,11 @@ def _match_header_aliases(alias_norms: dict[str, set[str]], cells: list[object])
             if norm in keys:
                 mapping[canon] = c
                 break
-    return mapping if len(mapping) == 4 else None
+    return mapping if len(mapping) == need else None
 
 
 def _find_header_row_and_cols(df: pd.DataFrame) -> tuple[int, dict[str, int]] | None:
-    """헤더 행 인덱스와 상품코드·상품수량·배송일·판매처 열 인덱스. 없으면 None.
+    """헤더 행 인덱스와 상품코드·상품수량·배송일·판매처·주문일 열 인덱스. 없으면 None.
 
     pandas 기본 read_excel(header=0)는 첫 행을 컬럼 이름으로만 쓰고 본문에는 넣지 않으므로,
     먼저 df.columns에서 매칭한다. 헤더가 본문에 있는 파일은 아래 행 스캔으로 처리.
@@ -371,6 +403,21 @@ def _find_header_row_and_cols(df: pd.DataFrame) -> tuple[int, dict[str, int]] | 
         "상품수량": {"상품수량", "수량", "상품 수량", "QTY", "Qty"},
         "배송일": {"배송일", "배송 일", "출고일", "일자"},
         "판매처": {"판매처", "채널", "거래처"},
+        "주문일": {
+            "주문일",
+            "주문 일",
+            "주문일시",
+            "주문 일시",
+            "주문일자",
+            "주문 일자",
+            "주문datetime",
+            "orderdate",
+            "order date",
+            "orderdatetime",
+            "order datetime",
+            "order_time",
+            "orderedat",
+        },
     }
     alias_norms: dict[str, set[str]] = {}
     for canon, opts in aliases.items():
@@ -414,7 +461,7 @@ def _shipment_workbook_raw_context(
     *,
     kr_sku_brand_name: dict[str, tuple[str, str]] | None = None,
     own_mall_brand_bases: frozenset[str] | None = None,
-) -> tuple[str, list[tuple[int, str, object, object, object]], dict[str, tuple[str, str]], frozenset[str]]:
+) -> tuple[str, list[tuple[int, str, object, object, object, object]], dict[str, tuple[str, str]], frozenset[str]]:
     """시트·데이터 행·KR SKU 맵·자사몰 브랜드. 상품코드 미등록 시 HTTPException."""
     if not raw:
         raise HTTPException(status_code=400, detail=f"{filename}: 파일이 비어 있습니다.")
@@ -453,23 +500,25 @@ def _shipment_workbook_raw_context(
     found = _find_header_row_and_cols(df)
     if found is None:
         hint = (
-            "첫 행이 헤더인 일반 엑셀은 열 이름(상품코드·상품수량·배송일·판매처 등)으로 인식합니다. "
+            "첫 행이 헤더인 일반 엑셀은 열 이름으로 인식합니다. "
+            "필수: 상품코드·상품수량·배송일·판매처·주문일(날짜·시간·초까지 구분되는 값). "
             "그 위에 제목 행만 여러 줄 있으면, 헤더가 들어 있는 행까지 상단 60행 안에 있어야 합니다."
         )
         raise HTTPException(
             status_code=400,
-            detail=f"{filename}: 헤더 행에서 상품코드·상품수량·배송일·판매처 네 열을 찾지 못했습니다. {hint}",
+            detail=f"{filename}: 헤더 행에서 상품코드·상품수량·배송일·판매처·주문일 다섯 열을 찾지 못했습니다. {hint}",
         )
     header_row, hdr = found
     c_code = hdr["상품코드"]
     c_qty = hdr["상품수량"]
     c_date = hdr["배송일"]
     c_vendor = hdr["판매처"]
+    c_order = hdr["주문일"]
 
     data_start = header_row + 1
     sku_map = kr_sku_brand_name if kr_sku_brand_name is not None else _load_kr_sku_brand_name(db)
     own_mall_brands = own_mall_brand_bases if own_mall_brand_bases is not None else _load_own_mall_brand_bases(db)
-    raw_rows: list[tuple[int, str, object, object, object]] = []
+    raw_rows: list[tuple[int, str, object, object, object, object]] = []
 
     for r in range(data_start, len(df)):
         code_cell = df.iat[r, c_code]
@@ -483,7 +532,8 @@ def _shipment_workbook_raw_context(
         vendor_cell = df.iat[r, c_vendor]
         if pd.isna(qty_cell) and pd.isna(date_cell) and pd.isna(vendor_cell):
             continue
-        raw_rows.append((r + 1, ex_norm, qty_cell, date_cell, vendor_cell))
+        order_cell = df.iat[r, c_order]
+        raw_rows.append((r + 1, ex_norm, qty_cell, date_cell, vendor_cell, order_cell))
 
     missing_skus: set[str] = set()
     for _ln, ex_norm, *_ in raw_rows:
@@ -520,13 +570,13 @@ def _shipment_vendor_unmapped_payload(file_gaps: list[dict[str, Any]]) -> dict[s
 
 
 def collect_shipment_vendor_gaps_from_raw_rows(
-    raw_rows: list[tuple[int, str, object, object, object]],
+    raw_rows: list[tuple[int, str, object, object, object, object]],
     own_mall_brand_bases: frozenset[str],
 ) -> tuple[dict[str, list[int]], list[int]]:
     """`_shipment_workbook_raw_context`가 만든 raw_rows만으로 미매핑·빈 판매처 행 번호 수집."""
     vendor_empty_rows: list[int] = []
     vendor_unmapped: dict[str, list[int]] = defaultdict(list)
-    for _ln, _ex_norm, _qty_cell, _date_cell, vendor_cell in raw_rows:
+    for _ln, _ex_norm, _qty_cell, _date_cell, vendor_cell, _order_cell in raw_rows:
         excel_row_1based = _ln + 1
         tv = _shipment_vendor_cell_str(vendor_cell)
         if not tv:
@@ -645,7 +695,7 @@ def parse_march_shipment_all_workbook(
             )
 
     records: list[dict[str, Any]] = []
-    for _ln, ex_norm, qty_cell, date_cell, vendor_cell in raw_rows:
+    for _ln, ex_norm, qty_cell, date_cell, vendor_cell, order_cell in raw_rows:
         canon = _normalize_item_code(ex_norm)
         brand, pname = sku_map[canon]
         # read_excel(header=0): df 행 인덱스 r = _ln-1 → 엑셀 1-based 데이터 행 = r+2 = _ln+1
@@ -658,6 +708,21 @@ def parse_march_shipment_all_workbook(
                 detail=(
                     f"배송일을 해석할 수 없습니다 ({date_cell!r})."
                     f"{_shipment_source_loc(filename=filename, sheet_name=target_name, excel_row_1based=excel_row_1based, column_label='배송일')}"
+                ),
+            ) from None
+        try:
+            order_at = _parse_order_datetime(
+                order_cell,
+                filename=filename,
+                sheet_name=target_name,
+                excel_row_1based=excel_row_1based,
+            )
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"주문일을 해석할 수 없습니다 ({order_cell!r})."
+                    f"{_shipment_source_loc(filename=filename, sheet_name=target_name, excel_row_1based=excel_row_1based, column_label='주문일')}"
                 ),
             ) from None
         qty = pd.to_numeric(qty_cell, errors="coerce")
@@ -694,6 +759,7 @@ def parse_march_shipment_all_workbook(
                 "quantity": qty_i,
                 "level": level,
                 "vendor_raw": tv,
+                "order_at": order_at,
             }
         )
 

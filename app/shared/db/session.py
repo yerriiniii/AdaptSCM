@@ -48,6 +48,7 @@ def _ensure_inventory_columns(engine: Engine) -> None:
     column_specs = {
         "uploaded_files": {
             "file_domain": "VARCHAR(20) NOT NULL DEFAULT 'inventory'",
+            "shipment_sheet_key": "VARCHAR(64)",
         },
         "inventory_rows": {
             "sku": "VARCHAR(255)",
@@ -55,6 +56,7 @@ def _ensure_inventory_columns(engine: Engine) -> None:
             "row_snapshot_date": "DATE",
             "row_country_code": "VARCHAR(10)",
             "vendor_raw": "TEXT",
+            "shipment_order_at": "TIMESTAMP",
         },
         "inventory_aggregates": {
             "sku": "VARCHAR(255)",
@@ -528,6 +530,12 @@ def _ensure_shipment_view_indexes(engine: Engine) -> None:
     with engine.begin() as conn:
         if "ix_uploaded_files_file_domain" not in uf_indexes:
             conn.execute(text("CREATE INDEX ix_uploaded_files_file_domain ON uploaded_files (file_domain)"))
+        if "ix_uploaded_files_shipment_sheet" not in uf_indexes:
+            conn.execute(
+                text(
+                    "CREATE INDEX ix_uploaded_files_shipment_sheet ON uploaded_files (file_domain, shipment_sheet_key)"
+                )
+            )
         if "ix_inventory_rows_upload_snapshot" not in ir_indexes:
             conn.execute(
                 text(

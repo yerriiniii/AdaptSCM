@@ -32,6 +32,8 @@ class UploadedFile(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
     file_domain: Mapped[str] = mapped_column(String(20), nullable=False, default="inventory")
+    # 출고 「N월 출고 ALL」시트 정규화 토큰(예: 3월출고all). 동일 시트 재업로드 시 이 키로 기존 행과 중복 판별.
+    shipment_sheet_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     inventory_rows: Mapped[list["InventoryRow"]] = relationship(
         back_populates="uploaded_file",
@@ -60,6 +62,8 @@ class InventoryRow(Base):
     warehouse: Mapped[str | None] = mapped_column(String(255))
     # 출고 엑셀 「판매처」 원문(탭 분류 후에도 추적). 일반 재고 업로드는 미사용.
     vendor_raw: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 출고: 엑셀 주문일(일시·초). 동일 시트 재업로드 시 중복 스킵 판별에 사용.
+    shipment_order_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     quantity: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
     row_snapshot_date: Mapped[date | None] = mapped_column(Date)
