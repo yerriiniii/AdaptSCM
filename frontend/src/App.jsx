@@ -8169,13 +8169,13 @@ export default function App() {
             </div>
 
             <div className="cautionSection">
-              <div className="cautionSectionTitle">공통 (재고·파일)</div>
+              <div className="cautionSectionTitle">공통 (재고·출고·파일)</div>
               <ul className="cautionList">
                 <li>
                   한국·해외 재고 탭에서 파일 업로드 후에는 재고 통합 실행을, 출고 탭에서는 출고 통합 실행을 눌러야 각
                   화면에 반영됩니다.
                 </li>
-                <li>이미 올린 것과 같은 파일 이름은 다시 올라가지 않습니다.</li>
+                <li>재고 탭에서는 이미 올린 것과 같은 파일 이름은 다시 올라가지 않습니다.</li>
                 <li>
                   재고 엑셀에 넣은 상품코드는 SKU 관리에서 그 국가로 먼저 등록되어 있어야 합니다. 하나라도 빠지면 그 파일
                   전체가 반영되지 않을 수 있습니다.
@@ -8225,7 +8225,7 @@ export default function App() {
             </div>
 
             <div className="cautionSection">
-              <div className="cautionSectionTitle">출고</div>
+              <div className="cautionSectionTitle">출고 기록</div>
               <ul className="cautionList">
                 <li>파일 내에 「1월 출고 ALL」~「12월 출고 ALL」 형식으로 된 시트만 읽습니다.</li>
                 <li>상품코드·상품수량·배송일·판매처·주문일 컬럼을 읽습니다.</li>
