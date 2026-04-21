@@ -54,6 +54,7 @@ def _ensure_inventory_columns(engine: Engine) -> None:
             "warehouse": "VARCHAR(255)",
             "row_snapshot_date": "DATE",
             "row_country_code": "VARCHAR(10)",
+            "vendor_raw": "TEXT",
         },
         "inventory_aggregates": {
             "sku": "VARCHAR(255)",
@@ -510,6 +511,31 @@ def _ensure_purchase_orders_erp_sku_order_date_unique(engine: Engine) -> None:
             )
 
 
+def _ensure_shipment_view_indexes(engine: Engine) -> None:
+    """출고 `/shipment/view` 조인·필터용 인덱스(기존 DB에 이름 없을 때만 추가)."""
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if "uploaded_files" not in existing_tables or "inventory_rows" not in existing_tables:
+        return
+    try:
+        uf_indexes = {idx.get("name") for idx in inspector.get_indexes("uploaded_files")}
+    except Exception:
+        uf_indexes = set()
+    try:
+        ir_indexes = {idx.get("name") for idx in inspector.get_indexes("inventory_rows")}
+    except Exception:
+        ir_indexes = set()
+    with engine.begin() as conn:
+        if "ix_uploaded_files_file_domain" not in uf_indexes:
+            conn.execute(text("CREATE INDEX ix_uploaded_files_file_domain ON uploaded_files (file_domain)"))
+        if "ix_inventory_rows_upload_snapshot" not in ir_indexes:
+            conn.execute(
+                text(
+                    "CREATE INDEX ix_inventory_rows_upload_snapshot ON inventory_rows (uploaded_file_id, row_snapshot_date)"
+                )
+            )
+
+
 def _run_schema_init_if_needed(engine: Engine) -> None:
     """테이블 생성·경량 마이그레이션. 프로세스당 1회."""
     global _schema_initialized
@@ -532,6 +558,9 @@ def _run_schema_init_if_needed(engine: Engine) -> None:
         t4 = time.perf_counter()
         _ensure_purchase_orders_erp_sku_order_date_unique(engine)
         _log.info("purchase_orders 유니크 보정 완료 (%.2fs)", time.perf_counter() - t4)
+        t5 = time.perf_counter()
+        _ensure_shipment_view_indexes(engine)
+        _log.info("출고 뷰 조회용 인덱스 보정 완료 (%.2fs)", time.perf_counter() - t5)
         _schema_initialized = True
         _log.info("DB 스키마 초기화 전체 완료 (총 %.2fs)", time.perf_counter() - t0)
 

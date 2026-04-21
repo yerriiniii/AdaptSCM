@@ -1,4 +1,4 @@
-"""출고: 「3월 출고 ALL」 단일 시트(상품코드·수량·배송일·판매처) 파싱 및 와이드 피벗."""
+"""출고: 「N월 출고 ALL」(N=1~12) 단일 시트(상품코드·수량·배송일·판매처) 파싱 및 와이드 피벗."""
 
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ SHIPMENT_CHANNEL_LABELS: tuple[str, ...] = (
     "독일",
     "영국",
     "호주",
+    "UAE",
     "동남아",
     "태국",
     "휠라선",
@@ -61,6 +62,7 @@ _EXT_MALL_SUBSTR_KEYWORDS: tuple[str, ...] = tuple(
             "29CM",
             "11번가",
             "CJ몰",
+            "옥션",
             "G마켓",
             "롯데",
             "토스",
@@ -78,18 +80,20 @@ SHIPMENT_VENDOR_OVERRIDE_EMPTY_KEY = "__EMPTY__"
 
 HEADER_SCAN_ROWS = 60
 
-# --- 시트: 반드시 「3월 출고 ALL」만 (공백·ALL 대소문자·전각 영문만 정규화, 그 외 접두/접미 글자 불가) ---
+# --- 시트: 「N월 출고 ALL」(N=1~12). 공백·ALL 대소문자·전각 영문만 정규화, 그 외 접두/접미 글자 불가 ---
 def _norm_sheet_token(name: str) -> str:
     s = unicodedata.normalize("NFKC", str(name).strip()).lower()
     return re.sub(r"\s+", "", s)
 
 
-SHIPMENT_REQUIRED_SHEET_LABEL = "3월 출고 ALL"
-_SHIPMENT_SHEET_NAME_NORM = _norm_sheet_token(SHIPMENT_REQUIRED_SHEET_LABEL)
+# 정규화 후: "3월출고all", "12월출고all" 등
+_SHIPMENT_SHEET_NAME_RE = re.compile(r"^(?:[1-9]|1[0-2])월출고all$")
+
+SHIPMENT_SHEET_NAME_PATTERN_HINT = "「1월 출고 ALL」~「12월 출고 ALL」"
 
 
-def _is_exact_shipment_workbook_sheet(sheet_name: str) -> bool:
-    return _norm_sheet_token(sheet_name) == _SHIPMENT_SHEET_NAME_NORM
+def _is_shipment_workbook_sheet_name(sheet_name: str) -> bool:
+    return bool(_SHIPMENT_SHEET_NAME_RE.match(_norm_sheet_token(sheet_name)))
 
 
 def _normalize_header_cell_text(raw: object) -> str:
@@ -222,8 +226,10 @@ def _try_classify_shipment_vendor_text(
             return "국내 자사몰", warehouse_move
 
     region_pairs = (
+        ("아랍에미리트", "UAE"),
         ("동남아", "동남아"),
         ("싱가폴", "싱가폴"),
+        ("UAE", "UAE"),
         ("휠라선", "휠라선"),
         ("홍콩", "홍콩"),
         ("대만", "대만"),
@@ -267,17 +273,23 @@ def _resolve_shipment_vendor_channel(
     own_mall_brand_bases: frozenset[str] | None,
     vendor_channel_overrides: dict[str, str] | None,
 ) -> tuple[str, bool] | None:
+    """수동 매핑(vendor_channel_overrides)이 있으면 자동 규칙보다 항상 우선한다.
+
+    그렇지 않으면 엑셀 판매처 문자열을 자동 분류한다.
+    (예: 판매처에 「미국」이 포함돼 자동으로 미국 탭이 되면, 사용자가 UAE로 매핑한 뜻이 무시되던 문제 방지)
+    """
+    warehouse_move = "창고이동" in tv
+    if vendor_channel_overrides:
+        lk = _vendor_override_lookup_key(tv)
+        ch = vendor_channel_overrides.get(lk)
+        if ch is not None:
+            ch = str(ch).strip()
+            if ch:
+                return (ch, warehouse_move)
     classified = _try_classify_shipment_vendor_text(tv, own_mall_brand_bases=own_mall_brand_bases)
     if classified is not None:
         return classified
-    if not vendor_channel_overrides:
-        return None
-    warehouse_move = "창고이동" in tv
-    lk = _vendor_override_lookup_key(tv)
-    ch = vendor_channel_overrides.get(lk)
-    if ch is None or ch not in SHIPMENT_CHANNEL_LABELS:
-        return None
-    return (ch, warehouse_move)
+    return None
 
 
 def classify_shipment_vendor(
@@ -411,16 +423,24 @@ def _shipment_workbook_raw_context(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"{filename}: 엑셀 파싱 실패 ({exc})") from exc
 
-    target_name: str | None = None
+    matching_sheets: list[str] = []
     for sn in book:
-        if _is_exact_shipment_workbook_sheet(str(sn)):
-            target_name = str(sn)
-            break
+        if _is_shipment_workbook_sheet_name(str(sn)):
+            matching_sheets.append(str(sn))
+    if len(matching_sheets) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{filename}: 출고용 시트({SHIPMENT_SHEET_NAME_PATTERN_HINT})는 파일당 하나만 포함해 주세요. "
+                f"일치하는 시트: {', '.join(matching_sheets)}"
+            ),
+        )
+    target_name = matching_sheets[0] if matching_sheets else None
     if target_name is None:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"{filename}: 출고용 시트 이름은 반드시 「{SHIPMENT_REQUIRED_SHEET_LABEL}」만 사용할 수 있습니다. "
+                f"{filename}: 출고용 시트 이름은 {SHIPMENT_SHEET_NAME_PATTERN_HINT} 형식이어야 합니다. "
                 f"(공백·ALL 대소문자·전각 문자만 다른 표기는 동일로 봅니다. "
                 f"파일에 있는 시트: {', '.join(str(s) for s in book)})"
             ),
@@ -499,6 +519,23 @@ def _shipment_vendor_unmapped_payload(file_gaps: list[dict[str, Any]]) -> dict[s
     }
 
 
+def collect_shipment_vendor_gaps_from_raw_rows(
+    raw_rows: list[tuple[int, str, object, object, object]],
+    own_mall_brand_bases: frozenset[str],
+) -> tuple[dict[str, list[int]], list[int]]:
+    """`_shipment_workbook_raw_context`가 만든 raw_rows만으로 미매핑·빈 판매처 행 번호 수집."""
+    vendor_empty_rows: list[int] = []
+    vendor_unmapped: dict[str, list[int]] = defaultdict(list)
+    for _ln, _ex_norm, _qty_cell, _date_cell, vendor_cell in raw_rows:
+        excel_row_1based = _ln + 1
+        tv = _shipment_vendor_cell_str(vendor_cell)
+        if not tv:
+            vendor_empty_rows.append(excel_row_1based)
+        elif _try_classify_shipment_vendor_text(tv, own_mall_brand_bases=own_mall_brand_bases) is None:
+            vendor_unmapped[tv].append(excel_row_1based)
+    return {k: v for k, v in vendor_unmapped.items()}, sorted(set(vendor_empty_rows))
+
+
 def scan_shipment_workbook_vendor_gaps(
     db: Session,
     raw: bytes,
@@ -515,18 +552,10 @@ def scan_shipment_workbook_vendor_gaps(
         kr_sku_brand_name=kr_sku_brand_name,
         own_mall_brand_bases=own_mall_brand_bases,
     )
-    vendor_empty_rows: list[int] = []
-    vendor_unmapped: dict[str, list[int]] = defaultdict(list)
-    for _ln, _ex_norm, _qty_cell, _date_cell, vendor_cell in raw_rows:
-        excel_row_1based = _ln + 1
-        tv = _shipment_vendor_cell_str(vendor_cell)
-        if not tv:
-            vendor_empty_rows.append(excel_row_1based)
-        elif _try_classify_shipment_vendor_text(tv, own_mall_brand_bases=own_mall_brands) is None:
-            vendor_unmapped[tv].append(excel_row_1based)
-    if not vendor_empty_rows and not vendor_unmapped:
+    vu, ve = collect_shipment_vendor_gaps_from_raw_rows(raw_rows, own_mall_brands)
+    if not vu and not ve:
         return None
-    return (target_name, {k: v for k, v in vendor_unmapped.items()}, sorted(set(vendor_empty_rows)))
+    return (target_name, vu, ve)
 
 
 def preflight_shipment_files_vendor_gaps(
@@ -536,7 +565,7 @@ def preflight_shipment_files_vendor_gaps(
     kr_sku_brand_name: dict[str, tuple[str, str]],
     own_mall_brand_bases: frozenset[str],
 ) -> None:
-    """여러 파일을 한 요청으로 올릴 때 미매핑 판매처를 한 번에 알림(엑셀을 두 번 읽음)."""
+    """여러 파일을 한 요청으로 올릴 때 미매핑 판매처를 한 번에 알림(파일당 엑셀 1회 읽기)."""
     frags: list[dict[str, Any]] = []
     for fn, raw in file_blobs:
         gap = scan_shipment_workbook_vendor_gaps(
@@ -561,31 +590,28 @@ def parse_march_shipment_all_workbook(
     kr_sku_brand_name: dict[str, tuple[str, str]] | None = None,
     own_mall_brand_bases: frozenset[str] | None = None,
     vendor_channel_overrides: dict[str, str] | None = None,
+    preloaded_workbook_context: tuple[str, list, dict[str, tuple[str, str]], frozenset[str]] | None = None,
 ) -> list[dict[str, Any]]:
-    """「3월 출고 ALL」 시트만 읽어 DB 검증·보강된 롱 레코드 반환.
+    """「N월 출고 ALL」(N=1~12) 시트만 읽어 DB 검증·보강된 롱 레코드 반환.
 
     kr_sku_brand_name: 여러 파일 연속 파싱 시 `_load_kr_sku_brand_name(db)` 결과를 넘기면 DB 조회를 생략한다.
     own_mall_brand_bases: `_load_own_mall_brand_bases(db)` 캐시(요청당 1회).
     vendor_channel_overrides: 규칙에 없는 판매처·빈 칸을 `SHIPMENT_CHANNEL_LABELS` 값으로 수동 지정.
+    preloaded_workbook_context: 이미 `_shipment_workbook_raw_context`로 읽은 결과(동일 요청에서 엑셀 재파싱 방지).
     """
-    target_name, raw_rows, sku_map, own_mall_brands = _shipment_workbook_raw_context(
-        db,
-        raw,
-        filename,
-        kr_sku_brand_name=kr_sku_brand_name,
-        own_mall_brand_bases=own_mall_brand_bases,
-    )
+    if preloaded_workbook_context is not None:
+        target_name, raw_rows, sku_map, own_mall_brands = preloaded_workbook_context
+    else:
+        target_name, raw_rows, sku_map, own_mall_brands = _shipment_workbook_raw_context(
+            db,
+            raw,
+            filename,
+            kr_sku_brand_name=kr_sku_brand_name,
+            own_mall_brand_bases=own_mall_brand_bases,
+        )
     norm_overrides = _normalize_vendor_channel_override_map(vendor_channel_overrides)
 
-    vendor_empty_rows: list[int] = []
-    vendor_unmapped: dict[str, list[int]] = defaultdict(list)
-    for _ln, _ex_norm, _qty_cell, _date_cell, vendor_cell in raw_rows:
-        excel_row_1based = _ln + 1
-        tv = _shipment_vendor_cell_str(vendor_cell)
-        if not tv:
-            vendor_empty_rows.append(excel_row_1based)
-        elif _try_classify_shipment_vendor_text(tv, own_mall_brand_bases=own_mall_brands) is None:
-            vendor_unmapped[tv].append(excel_row_1based)
+    vendor_unmapped, vendor_empty_rows = collect_shipment_vendor_gaps_from_raw_rows(raw_rows, own_mall_brands)
 
     if vendor_empty_rows or vendor_unmapped:
         if norm_overrides is None:
@@ -601,12 +627,6 @@ def parse_march_shipment_all_workbook(
                         },
                     ],
                 ),
-            )
-        bad_ch = sorted({c for c in norm_overrides.values() if c not in SHIPMENT_CHANNEL_LABELS})
-        if bad_ch:
-            raise HTTPException(
-                status_code=400,
-                detail=f"vendor_channel_overrides에 알 수 없는 탭이 있습니다: {bad_ch}. 허용: {list(SHIPMENT_CHANNEL_LABELS)}",
             )
         missing: list[str] = []
         for v in sorted(vendor_unmapped.keys()):
@@ -673,6 +693,7 @@ def parse_march_shipment_all_workbook(
                 "date": d,
                 "quantity": qty_i,
                 "level": level,
+                "vendor_raw": tv,
             }
         )
 
@@ -695,6 +716,10 @@ def build_shipment_wide_dashboard(long_recs: list[dict[str, Any]]) -> dict[str, 
     bucket: dict[tuple[str, str], dict[str, dict[str, int]]] = defaultdict(
         lambda: defaultdict(lambda: {"sale": 0, "wh": 0})
     )
+    # (sku, channel) → 날짜 → 판매처 원문 → {sale, wh}
+    vendor_parts: defaultdict[
+        tuple[str, str], defaultdict[str, defaultdict[str, dict[str, int]]]
+    ] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {"sale": 0, "wh": 0})))
     meta: dict[tuple[str, str], dict[str, Any]] = {}
 
     all_dates: set[str] = set()
@@ -720,13 +745,26 @@ def build_shipment_wide_dashboard(long_recs: list[dict[str, Any]]) -> dict[str, 
             bucket[k][dk]["wh"] += qty
         else:
             bucket[k][dk]["sale"] += qty
+        vlabel = str(r.get("vendor_raw") or "").strip()
+        if not vlabel:
+            vlabel = "(판매처 없음)"
+        vp = vendor_parts[k][dk][vlabel]
+        if is_wh:
+            vp["wh"] += qty
+        else:
+            vp["sale"] += qty
         all_dates.add(dk)
 
     date_list = sorted(all_dates)
+    seen_ch = {str(r["channel"]) for r in long_recs if str(r.get("channel") or "").strip()}
+    extra_ch = sorted(seen_ch - set(SHIPMENT_CHANNEL_LABELS))
+    channels_field = list(SHIPMENT_CHANNEL_LABELS) + [c for c in extra_ch if c]
+
     rows_out: list[dict[str, Any]] = []
     for k in sorted(bucket.keys(), key=lambda x: (_CHANNEL_SORT.get(x[1], 99), x[0], x[1])):
         byd = bucket[k]
         m = dict(meta[k])
+        breakdown: dict[str, list[dict[str, Any]]] = {}
         for dk in date_list:
             p = byd.get(dk, {"sale": 0, "wh": 0})
             sale, wh = p["sale"], p["wh"]
@@ -736,13 +774,24 @@ def build_shipment_wide_dashboard(long_recs: list[dict[str, Any]]) -> dict[str, 
                 m[dk] = f"창고이동 {wh}"
             else:
                 m[dk] = int(sale)
+            vslice = vendor_parts[k].get(dk)
+            if vslice:
+                items: list[dict[str, Any]] = []
+                for vname, parts in sorted(vslice.items()):
+                    s_, w_ = parts["sale"], parts["wh"]
+                    if s_ or w_:
+                        items.append({"vendor": vname, "sale": int(s_), "wh": int(w_)})
+                if items:
+                    breakdown[dk] = items
+        if breakdown:
+            m["date_vendor_breakdown"] = breakdown
         rows_out.append(m)
 
     return {
         "summary": {"item_count": len(rows_out), "date_count": len(date_list)},
         "countries": ["KR"],
         "dates": date_list,
-        "channels": list(SHIPMENT_CHANNEL_LABELS),
+        "channels": channels_field,
         "rows": rows_out,
     }
 
@@ -761,6 +810,7 @@ def collect_shipment_long_records_from_raw(
     kr_sku_brand_name: dict[str, tuple[str, str]] | None = None,
     own_mall_brand_bases: frozenset[str] | None = None,
     vendor_channel_overrides: dict[str, str] | None = None,
+    preloaded_workbook_context: tuple[str, list, dict[str, tuple[str, str]], frozenset[str]] | None = None,
 ) -> list[dict[str, Any]]:
     """persist 경로용: 단일 포맷 파싱."""
     return parse_march_shipment_all_workbook(
@@ -770,6 +820,7 @@ def collect_shipment_long_records_from_raw(
         kr_sku_brand_name=kr_sku_brand_name,
         own_mall_brand_bases=own_mall_brand_bases,
         vendor_channel_overrides=vendor_channel_overrides,
+        preloaded_workbook_context=preloaded_workbook_context,
     )
 
 

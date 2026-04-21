@@ -42,9 +42,11 @@ from app.domains.inventory.services.inventory_aggregate_service import (
 from app.domains.inventory.services.shipment_aggregate_service import (
     _load_kr_sku_brand_name,
     _load_own_mall_brand_bases,
+    _shipment_vendor_unmapped_payload,
+    _shipment_workbook_raw_context,
     build_shipment_wide_dashboard,
     collect_shipment_long_records_from_raw,
-    preflight_shipment_files_vendor_gaps,
+    collect_shipment_vendor_gaps_from_raw_rows,
 )
 from app.domains.inventory.services.shipment_persistence_service import get_shipment_view, persist_shipment_uploads
 from app.domains.inventory.services.inventory_persistence_service import (
@@ -146,17 +148,38 @@ def shipment_aggregate(
     own_mall_bases = _load_own_mall_brand_bases(db)
     paired: list[tuple[UploadFile, bytes]] = [(uf, _read_upload_bytes(uf)) for uf in files]
 
-    if overrides_dict is None and len(paired) > 1:
-        preflight_shipment_files_vendor_gaps(
-            db,
-            [(uf.filename or "", raw) for uf, raw in paired],
-            kr_sku_brand_name=kr_sku_map,
-            own_mall_brand_bases=own_mall_bases,
+    contexts: list[tuple[str, list, dict[str, tuple[str, str]], frozenset[str]]] = []
+    for uf, raw in paired:
+        contexts.append(
+            _shipment_workbook_raw_context(
+                db,
+                raw,
+                uf.filename or "",
+                kr_sku_brand_name=kr_sku_map,
+                own_mall_brand_bases=own_mall_bases,
+            )
         )
+
+    if overrides_dict is None and len(paired) > 1:
+        frags: list[dict] = []
+        for (uf, _raw), ctx in zip(paired, contexts):
+            target_name, raw_rows, _sku_map, own_mall_brands = ctx
+            vu, ve = collect_shipment_vendor_gaps_from_raw_rows(raw_rows, own_mall_brands)
+            if vu or ve:
+                frags.append(
+                    {
+                        "filename": uf.filename or "",
+                        "sheet": target_name,
+                        "unmapped": vu,
+                        "empty_vendor_rows": ve,
+                    }
+                )
+        if frags:
+            raise HTTPException(status_code=422, detail=_shipment_vendor_unmapped_payload(frags))
 
     file_payloads: list[tuple[UploadFile, bytes, list[dict]]] = []
     all_long: list[dict] = []
-    for uf, raw in paired:
+    for (uf, raw), ctx in zip(paired, contexts):
         recs = collect_shipment_long_records_from_raw(
             db,
             raw,
@@ -164,6 +187,7 @@ def shipment_aggregate(
             kr_sku_brand_name=kr_sku_map,
             own_mall_brand_bases=own_mall_bases,
             vendor_channel_overrides=overrides_dict,
+            preloaded_workbook_context=ctx,
         )
         all_long.extend(recs)
         file_payloads.append((uf, raw, recs))
