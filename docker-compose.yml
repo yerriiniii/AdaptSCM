@@ -1,0 +1,20 @@
+services:
+  backend:
+    image: yerriiniii/inventory-backend:latest
+    container_name: inventory-backend
+    restart: always
+    pull_policy: always
+    ports:
+      - "8000:8000"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  frontend:
+    image: yerriiniii/inventory-frontend:latest
+    container_name: inventory-frontend
+    restart: always
+    pull_policy: always
+    ports:
+      - "80:80"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"

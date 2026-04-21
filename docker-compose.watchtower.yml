@@ -1,0 +1,17 @@
+# 선택: Watchtower가 주기적으로 Hub의 latest를 pull하고 컨테이너를 재시작합니다.
+# 사용법: docker compose -f docker-compose.yml -f docker-compose.watchtower.yml up -d
+# GitHub → Docker Hub push 이후 EC2는 SSH 없이(인바운드 불필요) 자동 갱신 가능.
+
+services:
+  watchtower:
+    image: containrrr/watchtower
+    container_name: inventory-watchtower
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_POLL_INTERVAL=300
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_INCLUDE_STOPPED=false
+
