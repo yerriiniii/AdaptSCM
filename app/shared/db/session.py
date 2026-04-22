@@ -42,6 +42,62 @@ def _engine_connect_kwargs(database_url: str) -> dict:
     return {"connect_args": {"connect_timeout": sec}}
 
 
+def _is_likely_pg_statement_timeout_cancel(exc: BaseException) -> bool:
+    s = str(exc).lower()
+    if "statement timeout" in s or "querycanceled" in s:
+        return True
+    c = exc.__cause__
+    if c is not None and c is not exc:
+        return _is_likely_pg_statement_timeout_cancel(c)
+    return False
+
+
+def _ensure_uploaded_files_country_type_check_postgresql(engine: Engine, existing_tables: set[str]) -> None:
+    """SHIPPING용 country_type=SHIPMENT CHECK. 트랜잭션이 길면 SET LOCAL이 소용없는 경우가 있어 별도 autocommit 세션에서 실행."""
+    if engine.dialect.name != "postgresql" or "uploaded_files" not in existing_tables:
+        return
+    try:
+        with engine.connect() as conn:
+            autocomm = conn.execution_options(isolation_level="AUTOCOMMIT")
+            try:
+                stmt_s = int(os.getenv("PG_UPLOADED_FILES_CHECK_MIGRATION_STATEMENT_TIMEOUT_SEC", "0"))
+            except ValueError:
+                stmt_s = 0
+            if stmt_s > 0:
+                autocomm.execute(text(f"SET statement_timeout TO '{stmt_s}s'"))
+            else:
+                autocomm.execute(text("SET statement_timeout TO 0"))
+            autocomm.execute(
+                text('ALTER TABLE uploaded_files DROP CONSTRAINT IF EXISTS "uploaded_files_country_type_check"')
+            )
+            autocomm.execute(
+                text(
+                    'ALTER TABLE uploaded_files ADD CONSTRAINT "uploaded_files_country_type_check" '
+                    "CHECK (country_type IN ('KR', 'OVERSEAS', 'SHIPMENT'))"
+                )
+            )
+    except OperationalError as exc:
+        if not _is_likely_pg_statement_timeout_cancel(exc):
+            raise
+        strict = os.getenv("PG_FAIL_ON_UPLOADED_FILES_CHECK_MIGRATION", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if strict:
+            raise
+        _log.warning(
+            "uploaded_files country_type CHECK 마이그레이션이 취소됨(타임아웃/호스트 제한 등). "
+            "앱은 기동하지만 SHIPMENT 업로드가 CHECK 때문에 실패할 수 있습니다. "
+            "Supabase SQL에서 수동 적용: "
+            "ALTER TABLE uploaded_files DROP CONSTRAINT IF EXISTS uploaded_files_country_type_check; "
+            "ALTER TABLE uploaded_files ADD CONSTRAINT uploaded_files_country_type_check "
+            "CHECK (country_type IN ('KR', 'OVERSEAS', 'SHIPMENT'));",
+            exc_info=exc,
+        )
+    return
+
+
 def _ensure_inventory_columns(engine: Engine) -> None:
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())
@@ -262,17 +318,7 @@ def _ensure_inventory_columns(engine: Engine) -> None:
                             },
                         )
 
-        if engine.dialect.name == "postgresql" and "uploaded_files" in existing_tables:
-            # 출고 파일은 country_type=SHIPMENT — 기존 DB는 KR/OVERSEAS 만 허용하는 CHECK 가 있을 수 있음
-            connection.execute(
-                text('ALTER TABLE uploaded_files DROP CONSTRAINT IF EXISTS "uploaded_files_country_type_check"')
-            )
-            connection.execute(
-                text(
-                    'ALTER TABLE uploaded_files ADD CONSTRAINT "uploaded_files_country_type_check" '
-                    "CHECK (country_type IN ('KR', 'OVERSEAS', 'SHIPMENT'))"
-                )
-            )
+    _ensure_uploaded_files_country_type_check_postgresql(engine, existing_tables)
 
 
 def is_database_configured() -> bool:
