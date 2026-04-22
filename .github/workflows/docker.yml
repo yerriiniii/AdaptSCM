@@ -31,11 +31,8 @@ jobs:
 
       - name: Build & Push Frontend
         run: |
+          # 비어 있으면 동일 출처(https://도메인/api) — HTTPS 배포 시 EC2 http URL을 넣으면 혼합 콘텐츠로 API 호출이 막힙니다.
           API_URL="${{ vars.VITE_API_BASE_URL }}"
-          if [ -z "$API_URL" ]; then
-            echo "::error title=Missing VITE_API_BASE_URL::Repository variable VITE_API_BASE_URL is not set. GitHub → Settings → Secrets and variables → Actions → Variables. Example: http://ec2-xx-xx-xx.ap-northeast-2.compute.amazonaws.com:8000"
-            exit 1
-          fi
           docker build -f frontend/Dockerfile \
             --build-arg VITE_API_BASE_URL="$API_URL" \
             -t ${{ secrets.DOCKER_USERNAME }}/inventory-frontend:latest ./frontend

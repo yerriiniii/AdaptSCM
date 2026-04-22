@@ -14,7 +14,9 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+// 항상 동일 출처 기준 (/api)
+const API_BASE = "";
+
 /** 발주 목록 GET이 응답 없이 멈출 때 UI가 「불러오는 중」에 고정되지 않도록 */
 const PURCHASE_ORDERS_LIST_TIMEOUT_MS = 45_000;
 /** 한국 재고 `.tableTopScroll`: 높이 14px + 테두리로 보통 offsetHeight ≈16, 아래 `margin-bottom` 6px */
@@ -1419,10 +1421,16 @@ function formatPersistedLoadError(err, apiBase) {
   const message = String(err?.message || "");
 
   if (code === "ERR_NETWORK" || message === "Network Error") {
+    const baseHint =
+      apiBase != null && String(apiBase).trim() !== ""
+        ? apiBase
+        : typeof window !== "undefined"
+          ? `${window.location.origin} (동일 출처 /api/...)`
+          : "동일 출처 (/api/...)";
     return [
       "백엔드 API에 연결할 수 없습니다.",
-      `요청 기준 URL: ${apiBase}`,
-      "백엔드(uvicorn) 실행 여부, VITE_API_BASE_URL, 방화벽·VPN을 확인하세요.",
+      `요청 기준 URL: ${baseHint}`,
+      "Nginx에 /api/ 프록시·uvicorn(8000) 실행, 또는 오래된 프론트 번들이면 재빌드·재배포를 확인하세요.",
     ].join("\n");
   }
 
