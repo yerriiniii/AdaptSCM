@@ -2,9 +2,9 @@
 
 ### 1) 백엔드 (FastAPI)
 
-프로젝트 루트에서:
+`cd backend` 후:
 
-`py -3 -m uvicorn backend.main:app --reload --port 8000`
+`py -3 -m uvicorn main:app --reload --port 8000`
 
 정상 실행 확인:
 
@@ -26,12 +26,14 @@
 
 `http://localhost:5173`
 
-### 3) 주요 API
+### 3) 주요 API (접두사 `/api/inventory`)
 
-- `GET /api/reorder/template` : 엑셀 템플릿 다운로드
-- `POST /api/reorder/plan` : 발주 추천(JSON)
-- `POST /api/reorder/plan.xlsx` : 발주 추천 엑셀 다운로드
-- `POST /api/inventory/aggregate` : 일자별 재고 파일 통합/피벗
+- `GET /view` : 저장된 일자·국가별 뷰
+- `POST /aggregate` : 업로드 엑셀 집계
+- `POST /shipment/aggregate` : 출고·파일 집계
+- `GET /files` : 업로드 파일 목록
+- `GET /purchase-orders` : 발주 목록
+- (기타) SKU 매핑, S3 직접 업로드, 입고·발주 CRUD 엔드포인트
 
 ## 배포 메모
 
@@ -73,9 +75,9 @@
 
 ### 4) 백엔드 실행
 
-프로젝트 루트에서:
+`cd backend` 후:
 
-`py -3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000`
+`py -3 -m uvicorn main:app --host 0.0.0.0 --port 8000`
 
 운영에서는 `systemd`로 상시 실행하는 것을 권장합니다.
 

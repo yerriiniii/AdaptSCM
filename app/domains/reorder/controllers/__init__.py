@@ -1,2 +1,0 @@
-"""Controllers for reorder domain."""
-

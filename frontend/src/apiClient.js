@@ -20,7 +20,20 @@ export function clearAccessToken() {
   setAccessToken(null);
 }
 
+function isPresignedS3Url(url) {
+  if (!url || typeof url !== "string") return false;
+  // Presigned PUT: 서명이 쿼리에 있음. JWT Authorization 헤더를 넣으면 S3가 400 InvalidArgument 반환
+  return url.includes("amazonaws.com") || url.includes("X-Amz-Algorithm=");
+}
+
 axios.interceptors.request.use((config) => {
+  const url = String(config.url || "");
+  if (isPresignedS3Url(url)) {
+    if (config.headers) {
+      delete config.headers.Authorization;
+    }
+    return config;
+  }
   const t = getAccessToken();
   if (t) {
     config.headers = config.headers || {};

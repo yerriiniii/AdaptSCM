@@ -1,2 +1,0 @@
-"""Reorder domain package."""
-

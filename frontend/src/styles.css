@@ -65,6 +65,67 @@ body {
   gap: 12px;
 }
 
+.heroHeadDash {
+  position: relative;
+  display: block;
+  min-height: 0;
+  padding: 0;
+}
+
+.heroHeadDash .heroTitle {
+  margin: 0;
+  padding-top: 2px;
+  padding-right: min(10rem, 32vw);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (min-width: 700px) {
+  .heroHeadDash .heroTitle {
+    padding-right: 7.75rem;
+  }
+}
+
+.heroHeadDash .heroHeadAccount {
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  width: 8.5rem;
+  max-width: 100%;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+}
+
+/* 로그인 화면 등(계정 열 없음) */
+.heroHead:not(.heroHeadDash) .heroTitle {
+  margin: 0;
+}
+
+.heroHeadAccountBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+.heroHeadAccountBtn .tabIcon {
+  flex-shrink: 0;
+}
+
 .heroTitle {
   margin: 0;
   font-size: 28px;
@@ -78,6 +139,14 @@ body {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+/* 안내문·업로드·통합·내보내기: 기본(36px) 대비 +2px */
+.heroActions > button.primary,
+.heroActions > button.ghost,
+.heroActions > button.cautionBtn.heroActionCautionShaped {
+  height: 38px;
+  min-height: 38px;
 }
 
 .topbar {
@@ -128,6 +197,18 @@ body {
 
 .cautionBtn:hover {
   background: #ffedef;
+}
+
+/* 히어로 액션 행: 파일 업로드(.primary) 등과 동일 높이·글자 크기 — 색만 caution */
+.cautionBtn.heroActionCautionShaped {
+  min-height: 36px;
+  border-radius: 8px;
+  border: 1px solid #f2c8cf;
+  background: #fff5f6;
+  color: #c24157;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0 10px;
 }
 
 .tab {
@@ -3294,14 +3375,22 @@ th {
   margin-top: 14px;
 }
 
+@media (max-width: 700px) {
+  .heroHeadDash .heroTitle {
+    padding-right: 0;
+  }
+
+  .heroHeadDash .heroHeadAccount {
+    position: static;
+    margin: 6px 0 0;
+    margin-left: auto;
+    width: min(8.5rem, 100%);
+  }
+}
+
 @media (max-width: 1000px) {
   .heroTitle {
     font-size: 24px;
-  }
-
-  .heroHead {
-    flex-direction: column;
-    align-items: flex-start;
   }
 
   .kpiRow {
@@ -4995,5 +5084,934 @@ th {
   min-height: 38px;
   padding: 0 14px;
   font-size: 13px;
+}
+
+/* 로그인·회원가입 (AuthGate) — 메인 토큰 + 가운데·대형 */
+.authGatePage {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px 48px;
+  box-sizing: border-box;
+}
+
+.authGateStack {
+  width: 100%;
+  max-width: 580px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.authGateStack .headerArea {
+  padding: 0 0 4px;
+  width: 100%;
+}
+
+.authGateStack .heroHead {
+  justify-content: center;
+}
+
+.authGateHeroTitle {
+  font-size: calc(clamp(1.55rem, 4.2vw, 2.1rem) - 2px);
+  font-weight: 650;
+  color: #1f2937;
+  line-height: 1.12;
+}
+
+.authGateSub {
+  margin: 18px auto 0;
+  font-size: 1.08rem;
+  line-height: 1.55;
+  color: #5d6574;
+  max-width: 40rem;
+  text-align: center;
+}
+
+.authGatePane {
+  width: 100%;
+  margin-top: 24px;
+}
+
+.authGateCard {
+  text-align: left;
+  width: 100%;
+  margin-top: 0 !important;
+  padding: 32px 36px 36px !important;
+  border-radius: 16px;
+}
+
+.authGateCard .tabs {
+  display: flex;
+  justify-content: center;
+  gap: 2.25rem;
+  margin-bottom: 22px;
+}
+
+.authGatePage .authGateCard .tab.tabWithIcon {
+  font-size: 1.1rem;
+  font-weight: 600;
+  height: 44px;
+  padding: 0 10px;
+  gap: 8px;
+}
+
+.authGatePage .authGateCard .tabWithIcon .tabIcon {
+  width: 24px;
+  height: 24px;
+}
+
+.authGateForm {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: none;
+  width: 100%;
+}
+
+.authGateField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.authGateForm .authGateRegReemailLink {
+  align-self: flex-start;
+  margin: 0 0 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #5d6574;
+  line-height: 1.4;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.authGateForm .authGateRegReemailLink:hover {
+  color: #1f2937;
+  background: none;
+  border: 0;
+}
+
+.authGateForm .authGateRegReemailLink:focus-visible {
+  outline: 2px solid #cbd5e1;
+  outline-offset: 2px;
+}
+
+/* 링크 margin-bottom(20px)만 적용: 폼 gap(18px)과 겹쳐 보이는 여백 제거 */
+.authGateForm .authGateField:has(> .authGateRegReemailLink) + .authGateField {
+  margin-top: -18px;
+}
+
+.authGateFieldLabel {
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.authGateFieldLabelWithCheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.authGateFieldCheckIcon {
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+.authGatePage .authGateForm input {
+  height: 52px;
+  font-size: 1.08rem;
+  border-radius: 10px;
+  padding: 0 16px;
+  border: 1px solid #e3e8f0;
+}
+
+.authGateHeroText {
+  text-align: center;
+  max-width: min(100%, 56rem);
+  margin: 0 auto;
+}
+
+.authGateStepFlow {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em 0.55em;
+  margin-top: 0.4rem;
+  margin-bottom: 0;
+  line-height: 1.5;
+  font-size: 0.98rem;
+  color: #4b5563;
+  text-align: center;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+  box-sizing: border-box;
+  scrollbar-gutter: stable;
+}
+
+.authGateStepFlow > strong,
+.authGateStepFlow .authGateFlowArrow {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.authGateStepFlow .authGateFlowArrow {
+  color: #111827;
+  font-weight: 900;
+  font-size: 1.12em;
+  line-height: 1;
+  user-select: none;
+}
+
+.authGatePasswordRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.authGatePage .authGateForm .authGatePasswordRow input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  box-sizing: border-box;
+}
+
+.authGatePasswordToggle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  min-width: 48px;
+  height: 52px;
+  padding: 0;
+  border: 1px solid #e3e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+  line-height: 0;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.authGatePasswordToggle:hover {
+  background: #f1f5f9;
+  color: #334155;
+  border-color: #cbd5e1;
+}
+
+.authGateMsgOk {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: #0b8a5d;
+  text-align: center;
+  white-space: pre-line;
+}
+
+.authGateMsgErr {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: #b91c1c;
+  text-align: center;
+  white-space: pre-line;
+}
+
+.authGateLinkCountdown {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: #0f766e;
+  text-align: center;
+}
+
+.authGateLinkCountdownExpired {
+  color: #b45309;
+}
+
+.authGateLinkCountdownClock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.authGateDevNote {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #6b7280;
+  text-align: center;
+}
+
+.authGateDevNote code {
+  font-size: 0.82rem;
+  background: #f4f6fa;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #e5e9f0;
+}
+
+.authGatePage button.primary.authGateSubmit {
+  width: 100%;
+  height: 52px;
+  min-height: 52px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-radius: 10px;
+  margin-top: 6px;
+  box-sizing: border-box;
+}
+
+.authGateRegPwHint {
+  margin: -4px 0;
+  text-align: left;
+}
+
+.authGateRegPwHintRule,
+.authGateRegPwHintChars {
+  margin: 0;
+  line-height: 1.3;
+  color: #5d6574;
+}
+
+/* 기존 가입 정책 ul(.authGatePolicyList 0.95rem) 대비 1px 축소 */
+.authGateRegPwHintRule {
+  font-size: calc(0.95rem - 1px);
+}
+
+.authGateRegPwHintChars {
+  margin-top: 1px;
+  font-size: calc(0.8rem - 1px);
+  line-height: 1.25;
+  word-break: break-all;
+  color: #64748b;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+}
+
+.authGatePolicyList {
+  margin: 0 0 16px;
+  padding-left: 1.2rem;
+  text-align: left;
+  color: #5d6574;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  max-width: 100%;
+}
+
+.authGatePolicySpecials {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: #64748b;
+  word-break: break-all;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+}
+
+.authGateResendRow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.authGateResendBtn {
+  height: 40px !important;
+  min-height: 40px;
+  font-size: 0.95rem;
+  border-radius: 8px;
+  padding: 0 16px;
+}
+
+.authGateResendHint {
+  font-size: 0.82rem;
+  color: #6b7280;
+  line-height: 1.4;
+  text-align: center;
+  max-width: 32rem;
+}
+
+.authGateCard.authGateVerifyBanner {
+  margin-top: 32px;
+  margin-bottom: 14px;
+  margin-left: auto;
+  margin-right: auto;
+  width: fit-content;
+  max-width: min(100%, 40rem);
+  padding: 10px 14px !important;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border-width: 1px;
+  border-style: solid;
+}
+
+.authGateVerifyBanner p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  white-space: pre-line;
+}
+
+.authGateReadonlyEmail {
+  background: #f4f6fa;
+  color: #374151;
+  cursor: default;
+}
+
+.authGateManualUrl {
+  width: 100%;
+  text-align: left;
+  margin-top: 4px;
+}
+
+.authGateManualUrlRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  align-items: center;
+}
+
+.authGateManualUrlInput {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
+/* —— 마이페이지: .dashboard / .tableCard / .heroTitle 와 동일 톤 —— */
+.mypageOverlayShell {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  background: #ffffff;
+  padding: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.mypagePageShell {
+  width: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.mypageDashboard {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 18px 28px;
+  box-sizing: border-box;
+}
+
+.mypageHeaderArea {
+  padding-top: 48px;
+  padding-bottom: 12px;
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
+.mypageHeroTop {
+  display: block;
+  text-align: left;
+}
+
+.mypageHeroRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+}
+
+.mypageHeroRowStart {
+  justify-self: start;
+  min-width: 0;
+}
+
+.mypageHeroRowEnd {
+  min-width: 0;
+}
+
+.mypageMainTitle {
+  margin: 0;
+  grid-column: 2;
+  justify-self: center;
+  text-align: center;
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+}
+
+.cautionBtn.mypageBackBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  min-width: 0;
+  flex-shrink: 0;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 8px;
+}
+
+.cautionBtn.mypageBackBtn:hover {
+  background: #ffedef;
+}
+
+.mypageContent {
+  display: block;
+  margin-top: 0;
+  padding-top: 52px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.mypageContent:has(.mypageContentGrid:has(> :only-child)) {
+  display: flex;
+  justify-content: center;
+}
+
+.mypageContent:has(.mypageContentGrid:has(> :only-child)) .mypageContentGrid {
+  flex: 0 1 720px;
+}
+
+.mypageContentGrid {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+.mypageContentGrid:has(> :only-child) {
+  max-width: 720px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (min-width: 900px) {
+  .mypageContentGrid:has(.mypagePanelAdmin) {
+    max-width: 1000px;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.78fr);
+    gap: 20px;
+  }
+}
+
+.mypagePanel {
+  margin-top: 0;
+  padding: 18px 20px 20px;
+  text-align: left;
+  min-width: 0;
+}
+
+.mypageAccountPanel {
+  width: 100%;
+}
+
+.mypagePanelHeadAdmin {
+  margin: 0 0 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e5e9f0;
+}
+
+.mypagePanelKicker {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.mypagePanelKickerAdmin {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mypageKickerIcon {
+  flex-shrink: 0;
+  color: #0b8a5d;
+}
+
+.mypagePanelLead {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #5d6574;
+  max-width: 40rem;
+}
+
+.mypageSubSection {
+  margin: 0;
+}
+
+.mypageBlockTitle {
+  margin: 0 0 14px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mypageProfileTitleRow .mypageBlockTitle {
+  margin: 0;
+}
+
+.mypageSubSectionForm {
+  margin-top: 2px;
+}
+
+.mypageSubSectionForm > .mypageBlockTitle {
+  margin-bottom: 18px;
+}
+
+.mypageProfileTitleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px 10px;
+  margin-bottom: 18px;
+}
+
+.mypageProfileTitleRow .mypageBlockTitle {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.mypageProfileTitleRow .mypageAdminBadge {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.mypageSubSectionIcon {
+  color: #0b8a5d;
+  flex-shrink: 0;
+}
+
+.mypageDl {
+  margin: 0;
+}
+
+.mypageDlRow {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 4px 16px;
+  align-items: start;
+  padding: 12px 14px;
+  background: #f8fafd;
+  border: 1px solid #e5e9f0;
+  border-radius: 10px;
+}
+
+.mypageDlRow dt {
+  margin: 0;
+  padding-top: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #5d6574;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.mypageDlRow dt.mypageEmailDt {
+  font-size: calc(1.02rem - 1px);
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.mypageDlRow dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.mypageAdminBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #0b8a5d;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  padding: 4px 9px;
+  border-radius: 999px;
+  line-height: 1.2;
+}
+
+.mypageSectionRule {
+  display: block;
+  height: 0;
+  margin: 24px 0;
+  border: 0;
+  border-top: 1px solid #e5e9f0;
+}
+
+.mypagePwForm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: none;
+  width: 100%;
+}
+
+.mypageFormField {
+  gap: 8px;
+}
+
+.mypagePageShell .mypageFieldLabel.authGateFieldLabel {
+  font-size: calc(1.02rem - 1px);
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.mypageHint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8a919d;
+}
+
+.mypageHint:has(+ .mypageHint.mypageHintSpecials) {
+  line-height: 1.15;
+  margin: 0;
+  padding: 0;
+}
+
+.mypageHint + .mypageHint.mypageHintSpecials {
+  margin-top: -0.25em;
+  line-height: 1.15;
+}
+
+.mypageHintSpecials {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.15;
+  color: #8a919d;
+  font-family: inherit;
+}
+
+.mypageHintSpecialsLabel {
+  font: inherit;
+  color: inherit;
+  font-weight: 400;
+}
+
+.mypageHintSpecialsChars {
+  word-break: break-all;
+  font-size: 11px;
+  line-height: 1.15;
+  color: #64748b;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+}
+
+.mypageFormMsgOk,
+.mypageFormMsgErr {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.mypageFormMsgOk {
+  color: #166534;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.mypageFormMsgErr {
+  color: #9f1239;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+}
+
+.mypageFormActions {
+  margin-top: 6px;
+}
+
+.mypagePrimaryBtn {
+  min-width: 128px;
+  height: 32px;
+  min-height: 32px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 0 12px;
+  line-height: 1.2;
+}
+
+.mypageBannerErr {
+  margin: 8px 0 24px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #fff1f2;
+  color: #9f1239;
+  border: 1px solid #fecdd3;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.mypageEmpty {
+  margin: 8px 0 0;
+  padding: 20px 16px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #5d6574;
+  background: #f8fafc;
+  border: 1px dashed #d1d9e3;
+  border-radius: 10px;
+}
+
+.mypagePanelAdmin {
+  padding: 16px 14px 18px;
+}
+
+.mypagePanelAdmin .mypagePanelKicker {
+  font-size: 17px;
+  margin: 0 0 2px;
+}
+
+.mypagePanelAdmin .mypagePanelLead {
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 4px 0 0;
+  max-width: none;
+}
+
+.mypageTableWrap {
+  margin-top: 4px;
+}
+
+.mypageTableWrap table.mypageDataTable {
+  min-width: 0;
+  width: 100%;
+  table-layout: auto;
+  border-collapse: collapse;
+}
+
+.mypageDataTable th,
+.mypageDataTable td {
+  white-space: normal;
+  vertical-align: middle;
+  font-size: 12px;
+  padding: 8px 8px;
+  color: #374151;
+}
+
+.mypageDataTable th {
+  color: #5d6574;
+  font-weight: 700;
+  background: #f8fafd;
+}
+
+.mypageDataTable .mypageColActions {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.mypageCellEmail {
+  font-weight: 600;
+  color: #1f2937;
+  max-width: 28rem;
+  word-break: break-all;
+}
+
+.mypageCellActions {
+  text-align: right;
+  vertical-align: middle;
+}
+
+.mypageRowActions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.mypageRowActions .primary,
+.mypageRowActions .ghost {
+  min-width: 3.5rem;
+  height: 30px;
+  min-height: 30px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 10px;
+  border-radius: 8px;
+}
+
+.mypagePageShell .authGatePasswordRow input,
+.mypagePageShell input[type="text"],
+.mypagePageShell input[type="email"],
+.mypagePageShell input[type="password"] {
+  height: 40px;
+  font-size: 15px;
+  border-radius: 8px;
+  padding: 0 12px;
+  border: 1px solid #e3e8f0;
+  box-sizing: border-box;
+}
+
+.mypagePageShell .authGatePasswordRow input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.mypagePageShell .authGatePasswordToggle {
+  height: 40px;
+  min-width: 40px;
+  width: 40px;
+}
+
+.mypagePageShell .authGatePasswordToggle svg {
+  width: 18px;
+  height: 18px;
 }
 

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
+import { API_BASE, clearAccessToken } from "./apiClient";
 import {
   Barcode,
   ClipboardList,
@@ -10,12 +11,12 @@ import {
   Globe2,
   Home,
   Link2,
+  LogOut,
   Truck,
+  UserRound,
 } from "lucide-react";
+import MyPage from "./MyPage.jsx";
 import * as XLSX from "xlsx";
-
-// 항상 동일 출처 기준 (/api)
-const API_BASE = "";
 
 /** 발주 목록 GET이 응답 없이 멈출 때 UI가 「불러오는 중」에 고정되지 않도록 */
 const PURCHASE_ORDERS_LIST_TIMEOUT_MS = 45_000;
@@ -1470,6 +1471,51 @@ function formatUnknownSkusUserMessage(detail) {
   return blocks.join("\n");
 }
 
+/** 재고 통합: S3 직접 PUT·네트워크 오류 등으로 `response.data.detail`이 없을 때 메시지 보강 */
+function formatInventoryAggregateFailureMessage(err, fallback = "재고 통합 중 오류") {
+  const res = err?.response;
+  const detail = res?.data?.detail;
+
+  if (Array.isArray(detail)) {
+    const lines = detail.map((item) =>
+      typeof item === "string" ? item : typeof item?.msg === "string" ? item.msg : JSON.stringify(item),
+    );
+    const joined = lines.join("\n").trim();
+    if (joined) return joined;
+  }
+  if (typeof detail === "string" && detail.trim()) return detail.trim();
+  if (detail != null && typeof detail === "object") {
+    const m = String(detail.message || "").trim();
+    if (m) return m;
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const status = res?.status;
+  const raw = res?.data;
+  if (typeof raw === "string" && raw.trim()) {
+    const snippet = raw.replace(/\s+/g, " ").trim().slice(0, 280);
+    return `응답${status != null ? ` HTTP ${status}` : ""}: ${snippet}`;
+  }
+
+  const msg = String(err?.message || "").trim();
+  const parts = [];
+  if (status != null) parts.push(`HTTP ${status}`);
+  if (msg) parts.push(msg);
+  if (parts.length) {
+    let out = parts.join(" — ");
+    if (/network error/i.test(msg) || res == null) {
+      out +=
+        "\n\n· 브라우저가 S3에 직접 업로드(PUT)합니다. S3 버킷 CORS에 이 페이지 출처(예: http://localhost:5173, 배포 도메인)와 PUT 허용을 넣었는지 확인하세요.";
+    }
+    return out;
+  }
+  return fallback;
+}
+
 function buildTrendData(row, dateColumns = []) {
   if (!row || !dateColumns.length) return null;
 
@@ -1672,6 +1718,7 @@ export default function App() {
   const [selectedOverseasTrendRowKey, setSelectedOverseasTrendRowKey] = useState("");
   const [compareSelectedDate, setCompareSelectedDate] = useState("");
   const [showCautionModal, setShowCautionModal] = useState(false);
+  const [mypageView, setMypageView] = useState(false);
   const [settingsMutating, setSettingsMutating] = useState(false);
   const [mappingSearchKeyword, setMappingSearchKeyword] = useState("");
   const [mappingRows, setMappingRows] = useState([]);
@@ -3311,7 +3358,7 @@ export default function App() {
         setInventoryError(unknownSkusMsg);
         setScopeErrorCache((prev) => ({ ...prev, [scopeKey]: unknownSkusMsg }));
       } else {
-        const msg = Array.isArray(detail) ? detail.join("\n") : detail || "재고 통합 중 오류";
+        const msg = formatInventoryAggregateFailureMessage(err);
         setInventoryError(msg);
         setScopeErrorCache((prev) => ({ ...prev, [scopeKey]: msg }));
       }
@@ -4674,21 +4721,53 @@ export default function App() {
 
   return (
     <div className="pageSplit">
-    <div className="dashboard">
+    {mypageView && (
+      <div className="mypageOverlayShell">
+        <MyPage onBack={() => { setMypageView(false); }} />
+      </div>
+    )}
+    <div
+      className="dashboard"
+      style={mypageView ? { display: "none" } : undefined}
+      aria-hidden={mypageView ? "true" : undefined}
+    >
       <div className="dashboardHeroBand">
         <div className="headerArea">
         <section className="hero">
-          <div className="heroHead">
+          <div className="heroHead heroHeadDash">
             <h1 className="heroTitle">재고 분석 대시보드</h1>
+            <div className="heroHeadAccount">
+              <button
+                type="button"
+                className="ghost heroHeadAccountBtn"
+                onClick={() => { setMypageView(true); }}
+                title="마이페이지"
+              >
+                <UserRound className="tabIcon" size={18} strokeWidth={2} aria-hidden />
+                마이페이지
+              </button>
+              <button
+                type="button"
+                className="ghost heroHeadAccountBtn"
+                title="로그아웃 후 로그인 화면으로 이동합니다."
+                onClick={() => {
+                  clearAccessToken();
+                  window.location.reload();
+                }}
+              >
+                <LogOut className="tabIcon" size={18} strokeWidth={2} aria-hidden />
+                로그아웃
+              </button>
+            </div>
+          </div>
+          <div className="heroActions">
             <button
               type="button"
-              className="cautionBtn"
+              className="cautionBtn heroActionCautionShaped"
               onClick={() => setShowCautionModal(true)}
             >
               안내문
             </button>
-          </div>
-          <div className="heroActions">
             <button
               className="primary"
               onClick={onClickUpload}
