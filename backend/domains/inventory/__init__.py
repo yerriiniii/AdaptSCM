@@ -1,0 +1,2 @@
+"""Inventory domain package."""
+

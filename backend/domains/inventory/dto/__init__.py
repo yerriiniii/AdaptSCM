@@ -1,0 +1,2 @@
+"""DTOs for inventory domain."""
+
