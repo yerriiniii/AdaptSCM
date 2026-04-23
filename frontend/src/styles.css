@@ -5529,7 +5529,7 @@ th {
 
 .mypageHeaderArea {
   padding-top: 48px;
-  padding-bottom: 12px;
+  padding-bottom: 6px;
   margin-bottom: 0;
   border-bottom: none;
 }
@@ -5539,32 +5539,28 @@ th {
   text-align: left;
 }
 
-.mypageHeroRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
+/* 제목(상단)과 「대시보드로」행을 세로로 분리 — 제목 위치는 이전 1행 레이아웃과 맞게 유지, 버튼만 아래로 */
+.mypageHeroStack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   width: 100%;
-  min-height: 40px;
   box-sizing: border-box;
 }
 
-.mypageHeroRowStart {
-  justify-self: start;
-  min-width: 0;
-}
-
-.mypageHeroRowEnd {
-  min-width: 0;
-}
-
-.mypageMainTitle {
+.mypageHeroStack .mypageMainTitle {
   margin: 0;
-  grid-column: 2;
-  justify-self: center;
   text-align: center;
   min-width: 0;
-  width: max-content;
+  width: 100%;
   max-width: 100%;
+  box-sizing: border-box;
+}
+
+.mypageBackRow {
+  margin-top: 40px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .cautionBtn.mypageBackBtn {
@@ -5590,41 +5586,45 @@ th {
 .mypageContent {
   display: block;
   margin-top: 0;
-  padding-top: 52px;
+  padding-top: 10px;
   width: 100%;
   box-sizing: border-box;
 }
 
-.mypageContent:has(.mypageContentGrid:has(> :only-child)) {
-  display: flex;
-  justify-content: center;
+/* 히어로(대시보드로) + 본문 그리드가 동일한 좌·우 여백·max-width를 쓰도록 MyPage에서 클래스 부여 */
+.mypageMainWidth--single {
+  width: 100%;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
 }
 
-.mypageContent:has(.mypageContentGrid:has(> :only-child)) .mypageContentGrid {
-  flex: 0 1 720px;
+.mypageMainWidth--admin {
+  width: 100%;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+
+@media (min-width: 900px) {
+  .mypageMainWidth--admin {
+    max-width: 1000px;
+  }
 }
 
 .mypageContentGrid {
   display: grid;
   gap: 18px;
   width: 100%;
-  max-width: 100%;
-  margin: 0 auto;
   box-sizing: border-box;
   grid-template-columns: 1fr;
   align-items: start;
 }
 
-.mypageContentGrid:has(> :only-child) {
-  max-width: 720px;
-  width: 100%;
-  margin-left: auto;
-  margin-right: auto;
-}
-
 @media (min-width: 900px) {
-  .mypageContentGrid:has(.mypagePanelAdmin) {
-    max-width: 1000px;
+  .mypageContentGrid.mypageMainWidth--admin {
     grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.78fr);
     gap: 20px;
   }
@@ -5703,13 +5703,22 @@ th {
   margin-bottom: 18px;
 }
 
+/* 「프로필」제목(·탈퇴) 행 ↔ 그 아래 이메일 박스(.mypageDl) 사이 — 이 margin-bottom */
 .mypageProfileTitleRow {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+}
+
+.mypageProfileTitleRowStart {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px 10px;
-  margin-bottom: 18px;
+  min-width: 0;
 }
 
 .mypageProfileTitleRow .mypageBlockTitle {
@@ -5720,6 +5729,68 @@ th {
 .mypageProfileTitleRow .mypageAdminBadge {
   margin: 0;
   flex-shrink: 0;
+}
+
+.mypageWithdrawBtn {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 2px 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #b91c1c;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.mypageWithdrawBtn:hover {
+  color: #991b1b;
+  background: transparent;
+}
+
+.mypageWithdrawBtn:focus-visible {
+  outline: 2px solid #b91c1c;
+  outline-offset: 2px;
+}
+
+.mypageWithdrawModal {
+  width: min(420px, calc(100vw - 40px));
+  max-height: none;
+}
+
+.mypageWithdrawModalHeader {
+  margin-bottom: 8px;
+}
+
+.mypageWithdrawModalLead {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.mypageWithdrawModal .mypageWithdrawErr {
+  margin-top: 0;
+}
+
+.mypageWithdrawModalActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 10px;
+  margin-top: 16px;
+}
+
+.mypageWithdrawConfirmBtn {
+  background: #b91c1c;
+  border: 0;
+}
+
+.mypageWithdrawConfirmBtn:hover:not(:disabled) {
+  background: #991b1b;
 }
 
 .mypageSubSectionIcon {
@@ -5781,10 +5852,11 @@ th {
   line-height: 1.2;
 }
 
+/* 프로필 ↔ 비밀번호 구분선: 위·아래 공백 = 이 margin (살짝만 다르게 하려면 margin-top / margin-bottom 분리) */
 .mypageSectionRule {
   display: block;
   height: 0;
-  margin: 24px 0;
+  margin: 30px 0;
   border: 0;
   border-top: 1px solid #e5e9f0;
 }

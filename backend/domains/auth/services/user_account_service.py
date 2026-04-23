@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from domains.auth.models.user_models import UserAccount, UserAccountStatus
@@ -93,3 +93,24 @@ def reject_user(db: Session, user_id: UUID, _actor: UserAccount) -> UserAccount 
     db.commit()
     db.refresh(u)
     return u
+
+
+def count_other_active_admins(db: Session, exclude_id: UUID) -> int:
+    q = (
+        select(func.count())
+        .select_from(UserAccount)
+        .where(
+            UserAccount.is_admin.is_(True),
+            UserAccount.status == UserAccountStatus.ACTIVE.value,
+            UserAccount.id != exclude_id,
+        )
+    )
+    return int(db.execute(q).scalar_one() or 0)
+
+
+def delete_own_account(db: Session, user: UserAccount) -> None:
+    """로그인한 사용자 본인 계정 삭제. 유일한 활성 관리자는 탈퇴 불가."""
+    if user.is_admin and count_other_active_admins(db, user.id) < 1:
+        raise ValueError("SOLE_ACTIVE_ADMIN")
+    db.delete(user)
+    db.commit()

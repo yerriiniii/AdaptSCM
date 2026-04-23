@@ -25,7 +25,7 @@ from domains.auth.services.signup_email_proof_service import (
     register_user_with_proof,
 )
 from domains.auth.services.signup_email_send_rate_service import count_sends_24h, is_rate_limited, log_send
-from domains.auth.services.user_account_service import change_user_password, get_user_by_email
+from domains.auth.services.user_account_service import change_user_password, delete_own_account, get_user_by_email
 from shared.db import get_db_session
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -207,3 +207,22 @@ def change_password(
             ) from exc
         raise
     return MessageResponse(message="비밀번호가 변경되었습니다. 다음 로그인부터 새 비밀번호를 사용하세요.")
+
+
+@router.delete("/me", response_model=MessageResponse)
+def delete_me(
+    db: Session = Depends(get_db_session),
+    user: UserAccount = Depends(require_active_user),
+) -> MessageResponse:
+    """회원 탈퇴(되돌릴 수 없음). 유일한 활성 관리자 계정은 삭제할 수 없습니다."""
+    try:
+        delete_own_account(db, user)
+    except ValueError as exc:
+        code = exc.args[0] if exc.args else ""
+        if code == "SOLE_ACTIVE_ADMIN":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="다른 관리자를 지정한 뒤에만 관리자 계정을 탈퇴할 수 있습니다.",
+            ) from exc
+        raise
+    return MessageResponse(message="탈퇴 처리되었습니다.")

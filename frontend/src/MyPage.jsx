@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
-import { API_BASE } from "./apiClient";
+import { API_BASE, clearAccessToken } from "./apiClient";
 import { ArrowLeft, Eye, EyeOff, KeyRound, Shield, User } from "lucide-react";
 
 /** `password_policy._PASSWORD_SPECIALS` 와 동기화(변경 시 백엔드와 같이 수정) */
@@ -38,6 +38,10 @@ export default function MyPage({ onBack }) {
   const [pwSubmitting, setPwSubmitting] = useState(false);
   const [pwMsg, setPwMsg] = useState("");
   const [pwErr, setPwErr] = useState("");
+
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
+  const [withdrawErr, setWithdrawErr] = useState("");
 
   const loadMe = useCallback(async () => {
     setMeError("");
@@ -109,6 +113,20 @@ export default function MyPage({ onBack }) {
     }
   };
 
+  const onConfirmWithdraw = async () => {
+    setWithdrawErr("");
+    setWithdrawSubmitting(true);
+    try {
+      await axios.delete(`${API_BASE}/api/auth/me`);
+      clearAccessToken();
+      window.location.reload();
+    } catch (err) {
+      setWithdrawErr(parseDetail(err));
+    } finally {
+      setWithdrawSubmitting(false);
+    }
+  };
+
   const onReject = async (userId) => {
     if (!window.confirm("이 가입 요청을 거절할까요?")) return;
     setActioningId(userId);
@@ -123,23 +141,27 @@ export default function MyPage({ onBack }) {
     }
   };
 
+  /** 프로필 패널(.mypageContentGrid)과 동일한 max-width·중앙 정렬 — 「대시보드로」 왼쪽 끝과 네모 왼쪽 끝을 맞춤 */
+  const mainWidthClass = !me || !me.is_admin ? "mypageMainWidth--single" : "mypageMainWidth--admin";
+
   return (
     <div className="mypagePageShell">
       <div className="mypageDashboard">
         <div className="dashboardHeroBand">
           <div className="headerArea mypageHeaderArea">
-            <section className="hero mypageHeroTop">
-              <div className="mypageHeroRow">
-                <div className="mypageHeroRowStart">
-                  <button type="button" className="cautionBtn mypageBackBtn" onClick={onBack}>
-                    <ArrowLeft size={16} strokeWidth={2} aria-hidden />
-                    대시보드로
-                  </button>
+            <div className={mainWidthClass}>
+              <section className="hero mypageHeroTop">
+                <div className="mypageHeroStack">
+                  <h1 className="heroTitle mypageMainTitle">마이페이지</h1>
+                  <div className="mypageBackRow">
+                    <button type="button" className="cautionBtn mypageBackBtn" onClick={onBack}>
+                      <ArrowLeft size={16} strokeWidth={2} aria-hidden />
+                      대시보드로
+                    </button>
+                  </div>
                 </div>
-                <h1 className="heroTitle mypageMainTitle">마이페이지</h1>
-                <div className="mypageHeroRowEnd" aria-hidden="true" />
-              </div>
-            </section>
+              </section>
+            </div>
           </div>
         </div>
 
@@ -151,20 +173,32 @@ export default function MyPage({ onBack }) {
 
         {me && !meError ? (
           <div className="mypageContent">
-            <div className="mypageContentGrid">
+            <div className={`mypageContentGrid ${mainWidthClass}`}>
             <section className="tableCard mypagePanel mypageAccountPanel">
               <div className="mypageSubSection">
                 <div className="mypageProfileTitleRow">
-                  <h3 className="mypageBlockTitle">
-                    <User className="mypageKickerIcon" size={18} strokeWidth={2} aria-hidden />
-                    프로필
-                  </h3>
-                  {me.is_admin ? (
-                    <span className="mypageAdminBadge" role="status">
-                      <Shield size={13} strokeWidth={2} aria-hidden />
-                      관리자
-                    </span>
-                  ) : null}
+                  <div className="mypageProfileTitleRowStart">
+                    <h3 className="mypageBlockTitle">
+                      <User className="mypageKickerIcon" size={18} strokeWidth={2} aria-hidden />
+                      프로필
+                    </h3>
+                    {me.is_admin ? (
+                      <span className="mypageAdminBadge" role="status">
+                        <Shield size={13} strokeWidth={2} aria-hidden />
+                        관리자
+                      </span>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="mypageWithdrawBtn"
+                    onClick={() => {
+                      setWithdrawErr("");
+                      setWithdrawOpen(true);
+                    }}
+                  >
+                    탈퇴하기
+                  </button>
                 </div>
                 <dl className="mypageDl">
                   <div className="mypageDlRow">
@@ -337,6 +371,55 @@ export default function MyPage({ onBack }) {
           </div>
         ) : null}
       </div>
+
+      {withdrawOpen ? (
+        <div
+          className="cautionModalBackdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mypageWithdrawDialogTitle"
+          onClick={() => { if (!withdrawSubmitting) setWithdrawOpen(false); }}
+        >
+          <div
+            className="cautionModal mypageWithdrawModal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="cautionModalHeader mypageWithdrawModalHeader">
+              <div>
+                <div className="cautionModalTitle" id="mypageWithdrawDialogTitle">
+                  회원 탈퇴
+                </div>
+                <p className="cautionModalSubtitle mypageWithdrawModalLead">
+                  탈퇴하면 계정이 삭제되며 되돌릴 수 없습니다. 계속할까요?
+                </p>
+              </div>
+            </div>
+            {withdrawErr ? (
+              <p className="mypageFormMsgErr mypageWithdrawErr" role="alert">
+                {withdrawErr}
+              </p>
+            ) : null}
+            <div className="mypageWithdrawModalActions">
+              <button
+                type="button"
+                className="ghost"
+                disabled={withdrawSubmitting}
+                onClick={() => setWithdrawOpen(false)}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="primary mypageWithdrawConfirmBtn"
+                disabled={withdrawSubmitting}
+                onClick={() => { void onConfirmWithdraw(); }}
+              >
+                {withdrawSubmitting ? "처리 중…" : "확인"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
