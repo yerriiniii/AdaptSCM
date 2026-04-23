@@ -1,4 +1,4 @@
-name: CI + CD (Build, Push, Deploy)
+name: CI + CD (Build, Push, Deploy via SSM)
 
 on:
   push:
@@ -20,7 +20,8 @@ jobs:
 
       - name: Build & Push Backend
         run: |
-          docker build -f backend/Dockerfile -t ${{ secrets.DOCKER_USERNAME }}/inventory-backend:latest .
+          docker build -f backend/Dockerfile \
+            -t ${{ secrets.DOCKER_USERNAME }}/inventory-backend:latest .
           docker push ${{ secrets.DOCKER_USERNAME }}/inventory-backend:latest
 
       - name: Build & Push Frontend
@@ -36,18 +37,21 @@ jobs:
     needs: docker
 
     steps:
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-northeast-2
 
-      - name: Deploy to EC2
+      - name: Deploy via SSM
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
-            cd ~/Inventory-System
-            docker pull yerriiniii/inventory-backend:latest
-            docker pull yerriiniii/inventory-frontend:latest
-            docker compose up -d
-          EOF
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=[
+              "cd ~/Inventory-System",
+              "docker pull yerriiniii/inventory-backend:latest",
+              "docker pull yerriiniii/inventory-frontend:latest",
+              "docker compose up -d"
+            ]'
