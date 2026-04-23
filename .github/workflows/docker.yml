@@ -10,7 +10,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -18,12 +19,18 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      # -------------------------
+      # Backend Build & Push
+      # -------------------------
       - name: Build & Push Backend
         run: |
           docker build -f backend/Dockerfile \
             -t ${{ secrets.DOCKER_USERNAME }}/inventory-backend:latest .
           docker push ${{ secrets.DOCKER_USERNAME }}/inventory-backend:latest
 
+      # -------------------------
+      # Frontend Build & Push
+      # -------------------------
       - name: Build & Push Frontend
         run: |
           API_URL="${{ vars.VITE_API_BASE_URL }}"
@@ -37,6 +44,9 @@ jobs:
     needs: docker
 
     steps:
+      # -------------------------
+      # AWS 인증
+      # -------------------------
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -44,14 +54,18 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-northeast-2
 
+      # -------------------------
+      # SSM Deploy to EC2
+      # -------------------------
       - name: Deploy via SSM
         run: |
           aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters 'commands=[
-              "cd ~/Inventory-System",
+            --region ap-northeast-2 \
+            --parameters '{"commands":[
+              "cd /home/ubuntu/Inventory-System",
               "docker pull yerriiniii/inventory-backend:latest",
               "docker pull yerriiniii/inventory-frontend:latest",
               "docker compose up -d"
-            ]'
+            ]}'
