@@ -1,7 +1,6 @@
 name: Build & Push Docker Images
 
-# develop 푸시 → 이미지 빌드 후 Docker Hub에만 push.
-# EC2 갱신은 SSH 인바운드 없이 Watchtower(docker-compose.watchtower.yml)가 Hub polling.
+# develop 푸시 → 이미지 빌드 → Docker Hub push → EC2에 SSH로 배포
 on:
   push:
     branches: [ develop ]
@@ -31,9 +30,30 @@ jobs:
 
       - name: Build & Push Frontend
         run: |
-          # 비어 있으면 동일 출처(https://도메인/api) — HTTPS 배포 시 EC2 http URL을 넣으면 혼합 콘텐츠로 API 호출이 막힙니다.
+          # 비어 있으면 동일 출처(https://도메인/api)
           API_URL="${{ vars.VITE_API_BASE_URL }}"
           docker build -f frontend/Dockerfile \
             --build-arg VITE_API_BASE_URL="$API_URL" \
             -t ${{ secrets.DOCKER_USERNAME }}/inventory-frontend:latest ./frontend
           docker push ${{ secrets.DOCKER_USERNAME }}/inventory-frontend:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: docker   # 👈 docker job 성공 후에만 실행
+
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to EC2
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            cd ~/Inventory-System
+            docker pull yerriiniii/inventory-backend:latest
+            docker pull yerriiniii/inventory-frontend:latest
+            docker compose up -d
+          EOF
