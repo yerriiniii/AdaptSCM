@@ -5624,8 +5624,9 @@ th {
 }
 
 @media (min-width: 900px) {
+  /* 프로필이 조금 더 넓고, 가입 승인은 1:1보다 좁게(옛 0.78fr 때보다만 약간 넓은 정도) */
   .mypageContentGrid.mypageMainWidth--admin {
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.78fr);
+    grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.88fr);
     gap: 20px;
   }
 }
