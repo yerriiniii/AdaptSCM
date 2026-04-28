@@ -882,11 +882,18 @@ def delete_inventory_file(db: Session, file_id: str) -> None:
 
     affected_scope = (uploaded_file.country_code, uploaded_file.base_date)
     file_domain = getattr(uploaded_file, "file_domain", None) or "inventory"
+    country_u = str(uploaded_file.country_code or "").strip().upper()
+    # 레거시: country_code만 SHIPMENT 이고 file_domain 이 기본 inventory 인 행이 있음 → 매트릭스 purge 누락 방지
+    is_shipment_cleanup = file_domain == "shipment" or country_u == "SHIPMENT"
     db.delete(uploaded_file)
     db.flush()
-    if file_domain == "shipment":
-        from domains.inventory.services.shipment_persistence_service import _rebuild_all_shipment_aggregates
+    if is_shipment_cleanup:
+        from domains.inventory.services.shipment_persistence_service import (
+            _rebuild_all_shipment_aggregates,
+            purge_shipment_matrix_rows_if_no_matrix_uploads,
+        )
 
+        purge_shipment_matrix_rows_if_no_matrix_uploads(db)
         _rebuild_all_shipment_aggregates(db)
     else:
         _rebuild_aggregate_scopes(db, [affected_scope])
@@ -918,11 +925,16 @@ def delete_inventory_files(db: Session, country_code: str | None = None) -> dict
                     _delete_s3_prefix(settings.s3_bucket, p)
         return {"deleted_count": 0}
 
-    ship_touched = any((getattr(f, "file_domain", None) or "inventory") == "shipment" for f in uploaded_files)
+    ship_touched = any(
+        (getattr(f, "file_domain", None) or "inventory") == "shipment"
+        or str(f.country_code or "").strip().upper() == "SHIPMENT"
+        for f in uploaded_files
+    )
     inv_scopes_unique = {
         (f.country_code, f.base_date)
         for f in uploaded_files
         if (getattr(f, "file_domain", None) or "inventory") != "shipment"
+        and str(f.country_code or "").strip().upper() != "SHIPMENT"
     }
     for uploaded_file in uploaded_files:
         b, k = _resolved_upload_s3_bucket_and_key(uploaded_file)
@@ -933,8 +945,12 @@ def delete_inventory_files(db: Session, country_code: str | None = None) -> dict
     if inv_scopes_unique:
         _rebuild_aggregate_scopes(db, list(inv_scopes_unique))
     if ship_touched:
-        from domains.inventory.services.shipment_persistence_service import _rebuild_all_shipment_aggregates
+        from domains.inventory.services.shipment_persistence_service import (
+            _rebuild_all_shipment_aggregates,
+            purge_shipment_matrix_rows_if_no_matrix_uploads,
+        )
 
+        purge_shipment_matrix_rows_if_no_matrix_uploads(db)
         _rebuild_all_shipment_aggregates(db)
     db.commit()
 

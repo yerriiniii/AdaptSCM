@@ -76,6 +76,23 @@ def _shipment_s3_key(prefix: str, stored_name: str) -> str:
     return f"{root}/shipment/{stored_name}"
 
 
+def purge_shipment_matrix_rows_if_no_matrix_uploads(db: Session) -> None:
+    """`shipment_sheet_key == matrix` 인 업로드가 하나도 없으면 `shipment_matrix_rows` 전부 삭제.
+
+    - 매트릭스 엑셀만 이 키를 씀. 롱포맷 출고는 다른 키·`inventory_rows`만 사용.
+    - 예전 데이터는 `file_domain`이 `inventory`로 남아 삭제 시 출고 분기를 타지 않는 경우가 있어,
+      호출부에서 `country_code == SHIPMENT` 삭제도 출고 정리로 묶음.
+    - `file_domain` 조건은 넣지 않음(도메인 누락 레거시와 동일하게 matrix 키만 보면 됨).
+    """
+    n = db.scalar(
+        select(func.count()).select_from(UploadedFile).where(
+            UploadedFile.shipment_sheet_key == SHIPMENT_MATRIX_UPLOAD_KEY,
+        )
+    )
+    if (n or 0) == 0:
+        db.execute(delete(ShipmentMatrixRow))
+
+
 def _rebuild_all_shipment_aggregates(db: Session) -> None:
     """출고 inventory_rows 전량을 메모리에 올리지 않고 DB에서 GROUP BY 후 집계 행만 적재."""
     db.execute(delete(InventoryAggregate).where(InventoryAggregate.source_domain == SOURCE_SHIPMENT))

@@ -1071,18 +1071,20 @@ body {
   line-height: 1.35;
 }
 
-.countryChips.countryChipsShipment.shipmentChannelChipsCompact .shipmentChipSep {
-  height: 20px;
-  margin: 0 6px;
-}
-
-.shipmentChipSep {
-  flex: 0 0 auto;
-  width: 1.5px;
+/* 출고 채널 칩 그룹 구분: 짧은 세로 막대 — 3px 슬롯 안에 정수 1px만 그려 위치마다 두께가 달라 보이는 현상 완화 */
+.countryChips.countryChipsShipment .shipmentChipSep {
+  box-sizing: border-box;
+  flex: 0 0 3px;
+  width: 3px;
   height: 22px;
   align-self: center;
-  background: #adb7c6;
   margin: 0 9px;
+  flex-shrink: 0;
+  background-color: transparent;
+  background-image: linear-gradient(#adb7c6, #adb7c6);
+  background-size: 1px 100%;
+  background-position: 50% 0;
+  background-repeat: no-repeat;
 }
 
 .overseasCountryTabs {
@@ -2465,6 +2467,33 @@ body {
 .filterBar .inventoryFilterDate {
   min-width: 140px;
   color-scheme: light;
+}
+
+.filterBar .shipmentStatusMonthToolbar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.filterBar .shipmentMonthStripYearSelect {
+  min-width: 92px;
+}
+
+.filterBar .shipmentMonthStrip {
+  flex-wrap: wrap;
+  max-width: min(640px, 100%);
+}
+
+.filterBar .shipmentMonthStripBtn {
+  padding: 0 8px;
+  min-width: 2.35rem;
+  font-size: 12px;
+}
+
+.filterBar .shipmentMonthAllRangeBox {
+  flex-shrink: 0;
 }
 
 input,
