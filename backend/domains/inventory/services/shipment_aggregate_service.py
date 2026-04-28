@@ -143,7 +143,7 @@ def _load_own_mall_brand_bases(db: Session) -> frozenset[str]:
 
 
 def _load_kr_sku_brand_name(db: Session) -> dict[str, tuple[str, str]]:
-    """_normalize_item_code(sku) -> (brand, kr_display_name)."""
+    """_normalize_item_code(sku) -> (brand, kr_display_name). 구분(단종 등)은 출고 엑셀/저장 category와 별개."""
     locales = (
         db.execute(
             select(ProductLocale)

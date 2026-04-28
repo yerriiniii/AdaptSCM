@@ -2345,6 +2345,34 @@ body {
   padding-left: 0.45rem;
 }
 
+.productMappingHeadSegmentSep {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.productMappingHeadSegment {
+  font-weight: 600;
+  color: #b45309;
+  white-space: nowrap;
+}
+
+.productMappingDiscontinuedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 16px;
+  font-weight: 700;
+  color: #dc2626;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.45;
+}
+
+.productMappingDiscontinuedIcon {
+  flex-shrink: 0;
+  color: #dc2626;
+}
+
 .productMappingCountryCode {
   color: #111827;
   font-weight: 700;
@@ -2594,9 +2622,12 @@ textarea:focus {
   border-radius: 8px;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  scrollbar-gutter: stable;
 }
 
+/* 세로·가로 스크롤바 모두 레이아웃 폭 0 (오버레이) — 헤더(세로 없음)와 본문 clientWidth 불일치 방지 */
 .tableWrap::-webkit-scrollbar {
+  width: 0;
   height: 0;
 }
 
@@ -2622,6 +2653,8 @@ table {
   min-width: 0;
   max-width: none;
   box-sizing: border-box;
+  font-size: 12px;
+  padding: 9px 7px;
 }
 
 .stickyTableHeader {
@@ -2639,9 +2672,12 @@ table {
   border: 1px solid #e5e9f0;
   border-radius: 8px 8px 0 0;
   border-bottom: 0;
+  /* 본문 세로 스크롤바 유무와 무관하게 헤더·본문 가로 열 경계 맞춤 */
+  scrollbar-gutter: stable;
 }
 
 .tableHeaderScroll::-webkit-scrollbar {
+  width: 0;
   height: 0;
 }
 
@@ -2689,65 +2725,357 @@ th {
 
 .inventoryTable.krTable .stickyColCode {
   left: 0;
-  width: 120px;
-  min-width: 120px;
-  max-width: 120px;
+  width: 111px;
+  min-width: 111px;
+  max-width: 111px;
 }
 
 .inventoryTable.krTable .stickyColBrand {
-  left: 120px;
-  width: 120px;
-  min-width: 120px;
-  max-width: 120px;
+  left: 111px;
+  width: 111px;
+  min-width: 111px;
+  max-width: 111px;
 }
 
 .inventoryTable.krTable .stickyColName {
-  left: 240px;
-  width: 300px;
-  min-width: 300px;
-  max-width: 300px;
+  left: 222px;
+  width: 277px;
+  min-width: 277px;
+  max-width: 277px;
 }
 
 .inventoryTable.krTable .stickyColTrend {
-  left: 540px;
-  width: 140px;
-  min-width: 140px;
-  max-width: 140px;
+  left: 499px;
+  width: 129px;
+  min-width: 129px;
+  max-width: 129px;
+}
+
+/* 한국·해외 재고 표: 출고 현황 매트릭스와 동일한 연한 세로·가로 격자 */
+.inventoryTable.krTable:not(.shipmentMatrixTable) thead th,
+.inventoryTable.krTable:not(.shipmentMatrixTable) tbody td,
+.inventoryTable.overseasTable thead th,
+.inventoryTable.overseasTable tbody td {
+  border: 1px solid #e2e8f0;
+}
+
+.inventoryTable.krTable:not(.shipmentMatrixTable) thead th,
+.inventoryTable.overseasTable thead th {
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.inventoryTable.overseasTable thead th.krCompareCol,
+.inventoryTable.overseasTable tbody td.krCompareCol {
+  border: 1px solid #e2e8f0;
+  border-left: 1px solid #c4e7d8;
+  border-right: 1px solid #c4e7d8;
+}
+
+.inventoryTable.overseasTable thead th.krCompareCol {
+  border-bottom: 1px solid #cbd5e1;
+}
+
+/* 재고 비교 표: 동일 격자 */
+.compareTable thead th,
+.compareTable tbody td {
+  border: 1px solid #e2e8f0;
+}
+
+.compareTable thead th {
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.compareTable thead th.krCompareCol,
+.compareTable tbody td.krCompareCol {
+  border: 1px solid #e2e8f0;
+  border-left: 1px solid #c4e7d8;
+  border-right: 1px solid #c4e7d8;
+}
+
+.compareTable thead th.krCompareCol {
+  border-bottom: 1px solid #cbd5e1;
+}
+
+/* 한국 재고 고정열: inset 없음(border만) — 상품코드↔브랜드↔상품명에서 inset+border 겹침으로 윤곽이 진해 보이던 현상 방지 */
+
+/* 해외 재고 스티키 열: inset으로 세로선 보강. 상품명에 inset을 넣어 상품명↔한국상품명 사이 경계가 사라지지 않게 함 */
+.inventoryTable.overseasTable thead th.stickyColCode,
+.inventoryTable.overseasTable thead th.stickyColName,
+.inventoryTable.overseasTable thead th.stickyColKrName,
+.inventoryTable.overseasTable tbody td.stickyColCode,
+.inventoryTable.overseasTable tbody td.stickyColName,
+.inventoryTable.overseasTable tbody td.stickyColKrName {
+  box-shadow: inset -1px 0 0 #e2e8f0;
+}
+
+/* 해외: 한국 현재고 열이 있을 때만 추세가 ‘마지막 고정열 앞’이 되어 출고(브랜드~마케팅)처럼 inset 적용 */
+.inventoryTable.overseasTable:has(thead th.stickyColCompare) thead th.trendActionCol,
+.inventoryTable.overseasTable:has(thead th.stickyColCompare) tbody td.trendActionCell {
+  box-shadow: inset -1px 0 0 #e2e8f0;
+}
+
+/* 재고 비교: 스티키 중 마지막 열(한국상품명) 앞까지만 inset — 출고 구분 열과 동일 */
+.compareTable thead th.stickyColCode,
+.compareTable tbody td.stickyColCode {
+  box-shadow: inset -1px 0 0 #e2e8f0;
+}
+
+/* 출고 현황 매트릭스: 고정 열 순서 브랜드·상품코드·상품명·마케팅·구분 (가로 스크롤 시 구분까지 고정) */
+.inventoryTable.krTable.shipmentMatrixTable .stickyColShipBrand {
+  left: 0;
+  width: 103px;
+  min-width: 103px;
+  max-width: 103px;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable .stickyColShipCode {
+  left: 103px;
+  width: 74px;
+  min-width: 74px;
+  max-width: 74px;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable .stickyColShipName {
+  left: 177px;
+  width: 318px;
+  min-width: 318px;
+  max-width: 318px;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable .stickyColShipMkt {
+  left: 495px;
+  width: 99px;
+  min-width: 99px;
+  max-width: 99px;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable .stickyColShipSegment {
+  left: 594px;
+  width: 96px;
+  min-width: 96px;
+  max-width: 96px;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable .stickyColShipSegment.stickyColBoundary,
+.inventoryTable.krTable.shipmentMatrixTable thead .stickyColShipSegment.stickyColBoundary {
+  box-shadow: 4px 0 12px -4px rgba(15, 23, 42, 0.14);
+}
+
+/* 출고 매트릭스: 스크롤되는 날짜/월 열이 고정 열 뒤로만 지나가도록 쌓임 순서 */
+.inventoryTable.krTable.shipmentMatrixTable thead th.dateCol {
+  position: relative;
+  z-index: 1;
+  background-color: #f8fafd;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody td.dateCol {
+  position: relative;
+  z-index: 1;
+  background-color: #ffffff;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipBrand {
+  z-index: 21;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipCode {
+  z-index: 22;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipName {
+  z-index: 23;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipMkt {
+  z-index: 24;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipSegment {
+  z-index: 25;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipBrand {
+  z-index: 11;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipCode {
+  z-index: 12;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipName {
+  z-index: 13;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipMkt {
+  z-index: 14;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipSegment {
+  z-index: 15;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody td.shipmentTotalMergedCell {
+  position: sticky;
+  left: 0;
+  z-index: 16;
+  width: 690px;
+  min-width: 690px;
+  max-width: 690px;
+  font-weight: 700;
+  text-align: center;
+  background: #eef2f7;
+  color: #1e293b;
+  box-shadow: 4px 0 12px -4px rgba(15, 23, 42, 0.12);
+  border-right: 1px solid #cbd5e1;
+}
+
+/* 출고 매트릭스: 모든 셀 동일한 연한 격자(일자·월 열과 브랜드~구분 동일 톤) */
+.inventoryTable.krTable.shipmentMatrixTable thead th,
+.inventoryTable.krTable.shipmentMatrixTable tbody td {
+  border: 1px solid #e2e8f0;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable thead th {
+  border-bottom: 1px solid #cbd5e1;
+}
+
+/* 구분 열 왼쪽(브랜드~마케팅): 일자 열과 같은 연한 세로선(#e2e8f0). sticky+overflow로 경계가 약할 때 보강 */
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipBrand,
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipCode,
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipName,
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipMkt,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipBrand,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipCode,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipName,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipMkt {
+  box-shadow: inset -1px 0 0 #e2e8f0;
+}
+
+/* 합계 행: 일자·월 열과 시각적으로 분리 */
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentTotalRow td {
+  border-top: 2px solid #94a3b8;
+  border-bottom: 2px solid #94a3b8;
+  background-color: #eef2f7;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentTotalRow td.dateCol {
+  background-color: #eef2f7;
+}
+
+/* 합계 행 위·아래 빈 줄(각 2행 = 구분 여유) */
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentTotalGapRow td {
+  height: 9px;
+  padding: 0 !important;
+  border: none !important;
+  background: #f8fafc !important;
+  box-shadow: none !important;
+  pointer-events: none;
+}
+
+/* 합계 바로 아래: 브랜드·상품코드·구분·월·일 헤더 재표시(엑셀 2단 헤더와 유사), 윤곽은 일반 셀과 동일 */
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.shipmentMatrixSubHeaderCell {
+  background-color: #f8fafd !important;
+  color: #5d6574;
+  font-weight: 700;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.dateCol {
+  background-color: #f8fafd !important;
+  position: relative;
+  z-index: 1;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.stickyColShipBrand {
+  z-index: 21;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.stickyColShipCode {
+  z-index: 22;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.stickyColShipName {
+  z-index: 23;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.stickyColShipMkt {
+  z-index: 24;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.stickyColShipSegment {
+  z-index: 25;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable
+  tbody
+  tr.shipmentMatrixSubHeaderRow
+  td.stickyColShipSegment.stickyColBoundary {
+  box-shadow: 4px 0 12px -4px rgba(15, 23, 42, 0.14);
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td {
+  border-bottom: 1px solid #cbd5e1;
+}
+
+/* 출고: 상단 가로 띠·헤더·본문 사이 틈 제거(세로 스크롤 시 배경 비침 완화) */
+.tableTopScroll.stickyTableTopScroll.shipmentMatrixTopScroll {
+  margin-bottom: 0;
+  z-index: 19;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+}
+
+.stickyTableHeader.shipmentMatrixStickyHead {
+  z-index: 20;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.07);
+}
+
+.stickyTableHeader.shipmentMatrixStickyHead .tableHeaderScroll {
+  background: #f8fafd;
+}
+
+/* 본문: 헤더(.tableHeaderScroll)와 동일하게 항상 gutter 확보 → 가로 스크롤 동기화 시 열 경계 1px 흔들림 방지 */
+.tableWrap.shipmentMatrixBodyWrap {
+  scrollbar-gutter: stable;
+  background: #ffffff;
+  isolation: isolate;
+}
+
+.tableWrap.shipmentMatrixBodyWrap::-webkit-scrollbar-corner {
+  background: #f8fafe;
 }
 
 .inventoryTable.overseasTable .stickyColCode {
   left: 0;
-  width: 120px;
-  min-width: 120px;
-  max-width: 120px;
+  width: 111px;
+  min-width: 111px;
+  max-width: 111px;
 }
 
 .inventoryTable.overseasTable .stickyColName {
-  left: 120px;
-  width: 300px;
-  min-width: 300px;
-  max-width: 300px;
+  left: 111px;
+  width: 277px;
+  min-width: 277px;
+  max-width: 277px;
 }
 
 .inventoryTable.overseasTable .stickyColKrName {
-  left: 420px;
-  width: 300px;
-  min-width: 300px;
-  max-width: 300px;
+  left: 388px;
+  width: 277px;
+  min-width: 277px;
+  max-width: 277px;
 }
 
 .inventoryTable.overseasTable .stickyColTrend {
-  left: 720px;
-  width: 132px;
-  min-width: 132px;
-  max-width: 132px;
+  left: 665px;
+  width: 122px;
+  min-width: 122px;
+  max-width: 122px;
 }
 
 .inventoryTable.overseasTable .stickyColCompare {
-  left: 852px;
-  width: 108px;
-  min-width: 108px;
-  max-width: 108px;
+  left: 787px;
+  width: 100px;
+  min-width: 100px;
+  max-width: 100px;
 }
 
 .inventoryTable tbody .stickyColName {
@@ -2771,10 +3099,11 @@ th {
   line-clamp: 2;
 }
 
-.dateCol {
-  width: 88px;
-  min-width: 88px;
-  max-width: 88px;
+.inventoryTable .dateCol,
+.compareTable .dateCol {
+  width: 81px;
+  min-width: 81px;
+  max-width: 81px;
 }
 
 .tableHeaderScroll.withDatePeekFade::after,
@@ -2803,7 +3132,7 @@ th {
 }
 
 .compareTable .stickyColName {
-  left: 110px;
+  left: 102px;
 }
 
 .error {
@@ -2962,6 +3291,7 @@ th {
   border-radius: 6px;
   height: 14px;
   background: #f4f6fa;
+  scrollbar-gutter: stable;
 }
 
 .stickyTableTopScroll {
@@ -2980,15 +3310,6 @@ th {
 }
 
 .tableTopScroll::-webkit-scrollbar-thumb {
-  background: #e2e7ef;
-  border-radius: 10px;
-}
-
-.tableWrap::-webkit-scrollbar-track {
-  background: #f8fafe;
-}
-
-.tableWrap::-webkit-scrollbar-thumb {
   background: #e2e7ef;
   border-radius: 10px;
 }
@@ -3020,70 +3341,70 @@ th {
   border-left: 1px solid #c4e7d8;
   border-right: 1px solid #c4e7d8;
   text-align: left !important;
-  padding-left: 8px !important;
-  padding-right: 8px !important;
-  min-width: 108px;
+  padding-left: 7px !important;
+  padding-right: 7px !important;
+  min-width: 100px;
 }
 
 .compareTable .compareCodeCol {
-  width: 110px;
-  min-width: 110px;
-  max-width: 110px;
+  width: 102px;
+  min-width: 102px;
+  max-width: 102px;
 }
 
 .compareTable .compareNameCol {
-  width: 380px;
-  min-width: 380px;
-  max-width: 380px;
+  width: 351px;
+  min-width: 351px;
+  max-width: 351px;
 }
 
 .compareTable .compareMetaCol {
-  width: 180px;
-  min-width: 180px;
-  max-width: 180px;
+  width: 166px;
+  min-width: 166px;
+  max-width: 166px;
 }
 
 .inventoryTable th:first-child,
 .inventoryTable td:first-child,
 .compareTable th:first-child,
 .compareTable td:first-child {
-  padding-left: 18px !important;
+  padding-left: 17px !important;
 }
 
 .inventoryTable th:last-child,
 .inventoryTable td:last-child,
 .compareTable th:last-child,
 .compareTable td:last-child {
-  padding-right: 12px !important;
+  padding-right: 11px !important;
 }
 
 .compareTable .compareCountryCol {
-  width: 88px;
-  min-width: 88px;
-  max-width: 88px;
+  width: 81px;
+  min-width: 81px;
+  max-width: 81px;
 }
 
 .dateHead {
   display: inline-flex;
   flex-direction: column;
   line-height: 1.15;
-  min-width: 68px;
+  min-width: 63px;
 }
 
 .trendActionCol {
-  min-width: 132px;
-  width: 132px;
-  padding-right: 18px !important;
+  min-width: 122px;
+  width: 122px;
+  padding-right: 17px !important;
 }
 
 .trendActionCell {
-  min-width: 132px;
-  padding-right: 18px !important;
+  min-width: 122px;
+  padding-right: 17px !important;
 }
 
 .trendActionBtn {
-  height: 30px;
-  padding: 0 12px;
+  height: 28px;
+  padding: 0 11px;
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
@@ -3091,14 +3412,17 @@ th {
 
 .trendActionCol + th,
 .trendActionCell + td {
-  padding-left: 20px !important;
+  padding-left: 19px !important;
 }
 
+/* 한국·해외 재고: 출고와 같이 일자 첫 열 패딩만 통일(위 공통 규칙 덮어씀) */
+.inventoryTable.krTable:not(.shipmentMatrixTable) .trendActionCol + th,
+.inventoryTable.krTable:not(.shipmentMatrixTable) .trendActionCell + td,
 .inventoryTable.overseasTable .trendActionCol + th,
 .inventoryTable.overseasTable .trendActionCell + td,
 .inventoryTable.overseasTable .krCompareCol + th,
 .inventoryTable.overseasTable .krCompareCol + td {
-  padding-left: 24px !important;
+  padding-left: 7px !important;
 }
 
 .trendModalBackdrop {
@@ -3640,7 +3964,9 @@ th {
 
 .poOrderFileTemplateRow {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
+  gap: 8px;
   width: 100%;
   margin-bottom: 10px;
 }

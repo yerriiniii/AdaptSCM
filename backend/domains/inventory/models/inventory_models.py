@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -108,6 +108,7 @@ class ProductGroup(Base):
     kr_name: Mapped[str] = mapped_column(String(255), nullable=False)
     brand: Mapped[str | None] = mapped_column(String(255), nullable=True)
     barcode: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    segment: Mapped[str | None] = mapped_column(String(255), nullable=True)
     upload_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     manual_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(
@@ -212,4 +213,25 @@ class PurchaseInboundLine(Base):
     __table_args__ = (
         Index("ix_purchase_inbound_lines_order", "purchase_order_id", "line_no"),
         UniqueConstraint("purchase_order_id", "line_no", name="uq_purchase_inbound_order_line"),
+    )
+
+
+class ShipmentMatrixRow(Base):
+    """출고 현황: 시트(채널)별 SKU × 월 합계·일자별 수량 매트릭스(재업로드 시 동일 키 덮어쓰기·병합)."""
+
+    __tablename__ = "shipment_matrix_rows"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid_value)
+    channel_sheet: Mapped[str] = mapped_column(String(128), nullable=False)
+    data_year: Mapped[int] = mapped_column(Integer, nullable=False, default=2026)
+    sku: Mapped[str] = mapped_column(String(255), nullable=False)
+    mkt_priority: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    monthly_totals: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    daily_totals: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now, onupdate=_utc_now)
+
+    __table_args__ = (
+        UniqueConstraint("channel_sheet", "data_year", "sku", name="uq_shipment_matrix_channel_year_sku"),
+        Index("ix_shipment_matrix_channel_year", "channel_sheet", "data_year"),
     )

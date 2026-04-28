@@ -3,7 +3,15 @@ from domains.inventory.models.inventory_models import (
     InventoryRow,
     ProductGroup,
     ProductLocale,
+    ShipmentMatrixRow,
     UploadedFile,
 )
 
-__all__ = ["UploadedFile", "InventoryRow", "InventoryAggregate", "ProductGroup", "ProductLocale"]
+__all__ = [
+    "UploadedFile",
+    "InventoryRow",
+    "InventoryAggregate",
+    "ProductGroup",
+    "ProductLocale",
+    "ShipmentMatrixRow",
+]

@@ -12,7 +12,7 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy import delete, func, literal, select
 from sqlalchemy.orm import Session
 
-from domains.inventory.models import InventoryAggregate, InventoryRow, UploadedFile
+from domains.inventory.models import InventoryAggregate, InventoryRow, ShipmentMatrixRow, UploadedFile
 from domains.inventory.services.inventory_persistence_service import (
     _next_aggregation_version,
     _nullable_string,
@@ -22,12 +22,18 @@ from domains.inventory.services.shipment_aggregate_service import (
     SHIPMENT_CHANNEL_LABELS,
     build_shipment_wide_dashboard,
 )
+from domains.inventory.services.shipment_matrix_service import (
+    DEFAULT_SHIPMENT_MATRIX_YEAR,
+    build_shipment_matrix_view,
+    parse_shipment_matrix_workbook,
+)
 from shared.config import get_runtime_settings
 from shared.storage import get_s3_client, is_s3_configured
 
 SOURCE_SHIPMENT = "SHIPMENT"
 FILE_DOMAIN_SHIPMENT = "shipment"
 SHIPMENT_BUCKET_COUNTRY = "SHIPMENT"
+SHIPMENT_MATRIX_UPLOAD_KEY = "matrix"
 
 
 def _normalize_shipment_order_at(val: Any) -> datetime:
@@ -234,78 +240,129 @@ def persist_shipment_uploads(
         raise
 
 
-def get_shipment_view(db: Session) -> dict:
-    """원본 출고 행(판매처 원문 포함)으로 복원 — 집계 테이블에는 판매처가 없음.
-
-    DB에서 행 단위 전량을 앱으로 올리면 대용량 시 타임아웃되므로, 동일 키는 SQL에서 SUM으로 묶어
-    전송량·파이썬 루프 비용을 줄인다(와이드 대시보드 결과는 동일하게 합산됨).
-    """
-    rows = db.execute(
-        select(
-            InventoryRow.row_snapshot_date,
-            InventoryRow.sku,
-            InventoryRow.description,
-            InventoryRow.supplier,
-            InventoryRow.level,
-            InventoryRow.warehouse,
-            func.sum(InventoryRow.quantity).label("quantity_sum"),
-            InventoryRow.vendor_raw,
-            InventoryRow.row_country_code,
-        )
-        .join(UploadedFile, InventoryRow.uploaded_file_id == UploadedFile.id)
-        .where(
-            UploadedFile.file_domain == FILE_DOMAIN_SHIPMENT,
-            InventoryRow.row_snapshot_date.isnot(None),
-        )
-        .group_by(
-            InventoryRow.row_snapshot_date,
-            InventoryRow.sku,
-            InventoryRow.description,
-            InventoryRow.supplier,
-            InventoryRow.level,
-            InventoryRow.warehouse,
-            InventoryRow.vendor_raw,
-            InventoryRow.row_country_code,
-        )
-    ).all()
-
-    if not rows:
-        return {
-            "summary": {"item_count": 0, "date_count": 0},
-            "countries": [],
-            "dates": [],
-            "channels": list(SHIPMENT_CHANNEL_LABELS),
-            "rows": [],
-        }
-
-    long_recs: list[dict[str, Any]] = []
-    for row in rows:
-        if row.row_snapshot_date is None:
+def _upsert_shipment_matrix_channel_rows(
+    db: Session,
+    channel_sheet: str,
+    data_year: int,
+    recs: list[dict[str, Any]],
+) -> None:
+    for rec in recs:
+        sku = str(rec.get("sku") or "").strip()
+        if not sku:
             continue
-        try:
-            qty_i = int(round(float(getattr(row, "quantity_sum", None) or 0)))
-        except (TypeError, ValueError):
-            qty_i = 0
-        long_recs.append(
-            {
-                "country": str(row.row_country_code or "KR").strip().upper() or "KR",
-                "channel": row.warehouse or "",
-                "sku": row.sku or "",
-                "description": row.description or "",
-                "brand": row.supplier or "",
-                "date": row.row_snapshot_date,
-                "quantity": qty_i,
-                "level": row.level,
-                "vendor_raw": (row.vendor_raw or "").strip() if row.vendor_raw is not None else "",
-            }
-        )
-    if not long_recs:
-        return {
-            "summary": {"item_count": 0, "date_count": 0},
-            "countries": [],
-            "dates": [],
-            "channels": list(SHIPMENT_CHANNEL_LABELS),
-            "rows": [],
-        }
+        mt_new = {str(k): int(v) for k, v in (rec.get("monthly") or {}).items()}
+        dt_new = {str(k): int(v) for k, v in (rec.get("daily") or {}).items()}
+        mkt_raw = rec.get("mkt_priority")
+        cat_raw = rec.get("category")
+        mkt = str(mkt_raw).strip() if mkt_raw is not None and str(mkt_raw).strip() else None
+        cat = str(cat_raw).strip() if cat_raw is not None and str(cat_raw).strip() else None
 
-    return build_shipment_wide_dashboard(long_recs)
+        stmt = select(ShipmentMatrixRow).where(
+            ShipmentMatrixRow.channel_sheet == channel_sheet,
+            ShipmentMatrixRow.data_year == data_year,
+            ShipmentMatrixRow.sku == sku,
+        )
+        existing = db.execute(stmt).scalar_one_or_none()
+        if existing:
+            mt = {str(k): int(v) for k, v in (existing.monthly_totals or {}).items()}
+            for k, v in mt_new.items():
+                mt[k] = v
+            dt = {str(k): int(v) for k, v in (existing.daily_totals or {}).items()}
+            for k, v in dt_new.items():
+                dt[k] = v
+            existing.monthly_totals = mt
+            existing.daily_totals = dt
+            existing.mkt_priority = mkt
+            existing.category = cat
+        else:
+            db.add(
+                ShipmentMatrixRow(
+                    channel_sheet=channel_sheet,
+                    data_year=data_year,
+                    sku=sku,
+                    mkt_priority=mkt,
+                    category=cat,
+                    monthly_totals=mt_new or None,
+                    daily_totals=dt_new or None,
+                )
+            )
+
+
+def persist_shipment_matrix_uploads(
+    db: Session,
+    files: list[tuple[UploadFile, bytes]],
+    *,
+    kr_sku_brand_name: dict[str, tuple[str, str]] | None = None,
+    data_year: int = DEFAULT_SHIPMENT_MATRIX_YEAR,
+) -> list[dict]:
+    """매트릭스 출고 엑셀: S3 저장 후 채널(시트)별 shipment_matrix_rows 업서트."""
+    settings = get_runtime_settings()
+    if not settings.database_enabled:
+        return []
+    if not is_s3_configured() or not settings.s3_bucket:
+        raise HTTPException(status_code=500, detail="S3가 설정되지 않아 출고 파일을 저장할 수 없습니다.")
+
+    s3 = get_s3_client()
+    persisted: list[dict] = []
+    try:
+        for upload_file, raw in files:
+            parsed = parse_shipment_matrix_workbook(
+                db,
+                raw,
+                upload_file.filename or "",
+                kr_sku_brand_name=kr_sku_brand_name,
+                data_year=data_year,
+            )
+            for channel_sheet, recs in parsed.items():
+                if recs:
+                    _upsert_shipment_matrix_channel_rows(db, channel_sheet, data_year, recs)
+
+            stored_name = f"{uuid.uuid4()}{os.path.splitext(upload_file.filename or '')[1] or '.xlsx'}"
+            s3_key = _shipment_s3_key(settings.s3_prefix or "inventory", stored_name)
+            s3.put_object(
+                Bucket=settings.s3_bucket,
+                Key=s3_key,
+                Body=raw,
+                ContentType=upload_file.content_type or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            uploaded_file = UploadedFile(
+                original_name=upload_file.filename or stored_name,
+                stored_name=stored_name,
+                s3_bucket=settings.s3_bucket,
+                s3_key=s3_key,
+                country_type="SHIPMENT",
+                country_code=SHIPMENT_BUCKET_COUNTRY,
+                base_date=None,
+                uploaded_by=None,
+                size=len(raw),
+                status="parsed",
+                error_message=None,
+                file_domain=FILE_DOMAIN_SHIPMENT,
+                shipment_sheet_key=SHIPMENT_MATRIX_UPLOAD_KEY,
+            )
+            db.add(uploaded_file)
+            db.flush()
+            persisted.append(_serialize_uploaded_file(uploaded_file))
+
+        db.commit()
+        return persisted
+    except Exception:
+        db.rollback()
+        raise
+
+
+def get_shipment_view(
+    db: Session,
+    *,
+    channel: str | None = None,
+    data_year: int = DEFAULT_SHIPMENT_MATRIX_YEAR,
+) -> dict:
+    """출고 현황 매트릭스(칩=시트명). 첫 행에 합계 행 포함."""
+    payload = build_shipment_matrix_view(db, channel=channel, data_year=data_year)
+    totals_row = payload.pop("shipment_totals_row", None)
+    body_rows: list[dict[str, Any]] = list(payload.get("rows") or [])
+    if totals_row:
+        payload["rows"] = [totals_row, *body_rows]
+    else:
+        payload["rows"] = body_rows
+    return payload

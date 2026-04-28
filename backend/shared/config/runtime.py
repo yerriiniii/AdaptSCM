@@ -80,7 +80,8 @@ def get_runtime_settings() -> RuntimeSettings:
         ),
         jwt_secret=(os.getenv("JWT_SECRET") or "dev-only-change-me").strip(),
         jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256").strip() or "HS256",
-        jwt_expire_minutes=max(1, _read_int(os.getenv("JWT_EXPIRE_MINUTES"), 60 * 8)),
+        # 기본 3시간. 운영은 JWT_EXPIRE_MINUTES 로 조정.
+        jwt_expire_minutes=max(1, _read_int(os.getenv("JWT_EXPIRE_MINUTES"), 60 * 3)),
         initial_admin_email=(os.getenv("INITIAL_ADMIN_EMAIL") or "").strip() or None,
         initial_admin_password=os.getenv("INITIAL_ADMIN_PASSWORD") or None,
         public_app_url=(os.getenv("PUBLIC_APP_URL") or "http://localhost:5173").rstrip("/"),

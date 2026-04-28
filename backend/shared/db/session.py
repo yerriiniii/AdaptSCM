@@ -39,7 +39,18 @@ def _engine_connect_kwargs(database_url: str) -> dict:
     except ValueError:
         sec = 10
     # psycopg (v3): connect_timeout
-    return {"connect_args": {"connect_timeout": sec}}
+    connect_args: dict = {"connect_timeout": sec}
+    # psycopg3 전용. 서버 prepared statement는 PgBouncer(transaction)·create_all 등에서
+    # DuplicatePreparedStatement("_pg3_0" 등)를 유발할 수 있음. 기본은 비활성화.
+    other_driver = any(
+        mark in url for mark in ("+psycopg2", "+asyncpg", "+pg8000", "+pypostgresql")
+    )
+    if (
+        not other_driver
+        and os.getenv("PG_USE_PREPARED_STATEMENTS", "").strip().lower() not in {"1", "true", "yes"}
+    ):
+        connect_args["prepare_threshold"] = None
+    return {"connect_args": connect_args}
 
 
 def _is_likely_pg_statement_timeout_cancel(exc: BaseException) -> bool:
@@ -122,6 +133,7 @@ def _ensure_inventory_columns(engine: Engine) -> None:
         "item": {
             "brand": "VARCHAR(255)",
             "barcode": "VARCHAR(255)",
+            "segment": "VARCHAR(255)",
         },
         "purchase_inbound_lines": {
             "actual_inbound_note": "VARCHAR(128)",

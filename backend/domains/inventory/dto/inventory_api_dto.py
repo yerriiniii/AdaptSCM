@@ -1,5 +1,7 @@
 import re
 
+from typing import Any
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -9,8 +11,14 @@ class InventoryAggregateResponse(BaseModel):
     dates: list[str]
     rows: list[dict]
     files: list[dict] = Field(default_factory=list)
-    # 출고: 표 헤더용 채널 순서(국내 B2B …)
+    # 출고: 칩(시트명) 순서 또는 레거시 판매처 탭 순서
     channels: list[str] = Field(default_factory=list)
+    # 출고 현황 매트릭스(월 합계 열·일자 라벨 등)
+    shipment_month_columns: list[dict[str, str]] = Field(default_factory=list)
+    shipment_day_labels: dict[str, str] = Field(default_factory=dict)
+    shipment_totals: dict[str, Any] = Field(default_factory=dict)
+    shipment_active_channel: str | None = None
+    shipment_channels_with_data: list[str] = Field(default_factory=list)
 
 
 class InventoryDirectUploadFileRequest(BaseModel):
@@ -125,6 +133,9 @@ class InventorySkuMappingItemResponse(BaseModel):
     kr_name: str
     brand: str | None = None
     barcode: str | None = None
+    # item.segment — coerce 후 DB에는 단종만 저장. 목록/검색 응답에 포함(프론트 단종 배지 등).
+    segment: str | None = None
+    segment_display: str | None = None
     locales: list[InventorySkuMappingLocaleResponse] = Field(default_factory=list)
 
 

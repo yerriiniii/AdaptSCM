@@ -1,4 +1,3 @@
-import json
 import uuid
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
@@ -39,17 +38,12 @@ from domains.inventory.services.inventory_aggregate_service import (
     aggregate_inventory_files,
     inspect_inventory_files,
 )
-from domains.inventory.services.shipment_aggregate_service import (
-    _load_kr_sku_brand_name,
-    _load_own_mall_brand_bases,
-    _shipment_vendor_unmapped_payload,
-    _shipment_workbook_raw_context,
-    build_shipment_wide_dashboard,
-    collect_shipment_long_records_from_raw,
-    collect_shipment_vendor_gaps_from_raw_rows,
-    shipment_sheet_storage_key,
+from domains.inventory.services.shipment_aggregate_service import _load_kr_sku_brand_name
+from domains.inventory.services.shipment_matrix_service import DEFAULT_SHIPMENT_MATRIX_YEAR
+from domains.inventory.services.shipment_persistence_service import (
+    get_shipment_view,
+    persist_shipment_matrix_uploads,
 )
-from domains.inventory.services.shipment_persistence_service import get_shipment_view, persist_shipment_uploads
 from domains.inventory.services.inventory_persistence_service import (
     _read_upload_bytes,
     complete_inventory_direct_uploads,
@@ -134,93 +128,27 @@ def aggregate_inventory(
 @router.post("/shipment/aggregate", response_model=InventoryAggregateResponse)
 def shipment_aggregate(
     files: list[UploadFile] = File(...),
-    vendor_channel_overrides: str | None = Form(default=None),
     db: Session = Depends(get_db_session),
 ) -> InventoryAggregateResponse:
-    overrides_dict: dict[str, str] | None = None
-    if vendor_channel_overrides and str(vendor_channel_overrides).strip():
-        try:
-            parsed = json.loads(vendor_channel_overrides)
-        except json.JSONDecodeError as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"vendor_channel_overrides JSON 파싱 실패: {exc}",
-            ) from exc
-        if not isinstance(parsed, dict):
-            raise HTTPException(status_code=400, detail="vendor_channel_overrides는 JSON 객체여야 합니다.")
-        overrides_dict = {str(k): str(v) for k, v in parsed.items()}
-
+    if not get_runtime_settings().database_enabled:
+        raise HTTPException(status_code=503, detail="DATABASE_URL이 설정되지 않았습니다.")
     kr_sku_map = _load_kr_sku_brand_name(db)
-    own_mall_bases = _load_own_mall_brand_bases(db)
     paired: list[tuple[UploadFile, bytes]] = [(uf, _read_upload_bytes(uf)) for uf in files]
-
-    contexts: list[tuple[str, list, dict[str, tuple[str, str]], frozenset[str]]] = []
-    for uf, raw in paired:
-        contexts.append(
-            _shipment_workbook_raw_context(
-                db,
-                raw,
-                uf.filename or "",
-                kr_sku_brand_name=kr_sku_map,
-                own_mall_brand_bases=own_mall_bases,
-            )
-        )
-
-    if overrides_dict is None and len(paired) > 1:
-        frags: list[dict] = []
-        for (uf, _raw), ctx in zip(paired, contexts):
-            target_name, raw_rows, _sku_map, own_mall_brands = ctx
-            vu, ve = collect_shipment_vendor_gaps_from_raw_rows(raw_rows, own_mall_brands)
-            if vu or ve:
-                frags.append(
-                    {
-                        "filename": uf.filename or "",
-                        "sheet": target_name,
-                        "unmapped": vu,
-                        "empty_vendor_rows": ve,
-                    }
-                )
-        if frags:
-            raise HTTPException(status_code=422, detail=_shipment_vendor_unmapped_payload(frags))
-
-    file_payloads: list[tuple[UploadFile, bytes, str, list[dict]]] = []
-    all_long: list[dict] = []
-    for (uf, raw), ctx in zip(paired, contexts):
-        target_sheet_name, *_rest = ctx
-        sheet_key = shipment_sheet_storage_key(target_sheet_name or "")
-        recs = collect_shipment_long_records_from_raw(
-            db,
-            raw,
-            uf.filename or "",
-            kr_sku_brand_name=kr_sku_map,
-            own_mall_brand_bases=own_mall_bases,
-            vendor_channel_overrides=overrides_dict,
-            preloaded_workbook_context=ctx,
-        )
-        all_long.extend(recs)
-        file_payloads.append((uf, raw, sheet_key, recs))
-    persisted_files: list[dict] = []
-    settings = get_runtime_settings()
-    if settings.database_enabled:
-        persisted_files = persist_shipment_uploads(db, file_payloads)
-        payload = get_shipment_view(db)
-    else:
-        payload = build_shipment_wide_dashboard(all_long)
-    return InventoryAggregateResponse(
-        summary=payload["summary"],
-        countries=payload["countries"],
-        dates=payload["dates"],
-        rows=payload["rows"],
-        channels=payload["channels"],
-        files=persisted_files,
-    )
+    persisted_files = persist_shipment_matrix_uploads(db, paired, kr_sku_brand_name=kr_sku_map)
+    payload = get_shipment_view(db)
+    merged = {**payload, "files": persisted_files}
+    return InventoryAggregateResponse(**merged)
 
 
 @router.get("/shipment/view", response_model=InventoryAggregateResponse)
-def shipment_view(db: Session = Depends(get_db_session)) -> InventoryAggregateResponse:
+def shipment_view(
+    channel: str | None = Query(default=None, description="출고 칩(엑셀 시트명과 동일)"),
+    year: int = Query(default=DEFAULT_SHIPMENT_MATRIX_YEAR, ge=2000, le=2100),
+    db: Session = Depends(get_db_session),
+) -> InventoryAggregateResponse:
     if not get_runtime_settings().database_enabled:
         raise HTTPException(status_code=503, detail="DATABASE_URL이 설정되지 않았습니다.")
-    return InventoryAggregateResponse(**get_shipment_view(db))
+    return InventoryAggregateResponse(**get_shipment_view(db, channel=channel, data_year=year))
 
 
 @router.post("/file-metadata")

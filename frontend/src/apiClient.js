@@ -5,6 +5,9 @@ export const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
 const TOKEN_KEY = "inventory_access_token";
 
+/** 초기 `/api/auth/me` 등: 무한 대기 방지 */
+export const AUTH_SESSION_CHECK_TIMEOUT_MS = 8_000;
+
 export function getAccessToken() {
   if (typeof localStorage === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
@@ -18,6 +21,22 @@ export function setAccessToken(token) {
 
 export function clearAccessToken() {
   setAccessToken(null);
+}
+
+/** JWT payload `exp`(초) → 만료 시각(ms). 파싱 실패 시 null. */
+export function parseJwtExpiryMs(token) {
+  if (!token || typeof token !== "string") return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    let b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad = b64.length % 4 ? "=".repeat(4 - (b64.length % 4)) : "";
+    const json = JSON.parse(atob(b64 + pad));
+    const exp = json?.exp;
+    return typeof exp === "number" && Number.isFinite(exp) ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
 }
 
 function isPresignedS3Url(url) {
@@ -41,3 +60,28 @@ axios.interceptors.request.use((config) => {
   }
   return config;
 });
+
+function isAuthPublicRequestUrl(url) {
+  const u = String(url || "");
+  return (
+    u.includes("/api/auth/login")
+    || u.includes("/api/auth/register")
+    || u.includes("/api/auth/signup-email/")
+    || u.includes("/api/auth/account-status")
+  );
+}
+
+axios.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err?.response?.status !== 401) return Promise.reject(err);
+    if (isAuthPublicRequestUrl(err?.config?.url)) return Promise.reject(err);
+    if (err?.config?.headers?.Authorization) {
+      clearAccessToken();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("inventory-auth-expired"));
+      }
+    }
+    return Promise.reject(err);
+  },
+);

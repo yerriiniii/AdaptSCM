@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { Check, Eye, EyeOff, LogIn, UserPlus } from "lucide-react";
-import { API_BASE, getAccessToken, setAccessToken } from "./apiClient";
+import {
+  API_BASE,
+  AUTH_SESSION_CHECK_TIMEOUT_MS,
+  getAccessToken,
+  parseJwtExpiryMs,
+  setAccessToken,
+} from "./apiClient";
 
 const SIGNUP_TOKEN_KEY = "inventory_signup_token";
 const LS_POST_REGISTER_EMAIL = "inventory_post_register_login_email";
@@ -71,6 +77,8 @@ function parseErrorMessage(err) {
  */
 export default function AuthGate({ children }) {
   const [phase, setPhase] = useState("checking");
+  /** 로그인 확인 실패·만료 시 로그인 화면 상단 안내 */
+  const [bootError, setBootError] = useState("");
   const [mode, setMode] = useState("login");
   const [regStep, setRegStep] = useState("request_email");
   const [email, setEmail] = useState(() => readPostRegisterEmailFromStorage());
@@ -94,23 +102,53 @@ export default function AuthGate({ children }) {
   const [postRegStatusSync, setPostRegStatusSync] = useState(0);
 
   const trySession = useCallback(async () => {
+    setBootError("");
     const t = getAccessToken();
     if (!t) {
       setPhase("unauth");
       return;
     }
-    try {
-      await axios.get(`${API_BASE}/api/auth/me`);
-      setPhase("authed");
-    } catch {
+    const expMs = parseJwtExpiryMs(t);
+    if (expMs != null && Date.now() >= expMs) {
       setAccessToken(null);
       setPhase("unauth");
+      setBootError("로그인 유효 시간이 지났습니다. 다시 로그인해 주세요.");
+      return;
+    }
+    try {
+      await axios.get(`${API_BASE}/api/auth/me`, { timeout: AUTH_SESSION_CHECK_TIMEOUT_MS });
+      setPhase("authed");
+    } catch (e) {
+      const st = e?.response?.status;
+      const aborted = e?.code === "ECONNABORTED" || /timeout/i.test(String(e?.message || ""));
+      setAccessToken(null);
+      setPhase("unauth");
+      if (aborted) {
+        setBootError(
+          "서버 응답이 지연되었습니다.\n서버 상태와 네트워크를 확인한 뒤 다시 로그인해 주세요.",
+        );
+      } else if (st === 401) {
+        setBootError("로그인이 만료되었거나 유효하지 않습니다. 다시 로그인해 주세요.");
+      } else if (e?.response == null) {
+        setBootError("서버에 연결할 수 없습니다. API 주소·네트워크를 확인해 주세요.");
+      } else {
+        setBootError("로그인 확인에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+      }
     }
   }, []);
 
   useEffect(() => {
     void trySession();
   }, [trySession]);
+
+  useEffect(() => {
+    const onExpired = () => {
+      setPhase("unauth");
+      setBootError("로그인 유효 시간이 지났습니다. 다시 로그인해 주세요.");
+    };
+    window.addEventListener("inventory-auth-expired", onExpired);
+    return () => window.removeEventListener("inventory-auth-expired", onExpired);
+  }, []);
 
   useEffect(() => {
     if (linkDeadlineMs == null) return undefined;
@@ -248,6 +286,7 @@ export default function AuthGate({ children }) {
     e.preventDefault();
     setError("");
     setOkMessage("");
+    setBootError("");
     setSubmitting(true);
     try {
       const { data } = await axios.post(`${API_BASE}/api/auth/login`, { email, password });
@@ -418,11 +457,20 @@ export default function AuthGate({ children }) {
 
           <div className="authGatePane">
             <div className="tableCard authGateCard">
+              {bootError ? (
+                <p
+                  className="authGateMsgErr authGateBootMsg"
+                  role="alert"
+                  style={{ margin: "0 0 12px", whiteSpace: "pre-line" }}
+                >
+                  {bootError}
+                </p>
+              ) : null}
               <div className="tabs">
                 <button
                   type="button"
                   className={`tab tabWithIcon ${mode === "login" ? "active" : ""}`}
-                  onClick={() => { setMode("login"); setError(""); }}
+                  onClick={() => { setMode("login"); setError(""); setBootError(""); }}
                 >
                   <LogIn className="tabIcon" size={24} strokeWidth={2} aria-hidden />
                   로그인
@@ -430,7 +478,7 @@ export default function AuthGate({ children }) {
                 <button
                   type="button"
                   className={`tab tabWithIcon ${mode === "register" ? "active" : ""}`}
-                  onClick={() => { setMode("register"); setError(""); setOkMessage(""); }}
+                  onClick={() => { setMode("register"); setError(""); setOkMessage(""); setBootError(""); }}
                 >
                   <UserPlus className="tabIcon" size={24} strokeWidth={2} aria-hidden />
                   회원가입

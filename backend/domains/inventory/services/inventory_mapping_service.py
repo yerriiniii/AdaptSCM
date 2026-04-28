@@ -54,7 +54,14 @@ BRAND_COLUMN_CANONICAL = "brand"
 BRAND_HEADER_ALIASES = frozenset({"brand", "브랜드"})
 BARCODE_COLUMN_CANONICAL = "barcode"
 BARCODE_HEADER_ALIASES = frozenset({"barcode", "바코드", "bar_code", "ean", "gtin"})
-OPTIONAL_MAPPING_COLUMNS = [OPTION_COLUMN_CANONICAL, BRAND_COLUMN_CANONICAL, BARCODE_COLUMN_CANONICAL]
+SEGMENT_COLUMN_CANONICAL = "segment"
+SEGMENT_HEADER_ALIASES = frozenset({"segment", "구분", "상품구분", "분류", "상품분류"})
+OPTIONAL_MAPPING_COLUMNS = [
+    OPTION_COLUMN_CANONICAL,
+    BRAND_COLUMN_CANONICAL,
+    BARCODE_COLUMN_CANONICAL,
+    SEGMENT_COLUMN_CANONICAL,
+]
 MAX_MAPPING_FILE_SIZE_BYTES = 2 * 1024 * 1024
 # AE/UK/AU 엑셀은 전용 name 열 대신 us_name 만 있는 경우가 많음
 MAPPING_NAME_FALLBACK_TO_US_NAME = frozenset({"AU", "UK", "AE"})
@@ -295,6 +302,7 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
     option_header_keys = frozenset(_normalize_mapping_header(a) for a in OPTION_HEADER_ALIASES)
     brand_header_keys = frozenset(_normalize_mapping_header(a) for a in BRAND_HEADER_ALIASES)
     barcode_header_keys = frozenset(_normalize_mapping_header(a) for a in BARCODE_HEADER_ALIASES)
+    segment_header_keys = frozenset(_normalize_mapping_header(a) for a in SEGMENT_HEADER_ALIASES)
 
     series_by_canonical: dict[str, pd.Series] = {}
     matched_raw: dict[str, str] = {}
@@ -304,6 +312,8 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
     brand_matched_raw = ""
     barcode_series: pd.Series | None = None
     barcode_matched_raw = ""
+    segment_series: pd.Series | None = None
+    segment_matched_raw = ""
 
     for col in df.columns:
         raw_label = str(col).strip()
@@ -343,6 +353,24 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
                 )
             barcode_series = col_slice.copy()
             barcode_matched_raw = raw_label
+            continue
+        if norm in segment_header_keys:
+            if segment_series is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{filename}: 구분 열(`segment` / `구분` 등)이 두 개 이상입니다 "
+                        f"(`{segment_matched_raw}` 와 `{raw_label}`)."
+                    ),
+                )
+            col_slice = df[col]
+            if isinstance(col_slice, pd.DataFrame):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{filename}: 헤더 `{raw_label}` 열이 엑셀에서 중복되어 있습니다.",
+                )
+            segment_series = col_slice.copy()
+            segment_matched_raw = raw_label
             continue
         if norm in option_header_keys:
             if option_series is not None:
@@ -408,11 +436,14 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
     aligned[BARCODE_COLUMN_CANONICAL] = (
         barcode_series if barcode_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
     )
+    aligned[SEGMENT_COLUMN_CANONICAL] = (
+        segment_series if segment_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
+    )
     return pd.DataFrame(aligned)
 
 
 def _read_mapping_frame(upload_file: UploadFile) -> pd.DataFrame:
-    """표준 매핑 컬럼 + 선택 `brand`·`barcode`·`option` 만 사용하고, 나머지 열은 무시한다. 첫 번째 시트만 읽는다."""
+    """표준 매핑 컬럼 + 선택 `brand`·`barcode`·`option`·`segment`(구분) 만 사용하고, 나머지 열은 무시한다. 첫 번째 시트만 읽는다."""
     raw, _ = _read_mapping_bytes(upload_file)
     filename = str(upload_file.filename or "mapping.xlsx")
     last_no_mapping_detail: str | None = None
@@ -464,13 +495,53 @@ def _normalize_barcode_cell(value: object) -> str:
     return s[:255]
 
 
+def _normalize_segment_cell(value: object) -> str:
+    try:
+        if pd.isna(value):
+            return ""
+    except TypeError:
+        pass
+    if isinstance(value, float) and math.isnan(value):
+        return ""
+    s = re.sub(r"\s+", " ", str(value or "").strip())
+    return s[:255]
+
+
+_SEGMENT_LEADING_MARK_RE = re.compile(r"^\s*[（(]\s*[xXＸｘ]\s*[）)]\s*")
+
+
+def coerce_item_segment_discontinued_only(value: object) -> str | None:
+    """구분 열: 실제 단종만 `단종`으로 저장. 단종 예정·행사·알뜰 등 그 외·빈 값은 None."""
+    s = _normalize_segment_cell(value)
+    if not s:
+        return None
+    if "예정" in s:
+        return None
+    t = _SEGMENT_LEADING_MARK_RE.sub("", s).strip()
+    if t == "단종":
+        return "단종"
+    return None
+
+
+def format_item_segment_display(raw: str | None) -> str:
+    """DB 값이 단종일 때만 표시. 그 외(구 스키마 잔여값 포함)는 빈 문자열."""
+    if raw is None:
+        return ""
+    if str(raw).strip() == "단종":
+        return "단종"
+    return ""
+
+
 def _mapping_item_payload(group: ProductGroup) -> dict:
     locales = sorted(group.locales, key=lambda locale: COUNTRY_ORDER.get(locale.country_code, 999))
+    seg_coerced = coerce_item_segment_discontinued_only(group.segment)
     return {
         "group_id": str(group.id),
         "kr_name": group.kr_name,
         "brand": group.brand,
         "barcode": group.barcode,
+        "segment": seg_coerced,
+        "segment_display": format_item_segment_display(seg_coerced),
         "locales": [
             {
                 "country_code": locale.country_code,
@@ -516,11 +587,13 @@ def _build_mapping_group(source: dict[str, object], row_label: str) -> dict:
     if not brand:
         raise HTTPException(status_code=400, detail=f"{row_label}: brand(또는 브랜드) 값은 필수입니다.")
     barcode = _normalize_barcode_cell(source.get(BARCODE_COLUMN_CANONICAL))
+    segment = coerce_item_segment_discontinued_only(source.get(SEGMENT_COLUMN_CANONICAL))
     return {
         "kr_name": kr_locale["name"],
         "locales": locales,
         "brand": brand,
         "barcode": barcode,
+        "segment": segment,
     }
 
 
@@ -571,6 +644,7 @@ def _merge_manual_mapping_locales(target: ProductGroup, payload: dict, now: date
     target.brand = _normalize_brand_cell(payload.get("brand"))
     bc = _normalize_barcode_cell(payload.get(BARCODE_COLUMN_CANONICAL))
     target.barcode = bc if bc else None
+    target.segment = coerce_item_segment_discontinued_only(payload.get(SEGMENT_COLUMN_CANONICAL))
     target.manual_updated_at = now
     target.updated_at = now
 
@@ -596,7 +670,40 @@ def _merge_manual_mapping_locales(target: ProductGroup, payload: dict, now: date
         existing.updated_at = now
 
 
+_SKU_MAPPING_EXAMPLE_HINT = re.compile(r"^\s*예\s*:", re.IGNORECASE)
+
+
+def _is_sku_mapping_template_hint_row(source: dict[str, object]) -> bool:
+    """다운로드 템플릿 2행처럼 '예: …' 안내가 들어간 행은 병합하지 않는다."""
+    for key in (
+        "kr_sku",
+        "kr_name",
+        "brand",
+        "us_sku",
+        "us_name",
+        "tw_sku",
+        "tw_name",
+        "hk_sku",
+        "hk_name",
+        "jp_sku",
+        "jp_name",
+        "sg_sku",
+        "de_sku",
+        "uk_sku",
+        "au_sku",
+        "ae_sku",
+        "vn_sku",
+        "th_sku",
+    ):
+        s = str(source.get(key) or "").strip()
+        if s and _SKU_MAPPING_EXAMPLE_HINT.match(s):
+            return True
+    return False
+
+
 def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | None:
+    if _is_sku_mapping_template_hint_row(source):
+        return None
     sku_locales: list[dict[str, str | None]] = []
     named_locales: list[dict[str, str]] = []
     opt_source = source.get(OPTION_COLUMN_CANONICAL)
@@ -645,6 +752,7 @@ def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | Non
 
     brand = _normalize_brand_cell(source.get(BRAND_COLUMN_CANONICAL))
     barcode = _normalize_barcode_cell(source.get(BARCODE_COLUMN_CANONICAL))
+    segment = _normalize_segment_cell(source.get(SEGMENT_COLUMN_CANONICAL))
 
     return {
         "row_label": row_label,
@@ -657,6 +765,7 @@ def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | Non
         "match_us_name": match_us_name,
         "brand": brand,
         "barcode": barcode,
+        "segment": segment,
     }
 
 
@@ -1154,6 +1263,9 @@ def _apply_merge_record(
     barcode_val = _normalize_barcode_cell(record.get(BARCODE_COLUMN_CANONICAL))
     if barcode_val:
         target.barcode = barcode_val
+    seg_in = record.get("segment")
+    if isinstance(seg_in, str) and seg_in.strip():
+        target.segment = coerce_item_segment_discontinued_only(seg_in)
     target.upload_updated_at = uploaded_at
     target.updated_at = uploaded_at
 
@@ -1221,11 +1333,13 @@ def merge_product_sku_mappings(db: Session, upload_files: list[UploadFile]) -> d
                         ),
                     )
                 new_barcode = _normalize_barcode_cell(record.get(BARCODE_COLUMN_CANONICAL))
+                new_segment = coerce_item_segment_discontinued_only(record.get("segment"))
                 target = ProductGroup(
                     id=uuid.uuid4(),
                     kr_name=str(record["kr_name"] or record["fallback_name"]),
                     brand=new_brand,
                     barcode=new_barcode if new_barcode else None,
+                    segment=new_segment,
                     upload_updated_at=uploaded_at,
                     manual_updated_at=None,
                     updated_at=uploaded_at,
@@ -1289,10 +1403,12 @@ def upsert_product_sku_mapping(db: Session, payload: dict[str, object]) -> dict:
     try:
         if target is None:
             bc0 = _normalize_barcode_cell(record.get(BARCODE_COLUMN_CANONICAL))
+            seg0 = coerce_item_segment_discontinued_only(record.get("segment"))
             target = ProductGroup(
                 kr_name=record["kr_name"],
                 brand=record["brand"],
                 barcode=bc0 if bc0 else None,
+                segment=seg0,
                 upload_updated_at=None,
                 manual_updated_at=manual_updated_at,
                 updated_at=manual_updated_at,
@@ -1333,7 +1449,12 @@ def list_product_sku_mappings(db: Session, query: str | None = None, limit: int 
 
     items: list[dict] = []
     for group in rows:
-        haystack_parts = [group.kr_name, str(group.barcode or "")]
+        haystack_parts = [
+            group.kr_name,
+            str(group.barcode or ""),
+            format_item_segment_display(coerce_item_segment_discontinued_only(group.segment)),
+            str(group.segment or ""),
+        ]
         for locale in group.locales:
             haystack_parts.extend([locale.country_code, locale.name or "", locale.sku])
         haystack = " ".join(haystack_parts).casefold()
@@ -1352,10 +1473,13 @@ def build_product_sku_mapping_lookups(db: Session) -> dict:
 
     for group in groups:
         kr_locale = next((locale for locale in group.locales if locale.country_code == "KR"), None)
+        seg_coerced = coerce_item_segment_discontinued_only(group.segment)
         payload = {
             "group_id": str(group.id),
             "kr_name": kr_locale.name if kr_locale else group.kr_name,
             "kr_sku": kr_locale.sku if kr_locale else "",
+            "segment": seg_coerced,
+            "segment_display": format_item_segment_display(seg_coerced),
         }
         for locale in group.locales:
             by_country_sku[locale.country_code][locale.sku] = payload
@@ -1381,11 +1505,20 @@ def resolve_product_sku_mapping(
             _normalize_mapping_name_key(description)
         )
     if not matched:
-        return {"mapped_kr_name": "", "mapped_kr_sku": ""}
+        return {
+            "mapped_kr_name": "",
+            "mapped_kr_sku": "",
+            "mapped_segment": "",
+            "mapped_segment_display": "",
+        }
 
+    seg_raw = matched.get("segment")
+    seg_disp = matched.get("segment_display")
     return {
         "mapped_kr_name": str(matched.get("kr_name") or ""),
         "mapped_kr_sku": str(matched.get("kr_sku") or ""),
+        "mapped_segment": "" if seg_raw is None else str(seg_raw).strip(),
+        "mapped_segment_display": "" if seg_disp is None else str(seg_disp),
     }
 
 
