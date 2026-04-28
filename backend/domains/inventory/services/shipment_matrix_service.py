@@ -353,12 +353,14 @@ def build_shipment_matrix_view(
     *,
     channel: str | None = None,
     data_year: int = _DEFAULT_DATA_YEAR,
+    all_channels: bool = False,
 ) -> dict[str, Any]:
     channels_with = _distinct_channels_with_data(db, data_year)
     chip_order = list(SHIPMENT_MATRIX_SHEET_NAMES)
+    ch_rank = {name: i for i, name in enumerate(chip_order)}
     active = channel if channel in channels_with else (channels_with[0] if channels_with else None)
 
-    if not active:
+    if not channels_with:
         return {
             "summary": {"item_count": 0, "date_count": 0},
             "countries": ["KR"],
@@ -372,16 +374,42 @@ def build_shipment_matrix_view(
             "shipment_channels_with_data": [],
         }
 
-    rows_orm = (
-        db.execute(
-            select(ShipmentMatrixRow).where(
-                ShipmentMatrixRow.channel_sheet == active,
-                ShipmentMatrixRow.data_year == data_year,
+    if all_channels:
+        rows_orm = (
+            db.execute(
+                select(ShipmentMatrixRow).where(
+                    ShipmentMatrixRow.data_year == data_year,
+                )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
+        matrix_active: str | None = None
+    else:
+        if not active:
+            return {
+                "summary": {"item_count": 0, "date_count": 0},
+                "countries": ["KR"],
+                "dates": [],
+                "rows": [],
+                "channels": chip_order,
+                "shipment_month_columns": [],
+                "shipment_day_labels": {},
+                "shipment_totals": {"monthly": {}, "daily": {}},
+                "shipment_active_channel": None,
+                "shipment_channels_with_data": [],
+            }
+        rows_orm = (
+            db.execute(
+                select(ShipmentMatrixRow).where(
+                    ShipmentMatrixRow.channel_sheet == active,
+                    ShipmentMatrixRow.data_year == data_year,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        matrix_active = active
 
     month_keys: set[str] = set()
     day_keys: set[str] = set()
@@ -408,7 +436,13 @@ def build_shipment_matrix_view(
     sum_monthly: dict[str, int] = defaultdict(int)
     sum_daily: dict[str, int] = defaultdict(int)
 
-    for rec in sorted(rows_orm, key=lambda x: x.sku):
+    def _rec_channel(rec: ShipmentMatrixRow) -> str:
+        return str(rec.channel_sheet or "").strip() or (matrix_active or "")
+
+    for rec in sorted(
+        rows_orm,
+        key=lambda x: (ch_rank.get(str(x.channel_sheet or ""), 999), x.sku),
+    ):
         brand, pname = sku_map.get(rec.sku, ("", ""))
         mt = {str(k): int(v) for k, v in (rec.monthly_totals or {}).items()}
         dt = {str(k): int(v) for k, v in (rec.daily_totals or {}).items()}
@@ -417,6 +451,7 @@ def build_shipment_matrix_view(
         for k, v in dt.items():
             sum_daily[k] += v
 
+        row_channel = _rec_channel(rec)
         flat: dict[str, Any] = {
             "sku": rec.sku,
             "brand": brand,
@@ -425,7 +460,7 @@ def build_shipment_matrix_view(
             # 구분: SKU 매핑(DB item)이 아니라 업로드 엑셀 「구분」열 원문(category). DB 단종-only 정규화는 item 저장에만 적용.
             "segment": _display_dash(rec.category or None),
             "country": "KR",
-            "channel": active,
+            "channel": row_channel,
             "month_totals": mt,
         }
         for dk, q in dt.items():
@@ -433,6 +468,7 @@ def build_shipment_matrix_view(
         out_rows.append(flat)
 
     dates_out = day_sorted
+    totals_channel = "" if all_channels else (matrix_active or "")
     totals_row: dict[str, Any] = {
         "is_total": True,
         "sku": "",
@@ -441,7 +477,7 @@ def build_shipment_matrix_view(
         "mkt_priority": "",
         "segment": "",
         "country": "KR",
-        "channel": active,
+        "channel": totals_channel,
         "month_totals": {k: sum_monthly.get(k, 0) for k in [str(m) for m in month_ints]},
     }
     for dk in dates_out:
@@ -456,7 +492,7 @@ def build_shipment_matrix_view(
         "shipment_month_columns": shipment_month_columns,
         "shipment_day_labels": shipment_day_labels,
         "shipment_totals": {"monthly": dict(sum_monthly), "daily": dict(sum_daily)},
-        "shipment_active_channel": active,
+        "shipment_active_channel": None if all_channels else matrix_active,
         "shipment_channels_with_data": channels_with,
         "shipment_totals_row": totals_row,
     }

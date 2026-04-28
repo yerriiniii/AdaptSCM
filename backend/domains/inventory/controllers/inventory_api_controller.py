@@ -143,12 +143,18 @@ def shipment_aggregate(
 @router.get("/shipment/view", response_model=InventoryAggregateResponse)
 def shipment_view(
     channel: str | None = Query(default=None, description="출고 칩(엑셀 시트명과 동일)"),
+    all_channels: bool = Query(
+        default=False,
+        description="True면 모든 시트(칩) 행을 한 번에 반환. 차트 분석 등 전 시트 집계용.",
+    ),
     year: int = Query(default=DEFAULT_SHIPMENT_MATRIX_YEAR, ge=2000, le=2100),
     db: Session = Depends(get_db_session),
 ) -> InventoryAggregateResponse:
     if not get_runtime_settings().database_enabled:
         raise HTTPException(status_code=503, detail="DATABASE_URL이 설정되지 않았습니다.")
-    return InventoryAggregateResponse(**get_shipment_view(db, channel=channel, data_year=year))
+    return InventoryAggregateResponse(
+        **get_shipment_view(db, channel=channel, data_year=year, all_channels=all_channels)
+    )
 
 
 @router.post("/file-metadata")

@@ -373,9 +373,12 @@ def get_shipment_view(
     *,
     channel: str | None = None,
     data_year: int = DEFAULT_SHIPMENT_MATRIX_YEAR,
+    all_channels: bool = False,
 ) -> dict:
     """출고 현황 매트릭스(칩=시트명). 첫 행에 합계 행 포함."""
-    payload = build_shipment_matrix_view(db, channel=channel, data_year=data_year)
+    payload = build_shipment_matrix_view(
+        db, channel=channel, data_year=data_year, all_channels=all_channels
+    )
     totals_row = payload.pop("shipment_totals_row", None)
     body_rows: list[dict[str, Any]] = list(payload.get("rows") or [])
     if totals_row:

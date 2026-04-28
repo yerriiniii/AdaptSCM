@@ -268,10 +268,9 @@ body {
   border-radius: 0;
   padding: 0;
   box-shadow: none;
-  /* 헤더·탭·하위탭 등 반영 — 전체 높이를 줄여 한 화면에 가깝게 */
-  min-height: calc(100vh - 320px);
-  min-height: calc(100dvh - 320px);
-  max-height: calc(100dvh - 180px);
+  /* 본문 높이는 콘텐츠에 맡겨 페이지 스크롤로 끝까지 읽을 수 있게 함 */
+  min-height: 0;
+  max-height: none;
 }
 
 .tableCardShipmentChart .shipmentChartMappingCard {
@@ -285,35 +284,284 @@ body {
   flex-direction: column;
 }
 
-/* mappingCard와 split이 같은 노드 — column 규칙이 row(좌우 배치)를 덮어쓰지 않게 */
-.tableCardShipmentChart .shipmentChartMappingCard.shipmentChartSplit {
-  flex-direction: row;
+/* 차트 분석: 상단 검색·상품 선택 + 본문 세로 흐름 */
+.tableCardShipmentChart .shipmentChartMappingCard.shipmentChartPage {
+  flex-direction: column;
   align-items: stretch;
+  gap: 0;
 }
 
-/* 좌측 패널(약 1/4) + 우측 대형 차트 — 참고 대시보드 레이아웃 */
-.shipmentChartSplit {
+.shipmentChartPage {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: stretch;
-  gap: 20px;
+  gap: 0;
   width: 100%;
-  min-height: min(580px, calc(100dvh - 200px));
+  min-height: 0;
   flex: 1;
 }
 
-.shipmentChartSidebar {
-  flex: 0 0 26%;
-  max-width: 300px;
-  min-width: 240px;
-  border: 1px solid #e8ecf0;
-  border-radius: 10px;
+/* 차트 분석: 상단 탭(출고 현황·차트 분석) 아래에 검색·월 칩 고정 */
+.shipmentChartStickyBand {
+  position: sticky;
+  z-index: 19;
   background: #ffffff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
-  padding: 18px 16px 20px;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.08);
+  margin-bottom: 8px;
+}
+
+.shipmentChartStickyBand .shipmentChartToolbar {
+  padding-bottom: 8px;
+  margin-bottom: 0;
+}
+
+.shipmentChartStickyBand .shipmentChartMainHead {
+  margin-top: 6px;
+  margin-bottom: 0;
+  padding-bottom: 2px;
+}
+
+.shipmentChartToolbar {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 0;
+  padding: 4px 0 12px;
+  margin-bottom: 4px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* 검색 + 선택 상품 한 줄(검색창은 520px 한도), 아래에 후보 리스트 */
+.shipmentChartToolbarLead {
+  width: 100%;
+  max-width: 100%;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.shipmentChartToolbarLead .productMappingSearchWrap {
+  width: 100%;
+}
+
+.shipmentChartToolbarSearchAndProduct {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  /* 선택 후 상품명은 후보 리스트와 동시에 안 나오므로 검색 행과 세로 가운데 정렬 */
+  align-items: center;
+  gap: 12px 18px;
+  width: 100%;
+}
+
+/* 검색 입력 + 후보 리스트: 같은 520px 열(긴 텍스트는 열 안에서 줄바꿈·스크롤) */
+.shipmentChartToolbarSearchStack {
+  flex: 0 1 520px;
+  max-width: min(100%, 520px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+.shipmentChartToolbarSearchStack .shipmentChartToolbarSearchRow {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.shipmentChartToolbarSearchAndProduct .shipmentChartToolbarIdentity {
+  flex: 1 1 200px;
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+.shipmentChartToolbarSearch {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
+  .shipmentChartToolbarSearchAndProduct {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .shipmentChartToolbarSearchStack {
+    flex: 1 1 auto;
+    max-width: 100%;
+  }
+}
+
+/* 리스트는 SearchStack 폭 100% — 형제 레이아웃이 아니라 부모 열에 묶임 */
+.shipmentChartToolbarResults {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  align-self: stretch;
+  box-sizing: border-box;
+}
+
+.shipmentChartToolbarResultsScroll {
+  max-width: 100%;
+  max-height: min(320px, 42vh);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0;
+  scrollbar-gutter: stable;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.shipmentChartToolbarSearchWrap {
+  width: 100%;
+  min-width: 0 !important;
+}
+
+.shipmentChartToolbarSearchWrap .searchInput {
+  min-width: 0 !important;
+  width: 100%;
+  height: 46px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  padding-left: 40px;
+  font-size: 14px;
+  box-shadow: none;
+}
+
+.shipmentChartToolbarSku {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.shipmentChartToolbarIdentity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 10px;
+  min-width: 0;
+}
+
+.shipmentChartToolbarIdentity .shipmentChartSkuPlain {
+  flex-shrink: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #5d6574;
+  line-height: 1.35;
+}
+
+.shipmentChartToolbarIdentity .shipmentChartSkuSep {
+  flex-shrink: 0;
+  color: #cbd5e1;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.35;
+  user-select: none;
+}
+
+.shipmentChartToolbarIdentity .shipmentChartProductName {
+  font-size: 16px;
+  font-weight: 500;
+  color: #566274;
+  line-height: 1.35;
+  min-width: 0;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* 검색창과 동일 너비·톤: 상품코드 위 / 상품명 아래 */
+.shipmentChartToolbarPickList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.shipmentChartToolbarPickLi {
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.shipmentChartToolbarPickLi:last-child {
+  border-bottom: none;
+}
+
+.shipmentChartToolbarPickItem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  min-height: unset !important;
+  height: auto !important;
+  margin: 0;
+  padding: 12px 14px !important;
+  /* 전역 button 테두리·둥근 모서리 제거(행마다 네모 방지) */
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  box-sizing: border-box;
+}
+
+.shipmentChartToolbarPickItem:hover {
+  background: #f8fafc !important;
+}
+
+.shipmentChartToolbarPickItem:focus {
+  outline: none;
+}
+
+.shipmentChartToolbarPickItem:focus-visible {
+  outline: 2px solid #94a3b8;
+  outline-offset: -2px;
+  box-shadow: none !important;
+}
+
+.shipmentChartToolbarPickCode {
+  display: block;
+  width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  color: #5d6574;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.shipmentChartToolbarPickName {
+  display: block;
+  width: 100%;
+  font-size: 13px;
+  font-weight: 500;
+  color: #566274;
+  line-height: 1.45;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* 레거시 사이드바(구 좌측 패널) — 구조 변경 후 미사용, 하위 호환만 유지 */
+.shipmentChartSidebar {
+  display: none;
 }
 
 .shipmentChartSidebarSection {
@@ -543,11 +791,11 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: #ffffff;
-  border: 1px solid #e8ecf0;
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
-  padding: 20px 22px 22px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0 0 64px;
 }
 
 .shipmentChartMainPlaceholder,
@@ -565,7 +813,570 @@ body {
 
 .shipmentChartMainHead {
   flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+.shipmentChartInsightPanel {
+  flex-shrink: 0;
+  margin-bottom: 18px;
+  padding: 0;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  max-height: min(52vh, 640px);
+  overflow: auto;
+}
+
+.shipmentChartInsightPanel.shipmentChartInsightPanelProductFirst {
+  max-height: none;
+  overflow: visible;
+  margin-bottom: 0;
+}
+
+/* 월 칩과 분석 표 사이: 너무 붙지 않게 */
+.shipmentChartInsightPanelProductFirst > .shipmentChartInsightSection:first-of-type {
+  margin-top: 8px;
+}
+
+.shipmentChartInsightSummaryCompact .shipmentChartInsightStatValue {
+  font-size: 16px;
+}
+
+.shipmentChartMetaInline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #334155;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e8edf3;
+}
+
+.shipmentChartMetaInlineItem {
+  display: inline;
+}
+
+.shipmentChartMetaInlineKey {
+  font-weight: 600;
+  color: #64748b;
+  margin-right: 6px;
+}
+
+.shipmentChartDataLead {
+  margin-top: 0;
+}
+
+.shipmentChartChartsBlock {
+  margin-top: 32px;
+  padding-top: 4px;
+  padding-bottom: 24px;
+  border-top: none;
+}
+
+.shipmentChartChartsRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px 10px;
+}
+
+.shipmentChartChartsRow .shipmentChartBlockCompact {
+  flex: 1 1 480px;
+  min-width: min(100%, 380px);
+  max-width: 100%;
+  margin-bottom: 0;
+}
+
+.shipmentChartChartsBlockTitle {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5d6574;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.shipmentChartChartsBlockHint {
+  margin: 0 0 14px;
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.shipmentChartBlockCompact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.shipmentChartBlockCompact:last-child {
+  margin-bottom: 0;
+}
+
+.shipmentChartChartsRow .shipmentChartBlockCompact:last-child {
+  margin-bottom: 0;
+}
+
+/* 차트 구역 제목: 출고 월 칩과 동일한 캡슐 톤(비버튼) */
+.shipmentChartChartTypeChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  box-sizing: border-box;
+  margin: 0 0 10px;
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 1px solid #e3e8f0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #5d6574;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.35;
+  user-select: none;
+}
+
+/* 출고 차트 2열: 동일 높이 + viewBox 하단 정렬로 가로축 위치 맞춤 */
+.shipmentChartChartsRow .shipmentChartSvgCompact .trendChart {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: 400px;
+  max-height: 400px;
+  flex-shrink: 0;
+}
+
+.shipmentChartSvgCompact .trendChart {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  max-height: 468px;
+}
+
+.tableCardShipmentChart .trendChartCard {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.shipmentChartSvgCompact.shipmentChannelBarCard .trendChart {
+  max-height: none;
+}
+
+.shipmentChartInsightSummary {
+  margin-bottom: 14px;
+}
+
+.shipmentChartInsightSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px 16px;
+}
+
+.shipmentChartInsightStatWide {
+  grid-column: 1 / -1;
+}
+
+.shipmentChartInsightStatLabel {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.shipmentChartInsightStatValue {
+  font-size: 18px;
+  font-weight: 700;
+  color: #566274;
+}
+
+.shipmentChartInsightStatMuted {
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  word-break: break-all;
+}
+
+.shipmentChartInsightMeta {
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.5;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e8edf3;
+}
+
+.shipmentChartInsightMeta p {
+  margin: 0 0 6px;
+}
+
+.shipmentChartInsightMeta p:last-child {
+  margin-bottom: 0;
+}
+
+.shipmentChartInsightMetaKey {
+  display: inline-block;
+  min-width: 5.5rem;
+  margin-right: 8px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.shipmentChartInsightSection {
+  margin-top: 14px;
+}
+
+.shipmentChartInsightSectionTitle {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5d6574;
+}
+
+.shipmentChartInsightTableWrap {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #e8edf3;
+  background: #fff;
+}
+
+.tableCardShipmentChart .shipmentChartInsightTableWrap {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.shipmentChartInsightTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.shipmentChartInsightTable th,
+.shipmentChartInsightTable td {
+  padding: 9px 7px;
+  text-align: left;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.shipmentChartInsightTable th {
+  background: #f1f5f9;
+  font-weight: 600;
+  color: #475569;
+}
+
+.shipmentChartInsightTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.shipmentChartInsightNumCol {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.shipmentChartInsightMonthList {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e8edf3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+
+.tableCardShipmentChart .shipmentChartInsightMonthList {
+  padding: 8px 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.shipmentChartInsightMonthList li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.shipmentChartInsightMonthList li span:last-child {
+  font-weight: 600;
+  color: #566274;
+}
+
+.shipmentChartInsightHint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.shipmentChartDashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
   margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.shipmentChartBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shipmentChartBlockTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #5d6574;
+}
+
+.shipmentChartBlockHint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+/* 출고 현황 메인 표(.tableCard)와 맞춘 카드형 래퍼 */
+.shipmentChannelDayMatrixWrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid #e5e9f0;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  max-width: 100%;
+  scrollbar-gutter: stable;
+  isolation: isolate;
+}
+
+/* 출고 현황 본문과 동일: 가로 스크롤은 상단 띠로만(본문 스크롤바 숨김) */
+.shipmentChannelDayMatrixWrap.shipmentChartDayMatrixScrollSync {
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.shipmentChannelDayMatrixWrap.shipmentChartDayMatrixScrollSync::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.shipmentChannelDayMatrix {
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: max-content;
+  width: max-content;
+}
+
+/* 빈 코너 헤더 + colgroup 으로 첫 열(시트·칩명) 폭이 무너지지 않게 고정 */
+.shipmentChannelDayMatrix col.shipmentChannelDayMatrixColRowLabel {
+  width: 112px;
+  min-width: 112px;
+}
+
+.shipmentChannelDayMatrix col.shipmentChannelDayMatrixColDay {
+  width: 81px;
+  min-width: 81px;
+}
+
+.shipmentChannelDayMatrix col.shipmentChannelDayMatrixColTotal {
+  width: 81px;
+  min-width: 81px;
+}
+
+.shipmentChannelDayMatrix .shipmentChannelDayMatrixCornerPh {
+  display: block;
+  min-height: 1px;
+}
+
+.shipmentChannelDayMatrix th,
+.shipmentChannelDayMatrix td {
+  border: 1px solid #e2e8f0;
+  padding: 9px 7px;
+  text-align: right;
+  white-space: nowrap;
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
+.shipmentChannelDayMatrix thead th {
+  background: #f8fafd;
+  font-weight: 700;
+  color: #5d6574;
+  /* 일별 합계 행 상단 inset 선과 겹침 방지 */
+  border-bottom: none;
+}
+
+/* 일자 열: M/D(요일) */
+.shipmentChannelDayMatrix .shipmentChannelDayMatrixDayCol {
+  width: 81px;
+  min-width: 81px;
+  max-width: 81px;
+  position: relative;
+  z-index: 1;
+}
+
+.shipmentChannelDayMatrix thead th.shipmentChannelDayMatrixDayCol {
+  background-color: #f8fafd;
+  white-space: normal;
+  line-height: 1.2;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #5d6574;
+  padding: 9px 7px;
+}
+
+.shipmentChannelDayMatrix tbody td.shipmentChannelDayMatrixDayCol {
+  background-color: #ffffff;
+  color: #566274;
+  padding: 9px 7px;
+  font-size: 12px;
+}
+
+/* 시트명 열: 스티키 + 불투명 배경(일자 열과 겹침 방지) — colgroup 폭과 동기화, 여백 넉넉히 */
+.shipmentChannelDayMatrix .shipmentChannelDayMatrixRowLabel {
+  position: sticky;
+  left: 0;
+  text-align: left;
+  font-weight: 600;
+  min-width: 112px;
+  width: 112px;
+  padding: 9px 8px;
+  box-shadow: 4px 0 12px -4px rgba(15, 23, 42, 0.14);
+  border-right: 1px solid #e2e8f0;
+  background-clip: padding-box;
+}
+
+.shipmentChannelDayMatrix thead th.shipmentChannelDayMatrixRowLabel {
+  z-index: 5;
+  background-color: #f8fafd;
+  color: #5d6574;
+  font-weight: 700;
+}
+
+.shipmentChannelDayMatrix th.shipmentChannelDayMatrixRowLabel {
+  font-size: 12px;
+  white-space: normal;
+  line-height: 1.4;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+.shipmentChannelDayMatrix tbody th.shipmentChannelDayMatrixRowLabel {
+  z-index: 4;
+  background-color: #ffffff;
+  color: #566274;
+}
+
+.shipmentChannelDayMatrix tbody tr.shipmentChannelDayMatrixDailyTotalRow th.shipmentChannelDayMatrixRowLabel {
+  background-color: #eef2f7;
+  color: #5d6574;
+  font-weight: 700;
+}
+
+.shipmentChannelDayMatrix tbody tr.shipmentChannelDayMatrixDailyTotalRow td.shipmentChannelDayMatrixDayCol {
+  background-color: #eef2f7;
+  color: #5d6574;
+  font-weight: 700;
+}
+
+/* 일별 합계 행: 판매처별 합계 열과 동일한 inset 1px #94a3b8 윤곽(위·아래) */
+.shipmentChannelDayMatrix tbody tr.shipmentChannelDayMatrixDailyTotalRow td,
+.shipmentChannelDayMatrix tbody tr.shipmentChannelDayMatrixDailyTotalRow th {
+  border-top: none;
+  border-bottom: none;
+  box-shadow:
+    inset 0 1px 0 #94a3b8,
+    inset 0 -1px 0 #94a3b8;
+}
+
+.shipmentChannelDayMatrix tbody tr.shipmentChannelDayMatrixDailyTotalRow + tr td,
+.shipmentChannelDayMatrix tbody tr.shipmentChannelDayMatrixDailyTotalRow + tr th {
+  border-top: none;
+}
+
+/* 판매처별 합계 열: 시트명(112px) 바로 오른쪽, 가로 스크롤 시 고정 */
+.shipmentChannelDayMatrix .shipmentChannelDayMatrixTotalCol {
+  min-width: 81px;
+  width: 81px;
+  max-width: 81px;
+  background: #eef2f7;
+  font-weight: 700;
+  color: #566274;
+  position: sticky;
+  left: 112px;
+  box-sizing: border-box;
+  /* collapse 테이블에서는 세로 border 가 묻히므로 inset 윤곽으로 좌우 구분 */
+  box-shadow:
+    inset 1px 0 0 #94a3b8,
+    inset -1px 0 0 #94a3b8,
+    4px 0 12px -4px rgba(15, 23, 42, 0.12);
+  background-clip: padding-box;
+}
+
+.shipmentChannelDayMatrix thead th.shipmentChannelDayMatrixTotalCol {
+  z-index: 4;
+  background-color: #eef2f7;
+  color: #5d6574;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.2;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 9px 7px;
+  vertical-align: middle;
+}
+
+.shipmentChannelDayMatrix tbody td.shipmentChannelDayMatrixTotalCol {
+  z-index: 3;
+  background-color: #eef2f7;
+  color: #566274;
+  padding: 9px 7px;
+  font-size: 12px;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.shipmentChannelDayMatrix tbody tr.shipmentChannelDayMatrixDailyTotalRow td.shipmentChannelDayMatrixTotalCol {
+  background-color: #eef2f7;
+  color: #5d6574;
+  box-shadow:
+    inset 0 1px 0 #94a3b8,
+    inset 0 -1px 0 #94a3b8,
+    inset 1px 0 0 #94a3b8,
+    inset -1px 0 0 #94a3b8,
+    4px 0 12px -4px rgba(15, 23, 42, 0.12);
+}
+
+.shipmentChartEmptyInCard {
+  padding: 28px 16px;
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+}
+
+.shipmentChartSvgCompact .shipmentChartEmptyInCard {
+  padding: 20px 12px;
 }
 
 .shipmentChartMainHeaderBlock {
@@ -581,7 +1392,7 @@ body {
   margin-bottom: 0;
   flex-wrap: wrap;
   align-items: center;
-  row-gap: 12px;
+  row-gap: 6px;
   column-gap: 28px;
 }
 
@@ -598,6 +1409,8 @@ body {
 /* 출고 칩 기본 gap(4px 6px) 덮어쓰기 — 차트 월 칩만 넓은 간격 */
 .countryChips.countryChipsShipment.shipmentChartMonthChips {
   gap: 12px 28px;
+  margin-top: 0;
+  margin-bottom: 14px;
 }
 
 .shipmentChartMainHeaderTop {
@@ -622,14 +1435,14 @@ body {
 .shipmentChartMainHeaderIdentity .shipmentChartSkuPlain {
   flex-shrink: 0;
   font-size: 16px;
-  font-weight: 500;
-  color: #111827;
+  font-weight: 600;
+  color: #5d6574;
   line-height: 1.35;
 }
 
 .shipmentChartMainHeaderIdentity .shipmentChartSkuSep {
   flex-shrink: 0;
-  color: #b1bcc9;
+  color: #cbd5e1;
   font-size: 16px;
   font-weight: 400;
   line-height: 1.35;
@@ -639,7 +1452,7 @@ body {
 .shipmentChartMainHeaderIdentity .shipmentChartProductName {
   font-size: 16px;
   font-weight: 500;
-  color: #111827;
+  color: #566274;
   line-height: 1.35;
   min-width: 0;
   word-break: keep-all;
@@ -735,9 +1548,9 @@ body {
 }
 
 .shipmentChartYGridLabel {
-  fill: #566274;
-  font-size: 8px;
-  font-weight: 500;
+  fill: #5d6574;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .shipmentChartYAxisOrigin {
@@ -745,24 +1558,31 @@ body {
 }
 
 .shipmentLineChartSvg .trendAxis {
-  stroke: #566274;
+  stroke: #5d6574;
   stroke-width: 0.6;
 }
 
 .shipmentChannelBarSvg .trendAxis {
-  stroke: #566274;
+  stroke: #5d6574;
   stroke-width: 0.6;
 }
 
 @media (max-width: 900px) {
-  .shipmentChartSplit {
+  .shipmentChartToolbar {
     flex-direction: column;
-    min-height: 0;
+    align-items: stretch;
   }
 
-  .shipmentChartSidebar {
-    flex: 0 0 auto;
+  .shipmentChartToolbarLead {
+    width: 100%;
+    align-self: stretch;
+  }
+
+  .shipmentChartToolbarSearch {
     max-width: none;
+  }
+
+  .shipmentChartToolbarPickList {
     width: 100%;
   }
 
@@ -886,6 +1706,14 @@ body {
   font-size: 14px;
 }
 
+.tableCardShipmentChart .shipmentChartEmpty {
+  margin: 10px 0;
+  padding: 10px 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
 .shipmentChartTotalPill {
   margin-left: 10px;
   font-size: 12px;
@@ -940,13 +1768,13 @@ body {
 }
 
 .shipmentChannelBarLabel {
-  fill: #475569;
+  fill: #5d6574;
   font-size: 9px;
   font-weight: 600;
 }
 
 .shipmentChannelBarValue {
-  fill: #334155;
+  fill: #566274;
   font-size: 9px;
   font-weight: 600;
 }
@@ -967,25 +1795,24 @@ body {
   fill: #0d9488;
 }
 
-/* 출고 차트 라인: 축(날짜)·꼭짓점 수량 */
-.shipmentLineChartSvg .trendXAxisLabel {
-  font-size: 7px;
-  fill: #566274;
+/* 출고 차트 라인: 축(날짜)·꼭짓점 수량 — 일자별·월별 X축 글자 크기 동일 */
+.shipmentLineChartSvg .trendXAxisLabel,
+.shipmentDailyLineSvg .trendXAxisLabel {
+  font-size: 12px;
+  font-weight: 600;
+  fill: #5d6574;
 }
 
 .shipmentLineChartSvg .trendDotLabel {
-  font-size: 7px;
-  font-weight: 600;
-}
-
-.shipmentDailyLineSvg .trendXAxisLabel {
-  font-size: 7px;
-  fill: #566274;
+  font-size: 10px;
+  font-weight: 700;
+  fill: #475569;
 }
 
 .shipmentDailyLineSvg .trendDotLabel {
-  font-size: 7px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
+  fill: #475569;
 }
 
 .topActions {
@@ -2793,6 +3620,21 @@ th {
   border-bottom: 1px solid #cbd5e1;
 }
 
+/* 상품명·한국상품명 ↔ 재고 변화 추이 열 사이 세로 윤곽 제거 */
+.inventoryTable.krTable:not(.shipmentMatrixTable) thead th:has(+ th.trendActionCol),
+.inventoryTable.krTable:not(.shipmentMatrixTable) tbody td:has(+ td.trendActionCell),
+.inventoryTable.overseasTable thead th:has(+ th.trendActionCol),
+.inventoryTable.overseasTable tbody td:has(+ td.trendActionCell) {
+  border-right: none;
+}
+
+.inventoryTable.krTable:not(.shipmentMatrixTable) thead th.trendActionCol,
+.inventoryTable.krTable:not(.shipmentMatrixTable) tbody td.trendActionCell,
+.inventoryTable.overseasTable thead th.trendActionCol,
+.inventoryTable.overseasTable tbody td.trendActionCell {
+  border-left: none;
+}
+
 .inventoryTable.overseasTable thead th.krCompareCol,
 .inventoryTable.overseasTable tbody td.krCompareCol {
   border: 1px solid #e2e8f0;
@@ -2843,25 +3685,33 @@ th {
   box-shadow: inset -1px 0 0 #e2e8f0;
 }
 
+/* 한국상품명·상품명 열의 inset 우측선이 추이 열과 겹쳐 보이지 않게 함(위 sticky inset보다 뒤에 둠) */
+.inventoryTable.overseasTable thead th.stickyColName:has(+ th.trendActionCol),
+.inventoryTable.overseasTable thead th.stickyColKrName:has(+ th.trendActionCol),
+.inventoryTable.overseasTable tbody td.stickyColName:has(+ td.trendActionCell),
+.inventoryTable.overseasTable tbody td.stickyColKrName:has(+ td.trendActionCell) {
+  box-shadow: none;
+}
+
 /* 재고 비교: 스티키 중 마지막 열(한국상품명) 앞까지만 inset — 출고 구분 열과 동일 */
 .compareTable thead th.stickyColCode,
 .compareTable tbody td.stickyColCode {
   box-shadow: inset -1px 0 0 #e2e8f0;
 }
 
-/* 출고 현황 매트릭스: 고정 열 순서 브랜드·상품코드·상품명·마케팅·구분 (가로 스크롤 시 구분까지 고정) */
-.inventoryTable.krTable.shipmentMatrixTable .stickyColShipBrand {
-  left: 0;
-  width: 103px;
-  min-width: 103px;
-  max-width: 103px;
-}
-
+/* 출고 현황 매트릭스: 고정 열 순서 상품코드·브랜드·상품명·마케팅·구분 (가로 스크롤 시 구분까지 고정) */
 .inventoryTable.krTable.shipmentMatrixTable .stickyColShipCode {
-  left: 103px;
+  left: 0;
   width: 74px;
   min-width: 74px;
   max-width: 74px;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable .stickyColShipBrand {
+  left: 74px;
+  width: 103px;
+  min-width: 103px;
+  max-width: 103px;
 }
 
 .inventoryTable.krTable.shipmentMatrixTable .stickyColShipName {
@@ -2903,11 +3753,11 @@ th {
   background-color: #ffffff;
 }
 
-.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipBrand {
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipCode {
   z-index: 21;
 }
 
-.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipCode {
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipBrand {
   z-index: 22;
 }
 
@@ -2923,11 +3773,11 @@ th {
   z-index: 25;
 }
 
-.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipBrand {
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipCode {
   z-index: 11;
 }
 
-.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipCode {
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipBrand {
   z-index: 12;
 }
 
@@ -2969,12 +3819,12 @@ th {
 }
 
 /* 구분 열 왼쪽(브랜드~마케팅): 일자 열과 같은 연한 세로선(#e2e8f0). sticky+overflow로 경계가 약할 때 보강 */
-.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipBrand,
 .inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipCode,
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipBrand,
 .inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipName,
 .inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipMkt,
-.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipBrand,
 .inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipCode,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipBrand,
 .inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipName,
 .inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipMkt {
   box-shadow: inset -1px 0 0 #e2e8f0;
@@ -3014,11 +3864,11 @@ th {
   z-index: 1;
 }
 
-.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.stickyColShipBrand {
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.stickyColShipCode {
   z-index: 21;
 }
 
-.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.stickyColShipCode {
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.stickyColShipBrand {
   z-index: 22;
 }
 
@@ -3434,6 +4284,7 @@ th {
 .trendActionBtn {
   height: 28px;
   padding: 0 11px;
+  margin-left: 5px;
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
