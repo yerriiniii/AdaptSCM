@@ -134,8 +134,9 @@ def shipment_aggregate(
         raise HTTPException(status_code=503, detail="DATABASE_URL이 설정되지 않았습니다.")
     kr_sku_map = _load_kr_sku_brand_name(db)
     paired: list[tuple[UploadFile, bytes]] = [(uf, _read_upload_bytes(uf)) for uf in files]
-    persisted_files = persist_shipment_matrix_uploads(db, paired, kr_sku_brand_name=kr_sku_map)
-    payload = get_shipment_view(db)
+    persisted_files, years_uploaded = persist_shipment_matrix_uploads(db, paired, kr_sku_brand_name=kr_sku_map)
+    year_view = years_uploaded[-1] if years_uploaded else DEFAULT_SHIPMENT_MATRIX_YEAR
+    payload = get_shipment_view(db, data_year=year_view)
     merged = {**payload, "files": persisted_files}
     return InventoryAggregateResponse(**merged)
 

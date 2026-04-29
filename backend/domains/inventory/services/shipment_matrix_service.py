@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import re
 import unicodedata
 from collections import defaultdict
@@ -37,11 +38,38 @@ SHIPMENT_MATRIX_SHEET_NAMES: tuple[str, ...] = (
     "그 외 해외 현황",
 )
 
-_MATRIX_SHEET_SET = frozenset(SHIPMENT_MATRIX_SHEET_NAMES)
 DEFAULT_SHIPMENT_MATRIX_YEAR = 2026
 _DEFAULT_DATA_YEAR = DEFAULT_SHIPMENT_MATRIX_YEAR
 
+# 업로드 파일명: 예) 2026년_출고_현황.xlsx / .xls
+_SHIPMENT_MATRIX_FILENAME_RE = re.compile(r"^(?P<year>\d{4})년_출고_현황(?:\.(?:xlsx|xls))?$", re.IGNORECASE)
+
 _WEEKDAYS_KO = ("월", "화", "수", "목", "금", "토", "일")
+
+
+def parse_shipment_matrix_filename(filename: str) -> int:
+    """업로드 파일명에서 데이터 연도 추출. 형식: 「YYYY년_출고_현황.xlsx」."""
+    base = os.path.basename((filename or "").strip())
+    m = _SHIPMENT_MATRIX_FILENAME_RE.match(base)
+    if not m:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "파일 이름은 「YYYY년_출고_현황.xlsx」 형식이어야 합니다. "
+                "예: 2026년_출고_현황.xlsx\n"
+                f"현재 파일 이름: {base or '(이름 없음)'}"
+            ),
+        )
+    y = int(m.group("year"))
+    if y < 2000 or y > 2100:
+        raise HTTPException(status_code=400, detail=f"연도는 2000~2100 범위여야 합니다. (파일명 기준: {y})")
+    return y
+
+
+def list_shipment_matrix_years(db: Session) -> list[int]:
+    stmt = select(ShipmentMatrixRow.data_year).distinct()
+    found = [int(x) for x in db.execute(stmt).scalars().all() if x is not None]
+    return sorted(set(found))
 
 
 def _norm_header_cell(raw: object) -> str:
@@ -155,7 +183,18 @@ def _parse_day_from_header_cell(raw_cell: object, default_year: int) -> tuple[da
         return None, None
     s = unicodedata.normalize("NFKC", s_raw)
 
-    m = re.fullmatch(r"(\d{4})(\d{2})(\d{2})", re.sub(r"\s+", "", s))
+    s_compact = re.sub(r"\s+", "", s)
+    m_iso = re.fullmatch(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", s_compact)
+    if m_iso:
+        try:
+            return (
+                date(int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3))),
+                None,
+            )
+        except ValueError:
+            pass
+
+    m = re.fullmatch(r"(\d{4})(\d{2})(\d{2})", s_compact)
     if m:
         try:
             return date(int(m.group(1)), int(m.group(2)), int(m.group(3))), None
@@ -197,12 +236,21 @@ def parse_shipment_matrix_workbook(
     """매칭되는 시트만 읽어 channel_sheet → 행 dict 목록."""
     bio = io.BytesIO(raw)
     xl = pd.ExcelFile(bio)
+    names_set = set(xl.sheet_names)
+    missing_required = [n for n in SHIPMENT_MATRIX_SHEET_NAMES if n not in names_set]
+    if missing_required:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{filename or '파일'}: 출고 현황 파일에는 다음 시트가 모두 있어야 합니다: "
+                + " · ".join(SHIPMENT_MATRIX_SHEET_NAMES)
+                + f"\n누락: {', '.join(missing_required)}"
+            ),
+        )
     sku_map = kr_sku_brand_name if kr_sku_brand_name is not None else _load_kr_sku_brand_name(db)
     out: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
-    for sheet_name in xl.sheet_names:
-        if sheet_name not in _MATRIX_SHEET_SET:
-            continue
+    for sheet_name in SHIPMENT_MATRIX_SHEET_NAMES:
         df = pd.read_excel(xl, sheet_name=sheet_name, header=None, dtype=object)
         grid = df.fillna("").values.tolist()
         h_row = _find_matrix_header_row(grid)
@@ -299,6 +347,7 @@ def parse_shipment_matrix_workbook(
                     "daily": {},
                 }
             acc = by_sku[canon]
+            # 같은 시트·같은 SKU가 여러 행이면 월·일 키별로 수량 합산(원래 동작)
             _merge_qty_maps(acc["monthly"], monthly, add=True)
             _merge_qty_maps(acc["daily"], daily, add=True)
             if mkt:

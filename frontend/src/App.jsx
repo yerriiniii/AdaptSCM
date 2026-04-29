@@ -1905,6 +1905,9 @@ export default function App() {
   const [shipmentDisplayMonth, setShipmentDisplayMonth] = useState("");
   /** 출고: 1~12월 버튼에 쓰는 연도(데이터에 여러 연도가 있을 때만 드롭다운으로 변경) */
   const [shipmentMonthStripYear, setShipmentMonthStripYear] = useState(() => new Date().getFullYear());
+  const shipmentMonthStripYearRef = useRef(shipmentMonthStripYear);
+  /** 동일 렌더에서 드롭다운 변경 직후 실행되는 출고 fetch effect가 옛 연도로 요청하지 않도록 ref를 렌더 시점에 맞춘다 */
+  shipmentMonthStripYearRef.current = shipmentMonthStripYear;
   /** 출고: 출고 현황(매트릭스 표) | 차트 분석 */
   const [shipmentViewMode, setShipmentViewMode] = useState("status");
   /** 차트 일자별: 볼 달(YYYY-MM) — 표 상단 월 드롭다운과 별개 */
@@ -2164,7 +2167,7 @@ export default function App() {
       channel: shipmentMatrixChannel.trim() || undefined,
     });
     return () => ac.abort();
-  }, [isShipmentScope, shipmentMatrixChannel]);
+  }, [isShipmentScope, shipmentMatrixChannel, shipmentMonthStripYear]);
 
   /** 저장 발주 표: blur가 누락될 때(스크롤 트랙·레이아웃 클릭 등)에도 입력값 커밋·편집 종료 */
   useEffect(() => {
@@ -2488,21 +2491,28 @@ export default function App() {
   }, [rawInventoryDates]);
 
   const shipmentDataYears = useMemo(() => {
+    const apiYears = scopeResultCache.SHIPMENT?.shipment_available_years;
+    if (Array.isArray(apiYears) && apiYears.length) {
+      return [...new Set(apiYears.map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
+    }
     const ys = new Set();
     for (const m of shipmentAvailableMonths) {
       const y = Number(String(m).slice(0, 4));
       if (Number.isFinite(y)) ys.add(y);
     }
     return Array.from(ys).sort((a, b) => a - b);
-  }, [shipmentAvailableMonths]);
+  }, [scopeResultCache.SHIPMENT?.shipment_available_years, shipmentAvailableMonths]);
 
+  /** 서버가 알려 준 연도 목록에 없을 때만 보정 — 로딩 중 월 파생 목록만으로 덮어쓰면 드롭다운 선택이 되돌아간다 */
   useEffect(() => {
     if (!isShipmentScope) return;
-    if (!shipmentDataYears.length) return;
-    if (!shipmentDataYears.includes(shipmentMonthStripYear)) {
-      setShipmentMonthStripYear(shipmentDataYears[shipmentDataYears.length - 1]);
+    const apiYears = scopeResultCache.SHIPMENT?.shipment_available_years;
+    if (!Array.isArray(apiYears) || !apiYears.length) return;
+    const normalized = [...new Set(apiYears.map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
+    if (!normalized.includes(shipmentMonthStripYear)) {
+      setShipmentMonthStripYear(normalized[normalized.length - 1]);
     }
-  }, [isShipmentScope, shipmentDataYears, shipmentMonthStripYear]);
+  }, [isShipmentScope, scopeResultCache.SHIPMENT?.shipment_available_years, shipmentMonthStripYear]);
 
   useEffect(() => {
     if (!isShipmentScope) return;
@@ -2513,16 +2523,27 @@ export default function App() {
     }
     if (shipmentDisplayMonth !== "__ALL__") return;
     if (!shipmentAvailableMonths.length) return;
-    setShipmentMonthStripYear((prev) =>
-      shipmentDataYears.includes(prev) ? prev : Number(String(shipmentAvailableMonths[shipmentAvailableMonths.length - 1]).slice(0, 4)) || prev,
-    );
-  }, [isShipmentScope, shipmentDisplayMonth, shipmentAvailableMonths, shipmentDataYears]);
+    setShipmentMonthStripYear((prev) => {
+      const apiYears = scopeResultCache.SHIPMENT?.shipment_available_years;
+      const apiNorm =
+        Array.isArray(apiYears) && apiYears.length
+          ? [...new Set(apiYears.map(Number).filter(Number.isFinite))]
+          : [];
+      if (apiNorm.includes(prev)) return prev;
+      if (shipmentDataYears.includes(prev)) return prev;
+      const lastY = Number(String(shipmentAvailableMonths[shipmentAvailableMonths.length - 1]).slice(0, 4));
+      return Number.isFinite(lastY) ? lastY : prev;
+    });
+  }, [isShipmentScope, shipmentDisplayMonth, shipmentAvailableMonths, shipmentDataYears, scopeResultCache.SHIPMENT?.shipment_available_years]);
 
   useEffect(() => {
     if (!isShipmentScope) return;
-    if (shipmentDataYears.length !== 1) return;
-    setShipmentMonthStripYear(shipmentDataYears[0]);
-  }, [isShipmentScope, shipmentDataYears]);
+    const apiYears = scopeResultCache.SHIPMENT?.shipment_available_years;
+    if (!Array.isArray(apiYears) || apiYears.length !== 1) return;
+    const only = Number(apiYears[0]);
+    if (!Number.isFinite(only)) return;
+    setShipmentMonthStripYear(only);
+  }, [isShipmentScope, scopeResultCache.SHIPMENT?.shipment_available_years]);
 
   useEffect(() => {
     if (!isShipmentScope) return;
@@ -2531,9 +2552,20 @@ export default function App() {
     setShipmentDisplayMonth((prev) => {
       if (prev === "__ALL__") return prev;
       if (prev && shipmentAvailableMonths.includes(prev)) return prev;
+      /** 연도 전환 직후 이전 조회의 월 목록만 있으면 prev(예: 2025-03)가 목록에 없어도 last(2026-12)로 덮으면 연도가 다시 튐 */
+      if (/^\d{4}-\d{2}$/.test(prev)) {
+        const py = Number(prev.slice(0, 4));
+        if (Number.isFinite(py) && py === shipmentMonthStripYear) {
+          const inYear = shipmentAvailableMonths
+            .filter((m) => String(m).startsWith(`${py}-`))
+            .sort((a, b) => a.localeCompare(b));
+          if (inYear.length) return inYear.includes(prev) ? prev : inYear[0];
+          return prev;
+        }
+      }
       return last;
     });
-  }, [isShipmentScope, shipmentAvailableMonths]);
+  }, [isShipmentScope, shipmentAvailableMonths, shipmentMonthStripYear]);
 
   useEffect(() => {
     if (!isShipmentScope || shipmentViewMode !== "chart") {
@@ -3857,9 +3889,20 @@ export default function App() {
           shipment_totals: data.shipment_totals || {},
           shipment_active_channel: data.shipment_active_channel ?? null,
           shipment_channels_with_data: data.shipment_channels_with_data || [],
+          shipment_available_years: Array.isArray(data.shipment_available_years)
+            ? data.shipment_available_years
+            : [],
+          shipment_matrix_year:
+            data.shipment_matrix_year != null && data.shipment_matrix_year !== undefined
+              ? Number(data.shipment_matrix_year)
+              : null,
           requested: true,
         },
       }));
+      const my = data.shipment_matrix_year;
+      if (my != null && Number.isFinite(Number(my))) {
+        setShipmentMonthStripYear(Number(my));
+      }
       const syncCh = data.shipment_active_channel ? String(data.shipment_active_channel) : "";
       if (syncCh) {
         shipmentMatrixChannelRef.current = syncCh;
@@ -4766,7 +4809,7 @@ export default function App() {
   async function fetchAndApplyShipmentView(options = {}) {
     const { signal, channel } = options;
     try {
-      const params = { year: 2026 };
+      const params = { year: shipmentMonthStripYearRef.current };
       if (channel) params.channel = channel;
       const shipRes = await axios.get(`${API_BASE}/api/inventory/shipment/view`, { params, signal });
       const data = shipRes?.data || {};
@@ -4787,6 +4830,13 @@ export default function App() {
           shipment_totals: data.shipment_totals || {},
           shipment_active_channel: data.shipment_active_channel ?? null,
           shipment_channels_with_data: data.shipment_channels_with_data || [],
+          shipment_available_years: Array.isArray(data.shipment_available_years)
+            ? data.shipment_available_years
+            : [],
+          shipment_matrix_year:
+            data.shipment_matrix_year != null && data.shipment_matrix_year !== undefined
+              ? Number(data.shipment_matrix_year)
+              : null,
           requested: true,
         },
       }));
@@ -5041,6 +5091,8 @@ export default function App() {
             shipment_totals: {},
             shipment_active_channel: null,
             shipment_channels_with_data: [],
+            shipment_available_years: [],
+            shipment_matrix_year: null,
             requested: true,
           },
         }));
@@ -5616,7 +5668,7 @@ export default function App() {
           </div>
           {isShipmentScope && (
             <div className="shipmentStatusMonthToolbar" role="group" aria-label="출고 일자 표시 월">
-              {shipmentDataYears.length > 1 && (
+              {shipmentDataYears.length >= 1 && (
                 <>
                   <label className="sr-only" htmlFor="shipment-month-strip-year">
                     연도
@@ -5632,7 +5684,8 @@ export default function App() {
                       if (shipmentDisplayMonth !== "__ALL__" && /^\d{4}-\d{2}$/.test(shipmentDisplayMonth)) {
                         const mm = shipmentDisplayMonth.slice(5, 7);
                         const next = `${y}-${mm}`;
-                        if (shipmentAvailableMonths.includes(next)) setShipmentDisplayMonth(next);
+                        /** 이전에는 includes(next)일 때만 바꿔, 요청 반영 전에는 2026-xx가 남아 strip 연도를 다시 2026으로 끌어당김 */
+                        setShipmentDisplayMonth(next);
                       }
                     }}
                     title="월 버튼에 적용할 연도"
@@ -8641,14 +8694,21 @@ export default function App() {
               <div className="cautionSectionTitle">출고 기록</div>
               <ul className="cautionList">
                 <li>
-                  엑셀에 「B2B 통합」「쿠팡 현황」 등 정해진 이름의 시트만 읽습니다. 시트 상단에 합계 행이 있어도
+                  파일 이름은 「YYYY년_출고_현황.xlsx」 형식이어야 합니다(예: 2025년_출고_현황.xlsx). 업로드한 파일의 연도가
+                  그대로 DB에 반영됩니다.
+                </li>
+                <li>
+                  엑셀에는 「B2B 통합」「쿠팡 현황」 등 정해진 이름의 시트가 모두 있어야 합니다. 시트 상단에 합계 행이 있어도
                   「품번(대표코드)」가 있는 헤더 행과 그 아래 데이터만 사용합니다.
                 </li>
                 <li>
                   품번(대표코드)는 SKU 관리에 등록된 한국 SKU와 일치해야 합니다. 마케팅 우선순위·구분·N월 합계·일자별
                   열은 엑셀 값을 그대로 쓰며, 브랜드·상품명은 DB 매핑 값으로 표시합니다.
                 </li>
-                <li>같은 날짜·상품 수치는 새 파일을 통합할 때 덮어씁니다(2026년 기준).</li>
+                <li>
+                  같은 연도 파일을 다시 올리면, <strong>이번 파일에 적힌 상품·날짜·월합계만</strong> 반영합니다. 값이 바뀐 칸은
+                  갱신하고, 새로 나온 상품·날짜는 추가합니다. 파일에 빠져 있는 상품이나 날짜 칸은 이전 저장값을 그대로 둡니다.
+                </li>
                 <li>
                   전체 출고 현황에서 시트(칩)를 바꿔 표를 보고, 상품별 출고 현황에서는 상품을 검색·선택하면 일자·월·시트별
                   차트와 시트×일자 표가 한 화면에 표시됩니다.

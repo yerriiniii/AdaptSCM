@@ -19,6 +19,14 @@ class InventoryAggregateResponse(BaseModel):
     shipment_totals: dict[str, Any] = Field(default_factory=dict)
     shipment_active_channel: str | None = None
     shipment_channels_with_data: list[str] = Field(default_factory=list)
+    shipment_available_years: list[int] = Field(
+        default_factory=list,
+        description="DB에 출고 매트릭스가 있는 연도(오름차순). 파일 없으면 빈 배열.",
+    )
+    shipment_matrix_year: int | None = Field(
+        None,
+        description="현재 응답에 포함된 매트릭스 데이터 연도(shipment/view?year=).",
+    )
 
 
 class InventoryDirectUploadFileRequest(BaseModel):

@@ -25,6 +25,8 @@ from domains.inventory.services.shipment_aggregate_service import (
 from domains.inventory.services.shipment_matrix_service import (
     DEFAULT_SHIPMENT_MATRIX_YEAR,
     build_shipment_matrix_view,
+    list_shipment_matrix_years,
+    parse_shipment_matrix_filename,
     parse_shipment_matrix_workbook,
 )
 from shared.config import get_runtime_settings
@@ -263,6 +265,7 @@ def _upsert_shipment_matrix_channel_rows(
     data_year: int,
     recs: list[dict[str, Any]],
 ) -> None:
+    """같은 연도 재업로드: 파일에 있는 (채널×SKU)만 월·일 셀을 병합(값 변경 시 갱신, 새 키 추가). 파일에 없는 SKU·셀은 유지."""
     for rec in recs:
         sku = str(rec.get("sku") or "").strip()
         if not sku:
@@ -287,10 +290,12 @@ def _upsert_shipment_matrix_channel_rows(
             dt = {str(k): int(v) for k, v in (existing.daily_totals or {}).items()}
             for k, v in dt_new.items():
                 dt[k] = v
-            existing.monthly_totals = mt
-            existing.daily_totals = dt
-            existing.mkt_priority = mkt
-            existing.category = cat
+            existing.monthly_totals = mt or None
+            existing.daily_totals = dt or None
+            if mkt is not None:
+                existing.mkt_priority = mkt
+            if cat is not None:
+                existing.category = cat
         else:
             db.add(
                 ShipmentMatrixRow(
@@ -310,19 +315,21 @@ def persist_shipment_matrix_uploads(
     files: list[tuple[UploadFile, bytes]],
     *,
     kr_sku_brand_name: dict[str, tuple[str, str]] | None = None,
-    data_year: int = DEFAULT_SHIPMENT_MATRIX_YEAR,
-) -> list[dict]:
-    """매트릭스 출고 엑셀: S3 저장 후 채널(시트)별 shipment_matrix_rows 업서트."""
+) -> tuple[list[dict], list[int]]:
+    """매트릭스 출고 엑셀: 파일명 연도별 파싱 후 채널별 업서트(동일 연도는 셀 단위 병합)·S3 저장."""
     settings = get_runtime_settings()
     if not settings.database_enabled:
-        return []
+        return [], []
     if not is_s3_configured() or not settings.s3_bucket:
         raise HTTPException(status_code=500, detail="S3가 설정되지 않아 출고 파일을 저장할 수 없습니다.")
 
     s3 = get_s3_client()
     persisted: list[dict] = []
+    years_order: list[int] = []
     try:
         for upload_file, raw in files:
+            data_year = parse_shipment_matrix_filename(upload_file.filename or "")
+            years_order.append(data_year)
             parsed = parse_shipment_matrix_workbook(
                 db,
                 raw,
@@ -362,7 +369,7 @@ def persist_shipment_matrix_uploads(
             persisted.append(_serialize_uploaded_file(uploaded_file))
 
         db.commit()
-        return persisted
+        return persisted, years_order
     except Exception:
         db.rollback()
         raise
@@ -385,4 +392,6 @@ def get_shipment_view(
         payload["rows"] = [totals_row, *body_rows]
     else:
         payload["rows"] = body_rows
+    payload["shipment_available_years"] = list_shipment_matrix_years(db)
+    payload["shipment_matrix_year"] = data_year
     return payload

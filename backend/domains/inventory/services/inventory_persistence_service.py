@@ -204,6 +204,7 @@ def _resolved_upload_s3_bucket_and_key(uploaded_file: UploadedFile) -> tuple[str
 
 
 def _delete_s3_object(bucket: str | None, key: str | None) -> None:
+    """단일 객체 삭제. 실패해도 예외를 올리지 않음(배포 환경에서 네트워크·IAM 오류 시 DB 삭제는 성공시키기 위함)."""
     if not is_s3_configured():
         logger.warning("S3 미설정으로 객체 삭제를 건너뜁니다 (bucket=%r, key=%r).", bucket, key)
         return
@@ -211,7 +212,16 @@ def _delete_s3_object(bucket: str | None, key: str | None) -> None:
         logger.warning("S3 bucket 또는 key가 없어 삭제를 건너뜁니다 (bucket=%r, key=%r).", bucket, key)
         return
     client = get_s3_client()
-    client.delete_object(Bucket=bucket, Key=key)
+    try:
+        client.delete_object(Bucket=bucket, Key=key)
+    except Exception as exc:
+        logger.warning(
+            "S3 delete_object 실패(무시): bucket=%r key=%r err=%s",
+            bucket,
+            key,
+            exc,
+            exc_info=True,
+        )
 
 
 def _s3_prefix_for_country_scope(settings, country_code: str) -> str:
@@ -236,21 +246,31 @@ def _s3_prefix_inventory_root(settings) -> str:
 
 
 def _delete_s3_prefix(bucket: str | None, prefix: str) -> int:
-    """prefix 아래 객체를 모두 삭제한다. 삭제한 객체 수를 반환한다."""
+    """prefix 아래 객체를 모두 삭제한다. 삭제한 객체 수를 반환한다. 실패 시 0이며 예외는 올리지 않는다."""
     if not bucket or not prefix or not is_s3_configured():
         return 0
     client = get_s3_client()
     deleted = 0
-    paginator = client.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        contents = page.get("Contents") or []
-        if not contents:
-            continue
-        keys = [{"Key": c["Key"]} for c in contents]
-        for i in range(0, len(keys), 1000):
-            batch = keys[i : i + 1000]
-            client.delete_objects(Bucket=bucket, Delete={"Objects": batch})
-            deleted += len(batch)
+    try:
+        paginator = client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            contents = page.get("Contents") or []
+            if not contents:
+                continue
+            keys = [{"Key": c["Key"]} for c in contents]
+            for i in range(0, len(keys), 1000):
+                batch = keys[i : i + 1000]
+                client.delete_objects(Bucket=bucket, Delete={"Objects": batch})
+                deleted += len(batch)
+    except Exception as exc:
+        logger.warning(
+            "S3 prefix 삭제 실패(무시): bucket=%r prefix=%r err=%s",
+            bucket,
+            prefix,
+            exc,
+            exc_info=True,
+        )
+        return 0
     return deleted
 
 
@@ -877,8 +897,8 @@ def delete_inventory_file(db: Session, file_id: str) -> None:
     if uploaded_file is None:
         raise HTTPException(status_code=404, detail="삭제할 파일을 찾을 수 없습니다.")
 
+    # 커밋 전에 키 스냅샷 (삭제 후 ORM 객체 필드 사용 불가)
     b, k = _resolved_upload_s3_bucket_and_key(uploaded_file)
-    _delete_s3_object(b, k)
 
     affected_scope = (uploaded_file.country_code, uploaded_file.base_date)
     file_domain = getattr(uploaded_file, "file_domain", None) or "inventory"
@@ -898,6 +918,8 @@ def delete_inventory_file(db: Session, file_id: str) -> None:
     else:
         _rebuild_aggregate_scopes(db, [affected_scope])
     db.commit()
+    # DB 반영 후 S3 정리(실패해도 API는 성공 — 로그로 추적)
+    _delete_s3_object(b, k)
 
 
 def delete_inventory_files(db: Session, country_code: str | None = None) -> dict[str, int]:
@@ -936,9 +958,9 @@ def delete_inventory_files(db: Session, country_code: str | None = None) -> dict
         if (getattr(f, "file_domain", None) or "inventory") != "shipment"
         and str(f.country_code or "").strip().upper() != "SHIPMENT"
     }
+    s3_pairs: list[tuple[str | None, str | None]] = []
     for uploaded_file in uploaded_files:
-        b, k = _resolved_upload_s3_bucket_and_key(uploaded_file)
-        _delete_s3_object(b, k)
+        s3_pairs.append(_resolved_upload_s3_bucket_and_key(uploaded_file))
         db.delete(uploaded_file)
 
     db.flush()
@@ -953,6 +975,9 @@ def delete_inventory_files(db: Session, country_code: str | None = None) -> dict
         purge_shipment_matrix_rows_if_no_matrix_uploads(db)
         _rebuild_all_shipment_aggregates(db)
     db.commit()
+
+    for bk in s3_pairs:
+        _delete_s3_object(bk[0], bk[1])
 
     if is_s3_configured() and settings.s3_bucket:
         if scope_country:
