@@ -46,6 +46,8 @@ const SHIPMENT_MATRIX_CHIPS = [
 ];
 /** 이 칩 앞에 세로 구분 막대 삽입(`styles.css` `.shipmentChipSep`) */
 const SHIPMENT_MATRIX_CHIP_DIVIDER_BEFORE = new Set(["B2B 현황", "자사몰 현황", "대만 현황"]);
+/** 차트·표 하단 합계열: 통합 3시트만(현황 시트 행은 통합에 이미 포함된 분해) */
+const SHIPMENT_CHART_SUM_CHANNELS = new Set(["B2B 통합", "B2C 통합", "해외 통합"]);
 /** 차트 등 레거시 변수명 호환 */
 const SHIPMENT_SHEET_CHANNELS = SHIPMENT_MATRIX_CHIPS;
 /** 출고 현황 표 고정 열 너비(px). 열 순서: 상품코드·브랜드·상품명·… — `styles.css` `.stickyColShip*` 의 width·left·`shipmentTotalMergedCell` 과 동기화. */
@@ -2936,6 +2938,15 @@ export default function App() {
     selectedOverseasCountry,
   ]);
 
+  /** 차트 합계용 행: B2B/B2C/해외 통합만(현황 행 합산 시 중복) */
+  const shipmentChartRowsForSkuAggregateOnly = useMemo(
+    () =>
+      shipmentChartRowsForSku.filter((row) =>
+        SHIPMENT_CHART_SUM_CHANNELS.has(String(row.channel || "").trim()),
+      ),
+    [shipmentChartRowsForSku],
+  );
+
   /** 원시 날짜 열을 월별로 묶음 — 월별 차트 비교용 */
   const shipmentChartDatesByMonth = useMemo(() => {
     const m = new Map();
@@ -2950,27 +2961,29 @@ export default function App() {
 
   /** 일자별 차트: 선택한 달의 1일~말일 전부(데이터 없으면 0) */
   const shipmentChartDailyMonthSeries = useMemo(() => {
-    if (!shipmentChartMonth || !shipmentChartRowsForSku.length) return [];
+    if (!shipmentChartMonth || !shipmentChartRowsForSkuAggregateOnly.length) return [];
     const dim = daysInCalendarMonth(shipmentChartMonth);
     const out = [];
+    const rows = shipmentChartRowsForSkuAggregateOnly;
     for (let d = 1; d <= dim; d += 1) {
       const dd = String(d).padStart(2, "0");
       const dk = `${shipmentChartMonth}-${dd}`;
-      const qty = shipmentChartRowsForSku.reduce((sum, row) => sum + shipmentCellNumericTotal(row[dk]), 0);
-      const vendorTooltip = shipmentDateCellVendorTitleAggregated(shipmentChartRowsForSku, dk);
+      const qty = rows.reduce((sum, row) => sum + shipmentCellNumericTotal(row[dk]), 0);
+      const vendorTooltip = shipmentDateCellVendorTitleAggregated(rows, dk);
       out.push({ key: dk, qty, labelShort: String(d), vendorTooltip });
     }
     return out;
-  }, [shipmentChartMonth, shipmentChartRowsForSku]);
+  }, [shipmentChartMonth, shipmentChartRowsForSkuAggregateOnly]);
 
   /** 월별 차트: DB에 존재하는 월끼리만 비교(상단 월 필터와 무관) */
   const shipmentChartMonthlyCompareSeries = useMemo(() => {
-    if (!shipmentChartRowsForSku.length || !shipmentChartSourceDates.length) return [];
+    if (!shipmentChartRowsForSkuAggregateOnly.length || !shipmentChartSourceDates.length) return [];
     const months = [...shipmentChartDatesByMonth.keys()].sort((a, b) => a.localeCompare(b));
+    const rows = shipmentChartRowsForSkuAggregateOnly;
     return months.map((monthKey) => {
       const dks = shipmentChartDatesByMonth.get(monthKey) || [];
       let qty = 0;
-      for (const row of shipmentChartRowsForSku) {
+      for (const row of rows) {
         for (const dk of dks) {
           qty += shipmentCellNumericTotal(row[dk]);
         }
@@ -2981,7 +2994,7 @@ export default function App() {
         labelShort: monthKey.length >= 7 ? monthKey.slice(2) : monthKey,
       };
     });
-  }, [shipmentChartRowsForSku, shipmentChartSourceDates, shipmentChartDatesByMonth]);
+  }, [shipmentChartRowsForSkuAggregateOnly, shipmentChartSourceDates, shipmentChartDatesByMonth]);
 
   const shipmentChartTitleLabel = useMemo(() => {
     const r = shipmentChartRowsForSku[0];
@@ -2994,10 +3007,10 @@ export default function App() {
     [shipmentChartSourceDates],
   );
 
-  /** 차트 탭: 선택 SKU의 출고 요약·채널별·월합계·판매처(분해 있을 때) */
+  /** 차트 탭: 선택 SKU의 출고 요약·채널별·월합계·판매처(분해 있을 때) — 합계는 통합 시트만 */
   const shipmentChartSkuInsight = useMemo(() => {
-    const rows = shipmentChartRowsForSku;
-    if (!rows.length) return null;
+    if (!shipmentChartRowsForSku.length) return null;
+    const rows = shipmentChartRowsForSkuAggregateOnly;
     const dateKeys = shipmentChartDateKeysFiltered;
     let total = 0;
     let firstD = null;
@@ -3047,9 +3060,10 @@ export default function App() {
       }))
       .filter((x) => x.sum > 0)
       .sort((a, b) => b.sum - a.sum);
-    const brands = [...new Set(rows.map((r) => String(r.brand || "").trim()).filter(Boolean))];
-    const mappedKr = [...new Set(rows.map((r) => String(r.mapped_kr_sku || "").trim()).filter(Boolean))];
-    const mappedNames = [...new Set(rows.map((r) => String(r.mapped_kr_name || "").trim()).filter(Boolean))];
+    const metaRows = shipmentChartRowsForSku;
+    const brands = [...new Set(metaRows.map((r) => String(r.brand || "").trim()).filter(Boolean))];
+    const mappedKr = [...new Set(metaRows.map((r) => String(r.mapped_kr_sku || "").trim()).filter(Boolean))];
+    const mappedNames = [...new Set(metaRows.map((r) => String(r.mapped_kr_name || "").trim()).filter(Boolean))];
     return {
       total,
       firstD,
@@ -3062,7 +3076,7 @@ export default function App() {
       mappedNames,
       channelCount: byChannel.length,
     };
-  }, [shipmentChartRowsForSku, shipmentChartDateKeysFiltered]);
+  }, [shipmentChartRowsForSku, shipmentChartRowsForSkuAggregateOnly, shipmentChartDateKeysFiltered]);
 
   /** 일자별·판매처별 차트 월 칩에 쓰는 연도(선택 월 또는 데이터 최신 연도) */
   const shipmentChartChipYear = useMemo(() => {
@@ -3138,10 +3152,16 @@ export default function App() {
       });
       return { channel: ch, cells, rowSum };
     });
-    const colTotals = dayKeys.map((_, i) => rows.reduce((s, r) => s + r.cells[i], 0));
-    const grandTotal = rows.reduce((s, r) => s + r.rowSum, 0);
+    const aggRows = shipmentChartRowsForSkuAggregateOnly;
+    const colTotals = dayKeys.map((dk) =>
+      aggRows.reduce((s, row) => s + shipmentCellNumericTotal(row[dk]), 0),
+    );
+    const grandTotal = aggRows.reduce(
+      (s, row) => s + dayKeys.reduce((ss, dk) => ss + shipmentCellNumericTotal(row[dk]), 0),
+      0,
+    );
     return { dayKeys, rows, colTotals, grandTotal };
-  }, [shipmentChartMonth, shipmentChartRowsForSku, effectiveShipmentChannels]);
+  }, [shipmentChartMonth, shipmentChartRowsForSku, shipmentChartRowsForSkuAggregateOnly, effectiveShipmentChannels]);
 
   useEffect(() => {
     if (!isShipmentScope || shipmentViewMode !== "chart") return;
