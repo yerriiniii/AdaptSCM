@@ -72,6 +72,19 @@ function parseErrorMessage(err) {
   return String(d);
 }
 
+/** 메일·프록시에서 넘어올 때 공백·잘못된 인코딩 보정 */
+function normalizeSignupToken(raw) {
+  if (raw == null) return "";
+  let t = String(raw).trim();
+  if (!t) return "";
+  try {
+    t = decodeURIComponent(t.replace(/\+/g, "%2B"));
+  } catch {
+    /* ignore */
+  }
+  return t.trim();
+}
+
 /**
  * regStep: request_email = 인증 링크 요청만 / password = 링크 클릭 후 비밀번호 입력
  */
@@ -248,14 +261,22 @@ export default function AuthGate({ children }) {
   /** URL ?signup_token= — 이메일 링크로 들어온 경우: 토큰 확인 후 비밀번호 단계 */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const tok = params.get("signup_token");
-    if (!tok) {
+    const raw = params.get("signup_token");
+    const tok = normalizeSignupToken(raw);
+    if (!tok || tok.length < 20) {
       return;
+    }
+    try {
+      sessionStorage.setItem(SIGNUP_TOKEN_KEY, tok);
+    } catch {
+      /* ignore */
     }
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await axios.get(`${API_BASE}/api/auth/signup-email/check`, { params: { token: tok } });
+        const { data } = await axios.get(`${API_BASE}/api/auth/signup-email/check`, {
+          params: { token: tok },
+        });
         if (cancelled) return;
         if (data?.valid && data?.email) {
           setMode("register");
@@ -267,6 +288,7 @@ export default function AuthGate({ children }) {
           } catch {
             /* ignore */
           }
+          setVerifyBanner({ kind: null, text: "" });
         }
       } catch (err) {
         if (!cancelled) {
@@ -274,13 +296,61 @@ export default function AuthGate({ children }) {
           setVerifyBanner({ kind: "err", text: parseErrorMessage(err) || "인증 링크가 유효하지 않습니다." });
         }
       } finally {
-        const u = new URL(window.location.href);
-        u.searchParams.delete("signup_token");
-        window.history.replaceState({}, "", `${u.pathname}${u.search}${u.hash}`);
+        // React Strict Mode: 취소된 실행에서는 URL을 건드리지 않음 — 두 번째 실행이 같은 토큰으로 성공할 수 있게 함
+        if (!cancelled) {
+          const u = new URL(window.location.href);
+          u.searchParams.delete("signup_token");
+          window.history.replaceState({}, "", `${u.pathname}${u.search}${u.hash}`);
+        }
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  /**
+   * URL에서 토큰이 이미 지워졌으나 sessionStorage에만 남은 경우(Strict Mode·메일 뷰어 이슈 복구).
+   * 새 인증 메일을 보내면 storage가 비워지므로 이전 토큰으로 잘못 넘어가지 않음.
+   */
+  useEffect(() => {
+    if (phase !== "unauth" || mode !== "register" || regStep !== "request_email") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("signup_token")) return;
+    let stored = "";
+    try {
+      stored = sessionStorage.getItem(SIGNUP_TOKEN_KEY) || "";
+    } catch {
+      return;
+    }
+    const tok = normalizeSignupToken(stored);
+    if (!tok || tok.length < 20) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await axios.get(`${API_BASE}/api/auth/signup-email/check`, {
+          params: { token: tok },
+        });
+        if (cancelled) return;
+        if (data?.valid && data?.email) {
+          setRegStep("password");
+          setEmail(String(data.email));
+          setSignupToken(tok);
+          setVerifyBanner({ kind: null, text: "" });
+        }
+      } catch {
+        try {
+          sessionStorage.removeItem(SIGNUP_TOKEN_KEY);
+        } catch {
+          /* ignore */
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, mode, regStep]);
 
   const onLogin = async (e) => {
     e.preventDefault();
@@ -330,6 +400,12 @@ export default function AuthGate({ children }) {
       setManualSignupUrl(data?.signup_url && !data?.mail_sent ? String(data.signup_url) : "");
       setLastSentToEmail(emLower);
       setLinkSendBlockedEmail(null);
+      try {
+        sessionStorage.removeItem(SIGNUP_TOKEN_KEY);
+      } catch {
+        /* ignore */
+      }
+      setSignupToken("");
       const rawExp = data?.expires_at;
       if (rawExp) {
         const ms = new Date(String(rawExp)).getTime();
