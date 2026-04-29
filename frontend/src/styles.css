@@ -859,7 +859,7 @@ body {
 .shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable {
   width: auto;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable th,
@@ -876,7 +876,7 @@ body {
   padding: 9px 8px;
   background-color: #f8fafd;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 13px;
   color: #5d6574;
   text-align: left;
 }
@@ -888,9 +888,9 @@ body {
   padding: 9px 8px;
   background-color: #ffffff;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.4;
-  color: #566274;
+  color: #5d6574;
   text-align: left;
   word-break: keep-all;
   overflow-wrap: break-word;
@@ -902,11 +902,11 @@ body {
   min-width: 81px;
   max-width: 81px;
   padding: 9px 7px;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.2;
   font-weight: 700;
   background-color: #eef2f7;
-  color: #566274;
+  color: #5d6574;
   box-shadow:
     inset 1px 0 0 #94a3b8,
     inset -1px 0 0 #94a3b8,
@@ -947,7 +947,7 @@ body {
 .tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) thead th {
   border-bottom: 1px solid #cbd5e1;
   background-color: #f8fafd;
-  font-weight: 600;
+  font-weight: 700;
   color: #5d6574;
 }
 
@@ -967,13 +967,13 @@ body {
 
 .tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) tbody td:first-child {
   background-color: #ffffff;
-  color: #566274;
+  color: #5d6574;
 }
 
 .tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) tbody td:last-child {
   background-color: #eef2f7;
   font-weight: 700;
-  color: #566274;
+  color: #5d6574;
   box-shadow:
     inset 1px 0 0 #94a3b8,
     inset -1px 0 0 #94a3b8,
@@ -1232,7 +1232,7 @@ body {
 .shipmentChartInsightTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .shipmentChartInsightTable th,
@@ -1244,8 +1244,12 @@ body {
 
 .shipmentChartInsightTable th {
   background: #f1f5f9;
-  font-weight: 600;
-  color: #475569;
+  font-weight: 700;
+  color: #5d6574;
+}
+
+.shipmentChartInsightTable tbody td {
+  color: #5d6574;
 }
 
 .shipmentChartInsightTable tbody tr:last-child td {
@@ -1350,7 +1354,7 @@ body {
 
 .shipmentChannelDayMatrix {
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
   min-width: max-content;
   width: max-content;
 }
@@ -1408,7 +1412,7 @@ body {
   white-space: normal;
   line-height: 1.2;
   text-align: center;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   color: #5d6574;
   padding: 9px 7px;
@@ -1416,9 +1420,9 @@ body {
 
 .shipmentChannelDayMatrix tbody td.shipmentChannelDayMatrixDayCol {
   background-color: #ffffff;
-  color: #566274;
+  color: #5d6574;
   padding: 9px 7px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* 시트명 열: 스티키 + 불투명 배경(일자 열과 겹침 방지) — colgroup 폭과 동기화, 여백 넉넉히 */
@@ -1443,7 +1447,7 @@ body {
 }
 
 .shipmentChannelDayMatrix th.shipmentChannelDayMatrixRowLabel {
-  font-size: 12px;
+  font-size: 13px;
   white-space: normal;
   line-height: 1.4;
   word-break: keep-all;
@@ -1454,7 +1458,7 @@ body {
 .shipmentChannelDayMatrix tbody th.shipmentChannelDayMatrixRowLabel {
   z-index: 4;
   background-color: #ffffff;
-  color: #566274;
+  color: #5d6574;
 }
 
 .shipmentChannelDayMatrix tbody tr.shipmentChannelDayMatrixDailyTotalRow th.shipmentChannelDayMatrixRowLabel {
@@ -1491,7 +1495,7 @@ body {
   max-width: 81px;
   background: #eef2f7;
   font-weight: 700;
-  color: #566274;
+  color: #5d6574;
   position: sticky;
   left: 112px;
   box-sizing: border-box;
@@ -1510,7 +1514,7 @@ body {
   text-align: center;
   white-space: normal;
   line-height: 1.2;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   padding: 9px 7px;
   vertical-align: middle;
@@ -1519,9 +1523,9 @@ body {
 .shipmentChannelDayMatrix tbody td.shipmentChannelDayMatrixTotalCol {
   z-index: 3;
   background-color: #eef2f7;
-  color: #566274;
+  color: #5d6574;
   padding: 9px 7px;
-  font-size: 12px;
+  font-size: 13px;
   white-space: normal;
   line-height: 1.2;
 }
@@ -1949,19 +1953,24 @@ body {
 }
 
 .shipmentLineChartSvg {
-  color: #0d9488;
+  color: #cc5a5a;
 }
 
 .shipmentShipmentTrendLine {
-  color: #0d9488;
+  color: #cc5a5a;
+}
+
+.shipmentLineChartSvg .trendLine {
+  color: #cc5a5a;
 }
 
 .shipmentLineChartSvg .trendDot.shipmentShipmentDot {
+  fill: #cc5a5a;
   stroke-width: 0.75px;
 }
 
 .shipmentShipmentDot {
-  fill: #0d9488;
+  fill: #cc5a5a;
 }
 
 /* 출고 차트 라인: 축(날짜)·꼭짓점 수량 — 일자별·월별 X축 글자 크기 동일 */
@@ -2289,7 +2298,7 @@ body {
 
 .skuManageContent {
   display: block;
-  margin-top: 18px;
+  margin-top: 28px;
 }
 
 .skuManageContent.manual-only {
@@ -2501,15 +2510,22 @@ body {
   padding: 28px 18px 18px;
 }
 
-/* SKU 관리 카드: 발주 파일 업로드와 동일한 상단 안내·템플릿·업로드 패널 정렬 */
-.skuManageCard .skuUploadStage.poOrderFileUploadStage .skuUploadPanel {
-  transform: none;
-  margin-top: 4px;
+/* SKU 관리 — 파일 업로드: 발주 파일 업로드와 동일한 안내~템플릿~XLSX 간격 */
+.skuManageCard .skuUploadStage.poOrderFileUploadStage {
+  padding: 20px 0 22px;
 }
 
-/* SKU 관리: 업로드 안내·템플릿 버튼 글자색 = 선택 전 탭(`.tab` / `.skuManageTab`) 회색 #5d6574 */
+.skuManageCard .poOrderFileUploadNotice {
+  margin: 0 auto 20px;
+}
+
 .skuManageCard .poOrderFileUploadLead {
   color: #5d6574;
+  margin: 0 0 10px;
+}
+
+.skuManageCard .poOrderFileTemplateRow {
+  margin-bottom: 18px;
 }
 
 .skuManageCard .poOrderFileUploadLead strong {
@@ -2522,6 +2538,11 @@ body {
 
 .skuManageCard .poOrderFileTemplateBtn:hover:not(:disabled) {
   color: #5d6574;
+}
+
+.skuManageCard .skuUploadStage.poOrderFileUploadStage .skuUploadPanel {
+  transform: none;
+  margin-top: 12px;
 }
 
 .skuUploadPanel {
@@ -3836,15 +3857,46 @@ table {
 }
 
 .inventoryTable th,
+.compareTable th {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  box-sizing: border-box;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5d6574;
+  padding: 9px 7px;
+}
+
 .inventoryTable td,
-.compareTable th,
 .compareTable td {
   width: auto;
   min-width: 0;
   max-width: none;
   box-sizing: border-box;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 580;
+  color: #475366;
   padding: 9px 7px;
+}
+
+/* 재고·해외·재고비교·출고(시트/차트) — tableCard 내 표: 본문·헤더 볼드 */
+.tableCard .shipmentChannelDayMatrix th,
+.tableCard .shipmentChartInsightTable th,
+.tableCard .shipmentChannelDayMatrix td,
+.tableCard .shipmentChartInsightTable td {
+  color: #5d6574;
+}
+
+.tableCard .shipmentChannelDayMatrix th,
+.tableCard .shipmentChartInsightTable th {
+  font-weight: 700;
+}
+
+.tableCard .shipmentChannelDayMatrix td,
+.tableCard .shipmentChartInsightTable td {
+  font-weight: 580;
+  color: #475366;
 }
 
 .stickyTableHeader {
@@ -4009,34 +4061,110 @@ th {
 
 .inventoryTable.krTable.shipmentMatrixTable .stickyColShipMkt {
   left: 495px;
+  width: 102px;
+  min-width: 102px;
+  max-width: 102px;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable .stickyColShipSegment {
+  left: 597px;
   width: 99px;
   min-width: 99px;
   max-width: 99px;
 }
 
-.inventoryTable.krTable.shipmentMatrixTable .stickyColShipSegment {
-  left: 594px;
-  width: 96px;
-  min-width: 96px;
-  max-width: 96px;
+/* 출고: 구분 열 — stickyCol 전역 overflow:hidden 을 이 열만 풀고, 오른쪽 세로 윤곽이 스크롤 셀에 가리지 않게 함 */
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipSegment,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipSegment {
+  overflow: visible;
 }
 
-.inventoryTable.krTable.shipmentMatrixTable .stickyColShipSegment.stickyColBoundary,
-.inventoryTable.krTable.shipmentMatrixTable thead .stickyColShipSegment.stickyColBoundary {
+/* 구분↔N월·일자: 인접 dateCol(z 낮음)이 겹쳐 선이 사라지지 않게 경계 z 상향 + ::after(항상 윗레이어) */
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipSegment,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipSegment {
+  z-index: 50;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipSegment.stickyColBoundary,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipSegment.stickyColBoundary {
   box-shadow: 4px 0 12px -4px rgba(15, 23, 42, 0.14);
+  border-right: none; /* 2px 선은 ::after 만 — border와 겹치면 스크롤 0에서 이중선 */
+  isolation: isolate;
+}
+
+/* 구분 바로 옆 N월/일자 첫 열: 세로 격자가 경계에 한 번만 보이게(구분 측 ::after + 본 셀 border-left 중복 제거) */
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipSegment + th.dateCol,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipSegment + td.dateCol,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.shipmentTotalMergedCell + td.dateCol {
+  border-left: none;
+}
+
+/* 상품명↔마케팅 경계: 좌우 선 중복으로 2줄처럼 보이지 않게 한쪽(border-left)만 제거 */
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipName + th.stickyColShipMkt,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipName + td.stickyColShipMkt {
+  border-left: none;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipSegment.stickyColBoundary::after,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipSegment.stickyColBoundary::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: #b6c2d3;
+  z-index: 20;
+  pointer-events: none;
 }
 
 /* 출고 매트릭스: 스크롤되는 날짜/월 열이 고정 열 뒤로만 지나가도록 쌓임 순서 */
 .inventoryTable.krTable.shipmentMatrixTable thead th.dateCol {
   position: relative;
-  z-index: 1;
+  z-index: 0;
   background-color: #f8fafd;
 }
 
 .inventoryTable.krTable.shipmentMatrixTable tbody td.dateCol {
   position: relative;
-  z-index: 1;
+  z-index: 0;
   background-color: #ffffff;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody tr:not(.shipmentTotalRow) td.dateCol.shipmentQtyCellFilled {
+  background-color: #f3f9fc;
+}
+
+.shipmentChannelDayMatrix tbody td.shipmentChannelDayMatrixDayCol.shipmentQtyCellFilled {
+  background-color: #f3f9fc;
+}
+
+/* N월 합계 마지막 열 ↔ 첫 일자 열: 윤곽은 ::after — z-index는 dateCol(0) 유지. 50 주면 스크롤 시 고정 열 위로 올라옴 */
+.inventoryTable.krTable.shipmentMatrixTable thead th.dateCol.shipmentMatrixMonthLastBoundary,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.dateCol.shipmentMatrixMonthLastBoundary {
+  position: relative;
+  overflow: visible;
+  z-index: 0;
+  border-right: none;
+  box-shadow: 4px 0 12px -4px rgba(15, 23, 42, 0.14);
+}
+
+.inventoryTable.krTable.shipmentMatrixTable thead th.dateCol.shipmentMatrixMonthLastBoundary::after,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.dateCol.shipmentMatrixMonthLastBoundary::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: #b6c2d3;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable thead th.shipmentMatrixMonthLastBoundary + th.dateCol,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.shipmentMatrixMonthLastBoundary + td.dateCol {
+  border-left: none;
 }
 
 .inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipCode {
@@ -4055,10 +4183,6 @@ th {
   z-index: 24;
 }
 
-.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipSegment {
-  z-index: 25;
-}
-
 .inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipCode {
   z-index: 11;
 }
@@ -4075,23 +4199,33 @@ th {
   z-index: 14;
 }
 
-.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipSegment {
-  z-index: 15;
-}
-
 .inventoryTable.krTable.shipmentMatrixTable tbody td.shipmentTotalMergedCell {
   position: sticky;
   left: 0;
-  z-index: 16;
-  width: 690px;
-  min-width: 690px;
-  max-width: 690px;
+  z-index: 50;
+  width: 696px;
+  min-width: 696px;
+  max-width: 696px;
   font-weight: 700;
   text-align: center;
   background: #eef2f7;
-  color: #1e293b;
+  color: #5d6574;
   box-shadow: 4px 0 12px -4px rgba(15, 23, 42, 0.12);
-  border-right: 1px solid #cbd5e1;
+  border-right: none; /* 2px 강조는 ::after 만 */
+  overflow: visible;
+  isolation: isolate;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody td.shipmentTotalMergedCell::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: #b6c2d3;
+  z-index: 20;
+  pointer-events: none;
 }
 
 /* 출고 매트릭스: 모든 셀 동일한 연한 격자(일자·월 열과 브랜드~구분 동일 톤) */
@@ -4108,18 +4242,23 @@ th {
 .inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipCode,
 .inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipBrand,
 .inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipName,
-.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipMkt,
 .inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipCode,
 .inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipBrand,
-.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipName,
+.inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipName {
+  box-shadow: inset -1px 0 0 #e2e8f0;
+  border-right: none;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipMkt,
 .inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipMkt {
   box-shadow: inset -1px 0 0 #e2e8f0;
+  border-right: none;
 }
 
 /* 합계 행: 일자·월 열과 시각적으로 분리 */
 .inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentTotalRow td {
-  border-top: 2px solid #94a3b8;
-  border-bottom: 2px solid #94a3b8;
+  border-top: 2px solid #b6c2d3;
+  border-bottom: 2px solid #b6c2d3;
   background-color: #eef2f7;
 }
 
@@ -4137,7 +4276,7 @@ th {
   pointer-events: none;
 }
 
-/* 합계 바로 아래: 브랜드·상품코드·구분·월·일 헤더 재표시(엑셀 2단 헤더와 유사), 윤곽은 일반 셀과 동일 */
+/* 합계 바로 아래: 브랜드·상품코드·구분·월·일 헤더 재표시(엑셀 2단 헤더) */
 .inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.shipmentMatrixSubHeaderCell {
   background-color: #f8fafd !important;
   color: #5d6574;
@@ -4147,7 +4286,7 @@ th {
 .inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.dateCol {
   background-color: #f8fafd !important;
   position: relative;
-  z-index: 1;
+  z-index: 0;
 }
 
 .inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.stickyColShipCode {
@@ -4167,18 +4306,12 @@ th {
 }
 
 .inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.stickyColShipSegment {
-  z-index: 25;
+  z-index: 50;
 }
 
-.inventoryTable.krTable.shipmentMatrixTable
-  tbody
-  tr.shipmentMatrixSubHeaderRow
-  td.stickyColShipSegment.stickyColBoundary {
-  box-shadow: 4px 0 12px -4px rgba(15, 23, 42, 0.14);
-}
-
+/* 이 보조 헤더 행 하단: 구분·N월 등 세로 윤곽과 동일 톤(2px #94a3b8) */
 .inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td {
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 2px solid #b6c2d3;
 }
 
 /* 출고: 상단 가로 띠·헤더·본문 사이 틈 제거(세로 스크롤 시 배경 비침 완화) */
@@ -4734,6 +4867,13 @@ th {
   min-width: 520px;
 }
 
+.trendDetailTable th,
+.trendDetailTable td {
+  font-size: 13px;
+  font-weight: 700;
+  color: #5d6574;
+}
+
 .cautionModalBackdrop {
   position: fixed;
   inset: 0;
@@ -5016,7 +5156,7 @@ th {
   flex-wrap: wrap;
   align-items: center;
   gap: 40px;
-  margin: 0 0 14px;
+  margin: 0 0 28px;
   padding: 0 2px 0;
   border-bottom: none;
 }
@@ -5101,6 +5241,23 @@ th {
   color: #5d6574;
 }
 
+/* 발주 — 하위 탭과 본문(안내·템플릿·업로드) 사이·내부 여백 (SKU 관리 탭과 공유 클래스 분리) */
+.purchaseOrderSection .skuUploadStage.poOrderFileUploadStage {
+  padding: 20px 0 22px;
+}
+
+.purchaseOrderSection .poOrderFileUploadNotice {
+  margin: 0 auto 20px;
+}
+
+.purchaseOrderSection .poOrderFileUploadLead {
+  margin: 0 0 10px;
+}
+
+.purchaseOrderSection .poOrderFileTemplateRow {
+  margin-bottom: 18px;
+}
+
 .skuUploadStage.poOrderFileUploadStage {
   justify-content: flex-start;
   min-height: 0;
@@ -5172,7 +5329,7 @@ th {
 /* 템플릿 버튼과 엑셀 첨부(점선 패널) 사이: 기본 skuUploadPanel translateY 제거 */
 .purchaseOrderSection .poOrderFileUploadStage .skuUploadPanel {
   transform: none;
-  margin-top: 4px;
+  margin-top: 12px;
 }
 
 .poOrderFileTemplateBtn:disabled {
@@ -5388,13 +5545,15 @@ th {
   min-width: 100%;
   font-size: 13px;
   line-height: 1.4;
-  color: #111827;
+  font-weight: 700;
+  color: #5d6574;
 }
 
 .poSavedSpreadsheet thead th {
   background: #f8fafc;
-  color: #566274;
+  color: #5d6574;
   font-weight: 700;
+  font-size: 13px;
   border-bottom: 2px solid #e5e7eb;
   border-right: 1px solid #eef2f7;
   box-sizing: border-box;
@@ -5469,6 +5628,9 @@ th {
 }
 
 .poSavedSpreadsheet tbody td {
+  font-size: 13px;
+  font-weight: 580;
+  color: #475366;
   border-bottom: 1px solid #eef2f7;
   border-right: 1px solid #f1f5f9;
   box-sizing: border-box;
@@ -5485,13 +5647,13 @@ th {
 
 /* 같은 발주의 2행째부터: 발주 공통 열은 값 대신 '-' (입고 예정 셀은 예외로 빨간 톤 유지) */
 .poSavedSsTdSamePo {
-  color: #111827;
-  font-weight: 400;
+  color: #475366;
+  font-weight: 580;
 }
 
 .poSavedSsColDate,
 .poSavedSsColSku {
-  font-weight: 400;
+  font-weight: 580;
 }
 
 .poSavedSpreadsheet thead th.poSavedSsThName {
@@ -5531,7 +5693,7 @@ th {
 }
 
 .poSavedSpreadsheet tbody td.poSavedSsPendingInboundCols:nth-child(14) {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .poSavedSsDataRow {
@@ -5657,6 +5819,7 @@ th {
   flex: 1 1 9.5rem;
   min-width: 0;
   max-width: 100%;
+  font-weight: 700;
 }
 
 .poSavedSpreadsheet td .poExpectedInboundBody .poSavedSsInlineInput {
@@ -5787,6 +5950,8 @@ th {
   max-width: 100%;
   height: 30px;
   font-size: 12px;
+  font-weight: 700;
+  color: #5d6574;
   border-radius: 6px;
   border: 1px solid #cbd5e1;
   padding: 0 6px;
@@ -5892,7 +6057,7 @@ th {
 .poSavedPoEditModalTitle {
   font-size: 17px;
   font-weight: 800;
-  color: #0f172a;
+  color: #5d6574;
   margin: 0 0 12px;
   padding-bottom: 10px;
   border-bottom: 1px solid #e5e7eb;
@@ -6210,7 +6375,7 @@ th {
   width: 100%;
   font-size: 19px;
   font-weight: 700;
-  color: #111827;
+  color: #5d6574;
   padding: 0;
   margin: 0;
   border: none;
@@ -6233,7 +6398,7 @@ th {
 .poCardHeroBand .poCardPo {
   font-size: 19px;
   font-weight: 700;
-  color: #111827;
+  color: #5d6574;
   line-height: 1.3;
 }
 
@@ -6266,13 +6431,13 @@ th {
 
 .poCardMetaK {
   font-weight: 700;
-  color: #566274;
+  color: #5d6574;
   font-size: 14px;
 }
 
 .poCardMetaV {
   font-weight: 700;
-  color: #566274;
+  color: #5d6574;
   font-size: 14px;
 }
 
@@ -6293,7 +6458,7 @@ th {
 .poCardMetaLabel {
   font-size: 13px;
   font-weight: 400;
-  color: #566274;
+  color: #5d6574;
 }
 
 .poCardMetaInput {
@@ -6306,7 +6471,7 @@ th {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #ffffff;
-  color: #566274;
+  color: #5d6574;
 }
 
 .poCardMetaInput:focus {
@@ -6377,7 +6542,7 @@ th {
 .poCardPo {
   font-size: 17px;
   font-weight: 700;
-  color: #111827;
+  color: #5d6574;
 }
 
 .poCardMeta {
@@ -6388,7 +6553,7 @@ th {
 
 .poCardMeta.poCardMetaLg {
   margin-top: 2px;
-  color: #566274;
+  color: #5d6574;
 }
 
 /* 상품유형·제조사 등: 촘촘한 그리드 + 라벨·값 보통 굵기 */
@@ -6434,7 +6599,7 @@ th {
   font-weight: 700;
   line-height: 1.3;
   letter-spacing: -0.02em;
-  color: #566274;
+  color: #5d6574;
   background: none;
 }
 
@@ -6445,7 +6610,7 @@ th {
   font-size: 13px;
   font-weight: 400;
   line-height: 1.35;
-  color: #111827;
+  color: #5d6574;
   background: none;
   word-break: break-word;
 }
@@ -6459,7 +6624,7 @@ th {
   margin: 0 0 8px;
   font-size: 14px;
   font-weight: 700;
-  color: #374151;
+  color: #5d6574;
 }
 
 .poInboundTable {
@@ -6473,12 +6638,13 @@ th {
   border: 1px solid #e5e9f0;
   padding: 8px 10px;
   text-align: left;
+  font-weight: 700;
+  color: #5d6574;
 }
 
 .poInboundTable th {
   background: #f1f5f9;
-  font-weight: 600;
-  color: #566274;
+  color: #5d6574;
 }
 
 .poRefCell {
@@ -6531,7 +6697,8 @@ th {
   border: 1px solid #d1d5db;
   border-radius: 8px;
   font-size: 13px;
-  color: #111827;
+  font-weight: 700;
+  color: #5d6574;
   background: #fff;
 }
 

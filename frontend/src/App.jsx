@@ -54,8 +54,8 @@ const SHIPMENT_SHEET_CHANNELS = SHIPMENT_MATRIX_CHIPS;
 const SHIPMENT_MATRIX_COL_BRAND = 103;
 const SHIPMENT_MATRIX_COL_CODE = 74;
 const SHIPMENT_MATRIX_COL_NAME = 318;
-const SHIPMENT_MATRIX_COL_MKT = 99;
-const SHIPMENT_MATRIX_COL_SEGMENT = 96;
+const SHIPMENT_MATRIX_COL_MKT = 102;
+const SHIPMENT_MATRIX_COL_SEGMENT = 99;
 const SHIPMENT_MATRIX_STICKY_TOTAL_PX =
   SHIPMENT_MATRIX_COL_BRAND +
   SHIPMENT_MATRIX_COL_CODE +
@@ -1842,7 +1842,7 @@ function ShipmentQtyLineChartSvg({ lineData, dailyVendorTooltips, ariaLabel }) {
         <polyline
           fill="none"
           stroke="currentColor"
-          strokeWidth="1.25"
+          strokeWidth="1.35"
           points={lineData.points.map((point) => `${point.x},${point.y}`).join(" ")}
           className="trendLine shipmentShipmentTrendLine"
         />
@@ -3667,22 +3667,25 @@ export default function App() {
     const tableEl = tableScrollRef.current;
     if (!tableEl) return;
 
-    const scrollToLatest = () => {
-      const nextScrollLeft = Math.max(
-        0,
-        Math.round(tableEl.scrollWidth - tableEl.clientWidth),
-      );
+    const scrollToDefault = () => {
+      const nextScrollLeft = isShipmentScope
+        ? 0
+        : Math.max(
+            0,
+            Math.round(tableEl.scrollWidth - tableEl.clientWidth),
+          );
       if (topEl) topEl.scrollLeft = nextScrollLeft;
       if (headerEl) headerEl.scrollLeft = nextScrollLeft;
       tableEl.scrollLeft = nextScrollLeft;
     };
 
-    scrollToLatest();
-    const rafId = requestAnimationFrame(scrollToLatest);
+    scrollToDefault();
+    const rafId = requestAnimationFrame(scrollToDefault);
     return () => cancelAnimationFrame(rafId);
   }, [
     hasTableData,
     isCompareScope,
+    isShipmentScope,
     isKRScope,
     isOverseasScope,
     filteredDateColumns,
@@ -3831,17 +3834,19 @@ export default function App() {
         {fixed("stickyCol stickyColShipName", "h-name", "상품명")}
         {fixed("stickyCol stickyColShipMkt", "h-mkt", "마케팅 우선순위")}
         {fixed("stickyCol stickyColShipSegment stickyColBoundary", "h-seg", "구분")}
-        {monthCols.map((col) =>
-          asSubBodyRow ? (
-            <td key={`m-${col.key}`} className={`dateCol${subCls}`}>
+        {monthCols.map((col, mIdx) => {
+          const isLastMonth = monthCols.length > 0 && mIdx === monthCols.length - 1;
+          const monthLastCls = isLastMonth ? " shipmentMatrixMonthLastBoundary" : "";
+          return asSubBodyRow ? (
+            <td key={`m-${col.key}`} className={`dateCol${subCls}${monthLastCls}`}>
               {col.label}
             </td>
           ) : (
-            <th key={`m-${col.key}`} className={`dateCol${subCls}`}>
+            <th key={`m-${col.key}`} className={`dateCol${subCls}${monthLastCls}`}>
               {col.label}
             </th>
-          ),
-        )}
+          );
+        })}
         {filteredDateColumns.map((dt) =>
           asSubBodyRow ? (
             <td key={dt} className={`dateCol${subCls}`}>
@@ -6201,7 +6206,9 @@ export default function App() {
                                       {shipmentChartChannelDailyMatrix.colTotals.map((q, i) => (
                                         <td
                                           key={`coltot-${shipmentChartChannelDailyMatrix.dayKeys[i]}`}
-                                          className="shipmentChannelDayMatrixDayCol"
+                                          className={`shipmentChannelDayMatrixDayCol${
+                                            q > 0 ? " shipmentQtyCellFilled" : ""
+                                          }`}
                                         >
                                           {q ? formatInt(q) : "–"}
                                         </td>
@@ -6218,7 +6225,9 @@ export default function App() {
                                         {r.cells.map((q, i) => (
                                           <td
                                             key={shipmentChartChannelDailyMatrix.dayKeys[i]}
-                                            className="shipmentChannelDayMatrixDayCol"
+                                            className={`shipmentChannelDayMatrixDayCol${
+                                              q > 0 ? " shipmentQtyCellFilled" : ""
+                                            }`}
                                           >
                                             {q ? formatInt(q) : "–"}
                                           </td>
@@ -6449,26 +6458,35 @@ export default function App() {
                             </td>
                           </>
                         )}
-                        {(scopeResultCache.SHIPMENT?.shipment_month_columns || []).map((col) => {
+                        {(scopeResultCache.SHIPMENT?.shipment_month_columns || []).map((col, mIdx, mArr) => {
                           const mt = row.month_totals || {};
                           const v = mt[col.key];
+                          const isLastMonth = mArr.length > 0 && mIdx === mArr.length - 1;
+                          const monthLastCls = isLastMonth ? " shipmentMatrixMonthLastBoundary" : "";
+                          const filledCls =
+                            shipmentCellNumericTotal(v) > 0 ? " shipmentQtyCellFilled" : "";
                           return (
                             <td
                               key={`m-${col.key}`}
-                              className="dateCol"
+                              className={`dateCol${monthLastCls}${filledCls}`}
                             >
                               {v != null && Number(v) !== 0 ? formatInt(v) : "–"}
                             </td>
                           );
                         })}
-                        {filteredDateColumns.map((dt) => (
-                          <td
-                            key={dt}
-                            className="dateCol"
-                          >
-                            {formatShipmentWideDateCell(row[dt])}
-                          </td>
-                        ))}
+                        {filteredDateColumns.map((dt) => {
+                          const rawVal = row[dt];
+                          const filledCls =
+                            shipmentCellNumericTotal(rawVal) > 0 ? " shipmentQtyCellFilled" : "";
+                          return (
+                            <td
+                              key={dt}
+                              className={`dateCol${filledCls}`}
+                            >
+                              {formatShipmentWideDateCell(rawVal)}
+                            </td>
+                          );
+                        })}
                       </>
                     ) : (
                       <>
