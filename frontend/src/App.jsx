@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
 import { API_BASE, clearAccessToken } from "./apiClient";
@@ -317,8 +317,8 @@ async function downloadPoInboundTemplateXlsx() {
   URL.revokeObjectURL(a.href);
 }
 
-/** 재고 대시보드 내보내기: 헤더 노란 배경·볼드, 본문 9pt (ExcelJS) */
-async function downloadInventoryDashboardXlsx(filename, sheetName, rows) {
+/** 재고 대시보드 내보내기: 헤더 노란 배경·볼드, 본문 9pt (ExcelJS). 출고만 opts 로 헤더(1행) 월·일자 열 배경 지정 가능 */
+async function downloadInventoryDashboardXlsx(filename, sheetName, rows, opts) {
   const ExcelJS = (await import("exceljs")).default;
   const FONT_9 = { name: "맑은 고딕", size: 9 };
   const thinBorder = {
@@ -327,6 +327,13 @@ async function downloadInventoryDashboardXlsx(filename, sheetName, rows) {
     bottom: { style: "thin" },
     right: { style: "thin" },
   };
+  const HEADER_YELLOW = "FFFFFF00";
+  const SHIPMENT_MONTH_FILL = "FFFFCCCC";
+  const SHIPMENT_DAY_FILL = "FFBFD1E7";
+  const shipmentOpts = opts?.shipmentColumnFills;
+  const monthHeaderSet = shipmentOpts?.monthHeaders;
+  const dayHeaderSet = shipmentOpts?.dayHeaders;
+
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: true }] });
   if (!rows.length) return;
@@ -336,14 +343,27 @@ async function downloadInventoryDashboardXlsx(filename, sheetName, rows) {
     ws.addRow(headers.map((h) => r[h]));
   }
   ws.eachRow((row, rowNumber) => {
-    row.eachCell((cell) => {
+    row.eachCell((cell, colNumber) => {
       cell.font = { ...FONT_9, bold: rowNumber === 1 };
       cell.border = thinBorder;
-      if (rowNumber === 1) {
+      const headerKey = headers[colNumber - 1];
+      if (shipmentOpts && rowNumber === 1 && monthHeaderSet?.has(headerKey)) {
         cell.fill = {
           type: "pattern",
           pattern: "solid",
-          fgColor: { argb: "FFFFFF00" },
+          fgColor: { argb: SHIPMENT_MONTH_FILL },
+        };
+      } else if (shipmentOpts && rowNumber === 1 && dayHeaderSet?.has(headerKey)) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: SHIPMENT_DAY_FILL },
+        };
+      } else if (rowNumber === 1) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: HEADER_YELLOW },
         };
       }
     });
@@ -1781,6 +1801,30 @@ function formatShipmentDayHeaderLabel(dateKey) {
 /** 차트 월 칩: 1월~12월 (연도는 shipmentChartChipYear) */
 const SHIPMENT_MONTH_CHIP_NUMS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
+/** 출고 차트: 행의 month_totals(월키 "1"~"12")에서 YYYY-MM 해당 월 수량 */
+function qtyFromMonthTotalsForYm(monthTotals, yyyyMm) {
+  if (!monthTotals || !yyyyMm || !/^\d{4}-\d{2}$/.test(String(yyyyMm))) return 0;
+  const m = Number(String(yyyyMm).slice(5, 7));
+  if (!Number.isFinite(m) || m < 1 || m > 12) return 0;
+  const mk = String(m);
+  const mkPad = mk.padStart(2, "0");
+  const raw =
+    monthTotals[m] ??
+    monthTotals[mk] ??
+    monthTotals[mkPad] ??
+    monthTotals[String(m)];
+  const val = raw !== undefined && raw !== null ? Number(raw) : 0;
+  return Number.isFinite(val) ? val : 0;
+}
+
+function aggregateMonthQtyAcrossShipmentRows(rows, yyyyMm) {
+  let q = 0;
+  for (const row of rows) {
+    q += qtyFromMonthTotalsForYm(row.month_totals || {}, yyyyMm);
+  }
+  return q;
+}
+
 /** 출고 차트: 일자·월 라인 SVG (차트 분석 대시보드에서 공통 사용) */
 function ShipmentQtyLineChartSvg({ lineData, dailyVendorTooltips, ariaLabel }) {
   if (!lineData) return null;
@@ -2165,6 +2209,7 @@ export default function App() {
     void fetchAndApplyShipmentView({
       signal: ac.signal,
       channel: shipmentMatrixChannel.trim() || undefined,
+      year: shipmentMonthStripYear,
     });
     return () => ac.abort();
   }, [isShipmentScope, shipmentMatrixChannel, shipmentMonthStripYear]);
@@ -2503,22 +2548,10 @@ export default function App() {
     return Array.from(ys).sort((a, b) => a - b);
   }, [scopeResultCache.SHIPMENT?.shipment_available_years, shipmentAvailableMonths]);
 
-  /** 서버가 알려 준 연도 목록에 없을 때만 보정 — 로딩 중 월 파생 목록만으로 덮어쓰면 드롭다운 선택이 되돌아간다 */
-  useEffect(() => {
-    if (!isShipmentScope) return;
-    const apiYears = scopeResultCache.SHIPMENT?.shipment_available_years;
-    if (!Array.isArray(apiYears) || !apiYears.length) return;
-    const normalized = [...new Set(apiYears.map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
-    if (!normalized.includes(shipmentMonthStripYear)) {
-      setShipmentMonthStripYear(normalized[normalized.length - 1]);
-    }
-  }, [isShipmentScope, scopeResultCache.SHIPMENT?.shipment_available_years, shipmentMonthStripYear]);
-
   useEffect(() => {
     if (!isShipmentScope) return;
     if (/^\d{4}-\d{2}$/.test(shipmentDisplayMonth)) {
-      const y = Number(shipmentDisplayMonth.slice(0, 4));
-      if (Number.isFinite(y) && shipmentDataYears.includes(y)) setShipmentMonthStripYear(y);
+      /** 연도는 드롭다운이 우선 — 표시 월 연도로 strip 을 덮어쓰면 2026 선택이 2025로 튐 */
       return;
     }
     if (shipmentDisplayMonth !== "__ALL__") return;
@@ -2538,23 +2571,18 @@ export default function App() {
 
   useEffect(() => {
     if (!isShipmentScope) return;
-    const apiYears = scopeResultCache.SHIPMENT?.shipment_available_years;
-    if (!Array.isArray(apiYears) || apiYears.length !== 1) return;
-    const only = Number(apiYears[0]);
-    if (!Number.isFinite(only)) return;
-    setShipmentMonthStripYear(only);
-  }, [isShipmentScope, scopeResultCache.SHIPMENT?.shipment_available_years]);
-
-  useEffect(() => {
-    if (!isShipmentScope) return;
     if (!shipmentAvailableMonths.length) return;
     const last = shipmentAvailableMonths[shipmentAvailableMonths.length - 1];
     setShipmentDisplayMonth((prev) => {
       if (prev === "__ALL__") return prev;
       if (prev && shipmentAvailableMonths.includes(prev)) return prev;
-      /** 연도 전환 직후 이전 조회의 월 목록만 있으면 prev(예: 2025-03)가 목록에 없어도 last(2026-12)로 덮으면 연도가 다시 튐 */
       if (/^\d{4}-\d{2}$/.test(prev)) {
+        const mm = prev.slice(5, 7);
         const py = Number(prev.slice(0, 4));
+        /** 드롭다운만 바뀌고 표시 월이 예전 연도면 같은 월로 맞춤 — 아니면 last 로 덮여 연도가 튐 */
+        if (Number.isFinite(py) && py !== shipmentMonthStripYear) {
+          return `${shipmentMonthStripYear}-${mm}`;
+        }
         if (Number.isFinite(py) && py === shipmentMonthStripYear) {
           const inYear = shipmentAvailableMonths
             .filter((m) => String(m).startsWith(`${py}-`))
@@ -2573,17 +2601,20 @@ export default function App() {
       return;
     }
     const ac = new AbortController();
-    const year = shipmentMonthStripYear;
     (async () => {
       try {
+        const year = shipmentMonthStripYearRef.current;
         const shipRes = await axios.get(`${API_BASE}/api/inventory/shipment/view`, {
           params: { year, all_channels: true },
           signal: ac.signal,
         });
         const data = shipRes?.data || {};
-        setShipmentChartAllChannels({
-          rows: data.rows || [],
-          dates: data.dates || [],
+        if (shipmentMonthStripYearRef.current !== year) return;
+        startTransition(() => {
+          setShipmentChartAllChannels({
+            rows: data.rows || [],
+            dates: data.dates || [],
+          });
         });
       } catch (err) {
         if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
@@ -2862,46 +2893,37 @@ export default function App() {
 
   const shipmentDisplayRows = useMemo(() => {
     if (!isShipmentScope) return [];
-    const sorted = [...filteredRows].sort((a, b) => {
-      if (a.is_total) return -1;
-      if (b.is_total) return 1;
-      const ta = shipmentRowSumInDateCols(a, filteredDateColumns);
-      const tb = shipmentRowSumInDateCols(b, filteredDateColumns);
-      if (tb !== ta) return tb - ta;
-      const c = String(getRowSku(a) || "").localeCompare(String(getRowSku(b) || ""), "ko");
+    const dateCols = filteredDateColumns;
+    const rowsWithSum = filteredRows.map((row) => ({
+      row,
+      sumKey: row.is_total ? -Infinity : shipmentRowSumInDateCols(row, dateCols),
+    }));
+    rowsWithSum.sort((a, b) => {
+      if (a.row.is_total) return -1;
+      if (b.row.is_total) return 1;
+      if (b.sumKey !== a.sumKey) return b.sumKey - a.sumKey;
+      const c = String(getRowSku(a.row) || "").localeCompare(String(getRowSku(b.row) || ""), "ko");
       if (c !== 0) return c;
-      return String(a.description || "").localeCompare(String(b.description || ""), "ko");
+      return String(a.row.description || "").localeCompare(String(b.row.description || ""), "ko");
     });
-    return sorted.map((row, idx) => ({
+    return rowsWithSum.map(({ row }, idx) => ({
       ...row,
       trendRowKey: row.is_total ? "SHIP-TOTAL" : `SHIP-${getRowSku(row)}-${idx}`,
     }));
   }, [isShipmentScope, filteredRows, filteredDateColumns]);
 
+  /** 상품별 출고 현황: 매트릭스(단일 시트) 데이터로 폴백하면 연도·시트 범위가 차트와 어긋남 — all_channels 응답만 사용 */
   const shipmentChartSourceRows = useMemo(() => {
     if (!isShipmentScope || shipmentViewMode !== "chart") return rawInventoryRows;
-    if (Array.isArray(shipmentChartAllChannels?.rows) && shipmentChartAllChannels.rows.length > 0) {
-      return shipmentChartAllChannels.rows;
-    }
-    return rawInventoryRows;
+    if (shipmentChartAllChannels == null) return [];
+    return Array.isArray(shipmentChartAllChannels.rows) ? shipmentChartAllChannels.rows : [];
   }, [isShipmentScope, shipmentViewMode, shipmentChartAllChannels, rawInventoryRows]);
 
   const shipmentChartSourceDates = useMemo(() => {
     if (!isShipmentScope || shipmentViewMode !== "chart") return rawInventoryDates;
-    if (Array.isArray(shipmentChartAllChannels?.dates) && shipmentChartAllChannels.dates.length > 0) {
-      return shipmentChartAllChannels.dates;
-    }
-    return rawInventoryDates;
+    if (shipmentChartAllChannels == null) return [];
+    return Array.isArray(shipmentChartAllChannels.dates) ? shipmentChartAllChannels.dates : [];
   }, [isShipmentScope, shipmentViewMode, shipmentChartAllChannels, rawInventoryDates]);
-
-  const shipmentChartMonthOptions = useMemo(() => {
-    const s = new Set();
-    for (const d of shipmentChartSourceDates) {
-      const mo = String(d).slice(0, 7);
-      if (/^\d{4}-\d{2}$/.test(mo)) s.add(mo);
-    }
-    return Array.from(s).sort((a, b) => a.localeCompare(b));
-  }, [shipmentChartSourceDates]);
 
   /** 출고 뷰: 서버가 준 동적 채널 목록(수동 매핑 탭명 포함), 없으면 기본 시트 탭 순서 */
   const effectiveShipmentChannels = useMemo(() => {
@@ -2979,6 +3001,42 @@ export default function App() {
     [shipmentChartRowsForSku],
   );
 
+  /** 일자 열이 없어도 month_totals 로 칩·월별 차트 월 목록 산출 — 상품별 출고 현황(매트릭스 월합계만 있는 연도) */
+  const shipmentChartMonthOptions = useMemo(() => {
+    if (!isShipmentScope || shipmentViewMode !== "chart") return [];
+    const s = new Set();
+    for (const d of shipmentChartSourceDates) {
+      const mo = String(d).slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(mo)) s.add(mo);
+    }
+    const y =
+      scopeResultCache.SHIPMENT?.shipment_matrix_year != null &&
+      Number.isFinite(Number(scopeResultCache.SHIPMENT.shipment_matrix_year))
+        ? Number(scopeResultCache.SHIPMENT.shipment_matrix_year)
+        : shipmentMonthStripYear;
+    const rowsForMonths =
+      shipmentChartRowsForSku.length > 0 ? shipmentChartRowsForSku : shipmentChartPrefixRows;
+    for (const row of rowsForMonths) {
+      if (row.is_total) continue;
+      const mt = row.month_totals || {};
+      for (const k of Object.keys(mt)) {
+        const mi = parseInt(String(k), 10);
+        if (!Number.isFinite(mi) || mi < 1 || mi > 12) continue;
+        if (!Number(mt[k])) continue;
+        s.add(`${y}-${String(mi).padStart(2, "0")}`);
+      }
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [
+    isShipmentScope,
+    shipmentViewMode,
+    shipmentChartSourceDates,
+    shipmentChartRowsForSku,
+    shipmentChartPrefixRows,
+    shipmentMonthStripYear,
+    scopeResultCache.SHIPMENT?.shipment_matrix_year,
+  ]);
+
   /** 원시 날짜 열을 월별로 묶음 — 월별 차트 비교용 */
   const shipmentChartDatesByMonth = useMemo(() => {
     const m = new Map();
@@ -2991,12 +3049,16 @@ export default function App() {
     return m;
   }, [shipmentChartSourceDates]);
 
-  /** 일자별 차트: 선택한 달의 1일~말일 전부(데이터 없으면 0) */
+  /** 일자별 차트: 일자별 열이 있으면 일별 합계; 없으면 월 합계만 표시용 포인트 1개 */
   const shipmentChartDailyMonthSeries = useMemo(() => {
-    if (!shipmentChartMonth || !shipmentChartRowsForSkuAggregateOnly.length) return [];
+    if (!shipmentChartMonth) return [];
+    const rows =
+      shipmentChartRowsForSkuAggregateOnly.length > 0
+        ? shipmentChartRowsForSkuAggregateOnly
+        : shipmentChartRowsForSku;
+    if (!rows.length) return [];
     const dim = daysInCalendarMonth(shipmentChartMonth);
     const out = [];
-    const rows = shipmentChartRowsForSkuAggregateOnly;
     for (let d = 1; d <= dim; d += 1) {
       const dd = String(d).padStart(2, "0");
       const dk = `${shipmentChartMonth}-${dd}`;
@@ -3004,21 +3066,43 @@ export default function App() {
       const vendorTooltip = shipmentDateCellVendorTitleAggregated(rows, dk);
       out.push({ key: dk, qty, labelShort: String(d), vendorTooltip });
     }
+    const sumDaily = out.reduce((s, p) => s + (Number(p.qty) || 0), 0);
+    if (sumDaily <= 0) {
+      const mq = aggregateMonthQtyAcrossShipmentRows(rows, shipmentChartMonth);
+      if (mq > 0) {
+        return [
+          {
+            key: `${shipmentChartMonth}-month_only`,
+            qty: mq,
+            labelShort: "합계",
+            vendorTooltip: "일자별 데이터 없음 — 월 합계만 표시합니다.",
+          },
+        ];
+      }
+    }
     return out;
-  }, [shipmentChartMonth, shipmentChartRowsForSkuAggregateOnly]);
+  }, [shipmentChartMonth, shipmentChartRowsForSkuAggregateOnly, shipmentChartRowsForSku]);
 
-  /** 월별 차트: DB에 존재하는 월끼리만 비교(상단 월 필터와 무관) */
+  /** 월별 차트: 일자별이 있으면 일별 합산, 없으면 month_totals만 사용 */
   const shipmentChartMonthlyCompareSeries = useMemo(() => {
-    if (!shipmentChartRowsForSkuAggregateOnly.length || !shipmentChartSourceDates.length) return [];
-    const months = [...shipmentChartDatesByMonth.keys()].sort((a, b) => a.localeCompare(b));
-    const rows = shipmentChartRowsForSkuAggregateOnly;
-    return months.map((monthKey) => {
+    if (!shipmentChartMonthOptions.length) return [];
+    const rows =
+      shipmentChartRowsForSkuAggregateOnly.length > 0
+        ? shipmentChartRowsForSkuAggregateOnly
+        : shipmentChartRowsForSku;
+    if (!rows.length) return [];
+    return shipmentChartMonthOptions.map((monthKey) => {
       const dks = shipmentChartDatesByMonth.get(monthKey) || [];
       let qty = 0;
-      for (const row of rows) {
-        for (const dk of dks) {
-          qty += shipmentCellNumericTotal(row[dk]);
+      if (dks.length) {
+        for (const row of rows) {
+          for (const dk of dks) {
+            qty += shipmentCellNumericTotal(row[dk]);
+          }
         }
+      }
+      if (!qty) {
+        qty = aggregateMonthQtyAcrossShipmentRows(rows, monthKey);
       }
       return {
         key: monthKey,
@@ -3026,7 +3110,12 @@ export default function App() {
         labelShort: monthKey.length >= 7 ? monthKey.slice(2) : monthKey,
       };
     });
-  }, [shipmentChartRowsForSkuAggregateOnly, shipmentChartSourceDates, shipmentChartDatesByMonth]);
+  }, [
+    shipmentChartRowsForSkuAggregateOnly,
+    shipmentChartRowsForSku,
+    shipmentChartMonthOptions,
+    shipmentChartDatesByMonth,
+  ]);
 
   const shipmentChartTitleLabel = useMemo(() => {
     const r = shipmentChartRowsForSku[0];
@@ -3056,10 +3145,22 @@ export default function App() {
         lastD = dk;
       }
     }
+    if (!total && rows.length) {
+      for (const row of rows) {
+        const mt = row.month_totals || {};
+        for (const v of Object.values(mt)) {
+          total += Number(v) || 0;
+        }
+      }
+    }
     const byChannel = rows
       .map((row) => {
         let chSum = 0;
         for (const dk of dateKeys) chSum += shipmentCellNumericTotal(row[dk]);
+        if (!chSum) {
+          const mt = row.month_totals || {};
+          for (const v of Object.values(mt)) chSum += Number(v) || 0;
+        }
         const mt = row.month_totals || {};
         return {
           channel: String(row.channel || "").trim() || "(미지정)",
@@ -3192,7 +3293,23 @@ export default function App() {
       (s, row) => s + dayKeys.reduce((ss, dk) => ss + shipmentCellNumericTotal(row[dk]), 0),
       0,
     );
-    return { dayKeys, rows, colTotals, grandTotal };
+    let monthlyFallbackRows = null;
+    if (!grandTotal) {
+      monthlyFallbackRows = shipmentChartRowsForSku
+        .map((row) => ({
+          channel: String(row.channel || "").trim() || "(미지정)",
+          qty: qtyFromMonthTotalsForYm(row.month_totals || {}, shipmentChartMonth),
+        }))
+        .filter((x) => x.qty > 0)
+        .sort((a, b) => {
+          const ia = order.has(a.channel) ? order.get(a.channel) : 999;
+          const ib = order.has(b.channel) ? order.get(b.channel) : 999;
+          if (ia !== ib) return ia - ib;
+          return a.channel.localeCompare(b.channel, "ko");
+        });
+      if (!monthlyFallbackRows.length) monthlyFallbackRows = null;
+    }
+    return { dayKeys, rows, colTotals, grandTotal, monthlyFallbackRows };
   }, [shipmentChartMonth, shipmentChartRowsForSku, shipmentChartRowsForSkuAggregateOnly, effectiveShipmentChannels]);
 
   useEffect(() => {
@@ -3240,14 +3357,26 @@ export default function App() {
   const hasTableData = useMemo(() => {
     if (isShipmentScope) {
       if (shipmentViewMode === "chart") {
-        const chartRows =
-          (Array.isArray(shipmentChartAllChannels?.rows) && shipmentChartAllChannels.rows.length > 0) ||
-          rawInventoryRows.length > 0;
+        const chartPayload = shipmentChartAllChannels;
+        const payloadRows =
+          chartPayload != null &&
+          Array.isArray(chartPayload.rows) &&
+          chartPayload.rows.length > 0;
+        const payloadDates =
+          chartPayload != null &&
+          Array.isArray(chartPayload.dates) &&
+          chartPayload.dates.length > 0;
+        /** 월 합계만 있는 연도는 dates=[] — 검색·차트 UI는 열려 있어야 함 */
+        const monthlyOnlyMatrix = payloadRows && !payloadDates;
+        const chartRows = payloadRows || rawInventoryRows.length > 0;
         const chartDates =
-          (Array.isArray(shipmentChartAllChannels?.dates) && shipmentChartAllChannels.dates.length > 0) ||
+          payloadDates ||
           filteredDateColumns.length > 0 ||
-          rawInventoryDates.length > 0;
-        return chartRows && chartDates;
+          rawInventoryDates.length > 0 ||
+          monthlyOnlyMatrix;
+        /** 요청 직후 null 이면 로딩 중: 검색창은 숨기지 않음 */
+        const chartAwaitingPayload = chartPayload === null;
+        return chartAwaitingPayload || (chartRows && chartDates);
       }
       return (
         shipmentDisplayRows.length > 0 &&
@@ -3971,7 +4100,14 @@ export default function App() {
         }
         return out;
       });
-      await downloadInventoryDashboardXlsx(`출고_${chLabel}`, "출고현황", matrixRows);
+      const monthHeadersForExport = new Set(monthCols.map((c) => c.label));
+      const dayHeadersForExport = new Set(dateCols.map((dt) => dayLabels[dt] || dt));
+      await downloadInventoryDashboardXlsx(`출고_${chLabel}`, "출고현황", matrixRows, {
+        shipmentColumnFills: {
+          monthHeaders: monthHeadersForExport,
+          dayHeaders: dayHeadersForExport,
+        },
+      });
       return;
     }
     if (isCompareScope) {
@@ -4807,12 +4943,16 @@ export default function App() {
   }
 
   async function fetchAndApplyShipmentView(options = {}) {
-    const { signal, channel } = options;
+    const { signal, channel, year: yearOpt } = options;
     try {
-      const params = { year: shipmentMonthStripYearRef.current };
+      const requestedYear = Number(yearOpt ?? shipmentMonthStripYearRef.current);
+      if (!Number.isFinite(requestedYear)) return;
+      const params = { year: requestedYear };
       if (channel) params.channel = channel;
       const shipRes = await axios.get(`${API_BASE}/api/inventory/shipment/view`, { params, signal });
       const data = shipRes?.data || {};
+      /** 이전 연도 요청이 늦게 도착해 최신 선택보다 옛 데이터가 덮어쓰는 레이스 방지 */
+      if (Number(shipmentMonthStripYearRef.current) !== requestedYear) return;
       const active = data.shipment_active_channel ? String(data.shipment_active_channel) : "";
       if (active && !channel) {
         setShipmentMatrixChannel(active);
@@ -5836,7 +5976,11 @@ export default function App() {
         {hasTableData && (
           <>
             {isShipmentScope && shipmentViewMode === "chart" ? (
-              <div className="shipmentChartMappingCard shipmentChartPage">
+              <div
+                className={`shipmentChartMappingCard shipmentChartPage${
+                  shipmentMonthStripYear === 2025 ? " shipmentChartSkuYear2025" : ""
+                }`}
+              >
                 <div className="shipmentChartStickyBand" style={{ top: activeFilterStickyTop }}>
                 <header className="shipmentChartToolbar" aria-label="출고 상품 검색">
                   <div className="shipmentChartToolbarLead">
@@ -5899,34 +6043,64 @@ export default function App() {
                 </header>
                 {shipmentChartSelectedSku && shipmentChartMonthOptions.length > 0 ? (
                   <div className="shipmentChartMainHead">
-                    <div
-                      className="countryChips countryChipsShipment shipmentChannelChipsCompact shipmentChartMonthChips"
-                      role="group"
-                      aria-label="일자·시트 표·차트에 적용할 달"
-                    >
-                      {SHIPMENT_MONTH_CHIP_NUMS.map((monthNum) => {
-                        const ym = `${shipmentChartChipYear}-${String(monthNum).padStart(2, "0")}`;
-                        const enabled = shipmentChartMonthOptions.includes(ym);
-                        const active = shipmentChartMonth === ym;
-                        return (
-                          <button
-                            key={ym}
-                            type="button"
-                            disabled={!enabled}
-                            className={`chip ${active ? "chipActive" : ""}`}
-                            onClick={() => {
-                              if (enabled) setShipmentChartMonth(ym);
+                    <div className="shipmentChartMonthStripRow" role="group" aria-label="차트 연도·월">
+                      {shipmentDataYears.length >= 1 && (
+                        <>
+                          <label className="sr-only" htmlFor="shipment-chart-strip-year">
+                            차트 연도
+                          </label>
+                          <select
+                            id="shipment-chart-strip-year"
+                            className="inventoryFilterDate shipmentMonthStripYearSelect shipmentChartStripYearSelect"
+                            value={shipmentMonthStripYear}
+                            onChange={(e) => {
+                              const y = Number(e.target.value);
+                              if (!Number.isFinite(y)) return;
+                              setShipmentMonthStripYear(y);
+                              if (shipmentChartMonth && /^\d{4}-\d{2}$/.test(shipmentChartMonth)) {
+                                const mm = shipmentChartMonth.slice(5, 7);
+                                setShipmentChartMonth(`${y}-${mm}`);
+                              }
                             }}
-                            title={
-                              enabled
-                                ? `${formatShipmentMonthLabelKorean(ym)} 일자·시트별 상세`
-                                : "해당 월 출고 데이터 없음"
-                            }
+                            title="차트·월 칩에 적용할 연도"
                           >
-                            {monthNum}월
-                          </button>
-                        );
-                      })}
+                            {shipmentDataYears.map((yearOpt) => (
+                              <option key={yearOpt} value={yearOpt}>
+                                {yearOpt}년
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      )}
+                      <div
+                        className="countryChips countryChipsShipment shipmentChannelChipsCompact shipmentChartMonthChips"
+                        role="group"
+                        aria-label="일자·시트 표·차트에 적용할 달"
+                      >
+                        {SHIPMENT_MONTH_CHIP_NUMS.map((monthNum) => {
+                          const ym = `${shipmentChartChipYear}-${String(monthNum).padStart(2, "0")}`;
+                          const enabled = shipmentChartMonthOptions.includes(ym);
+                          const active = shipmentChartMonth === ym;
+                          return (
+                            <button
+                              key={ym}
+                              type="button"
+                              disabled={!enabled}
+                              className={`chip ${active ? "chipActive" : ""}`}
+                              onClick={() => {
+                                if (enabled) setShipmentChartMonth(ym);
+                              }}
+                              title={
+                                enabled
+                                  ? `${formatShipmentMonthLabelKorean(ym)} 일자·시트별 상세`
+                                  : "해당 월 출고 데이터 없음"
+                              }
+                            >
+                              {monthNum}월
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 ) : null}
@@ -5952,8 +6126,8 @@ export default function App() {
                           aria-label="선택 상품 출고 상세"
                         >
                           <div className="shipmentChartInsightSection shipmentChartDataLead">
-                            {shipmentChartChannelDailyMatrix &&
-                            shipmentChartChannelDailyMatrix.rows.length > 0 ? (
+                            {shipmentChartChannelDailyMatrix ? (
+                              shipmentChartChannelDailyMatrix.grandTotal > 0 ? (
                               <div className="shipmentChartDayMatrixScrollHost">
                                 {showShipmentChartDayMatrixTopScroll ? (
                                   <div
@@ -5986,7 +6160,7 @@ export default function App() {
                                       <th
                                         scope="col"
                                         className="shipmentChannelDayMatrixRowLabel"
-                                        aria-label="시트"
+                                        aria-label="채널 또는 통합명"
                                       >
                                         <span className="shipmentChannelDayMatrixCornerPh" aria-hidden="true" />
                                       </th>
@@ -6047,9 +6221,41 @@ export default function App() {
                                 </table>
                                 </div>
                               </div>
+                            ) : shipmentChartChannelDailyMatrix.monthlyFallbackRows?.length ? (
+                              <div className="shipmentChartMonthOnlyLead">
+                                <p className="shipmentChartMonthOnlyHint">
+                                  이 달은 일자별 데이터가 없어 판매처별 월 합계만 표시합니다.
+                                  {shipmentChartMonth
+                                    ? ` (${formatShipmentMonthLabelKorean(shipmentChartMonth)})`
+                                    : ""}
+                                </p>
+                                <div className="shipmentChartInsightTableWrap">
+                                  <table className="shipmentChartInsightTable shipmentChartMonthOnlyChannelTable">
+                                    <thead>
+                                      <tr>
+                                        <th scope="col" className="shipmentChartMonthOnlyChannelHead">
+                                          <span className="sr-only">채널 또는 통합명</span>
+                                        </th>
+                                        <th scope="col" className="shipmentChartInsightNumCol">
+                                          판매처별 합계
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {shipmentChartChannelDailyMatrix.monthlyFallbackRows.map((r) => (
+                                        <tr key={r.channel}>
+                                          <td>{r.channel}</td>
+                                          <td className="shipmentChartInsightNumCol">{formatInt(r.qty)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
                             ) : (
-                              <p className="shipmentChartEmpty">시트·일자 표를 만들 데이터가 없습니다.</p>
-                            )}
+                              <p className="shipmentChartEmpty">일자별 표를 만들 데이터가 없습니다.</p>
+                            )
+                            ) : null}
                           </div>
                           {shipmentChartSkuInsight.vendorRows.length > 0 ? (
                             <div className="shipmentChartInsightSection">

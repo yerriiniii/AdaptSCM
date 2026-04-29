@@ -816,6 +816,175 @@ body {
   margin-bottom: 0;
 }
 
+/* 상품별 출고 현황: 월 칩 줄 왼쪽 연도 드롭다운 */
+.shipmentChartMonthStripRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+}
+
+.shipmentChartMonthStripRow .shipmentMonthStripYearSelect.shipmentChartStripYearSelect {
+  min-width: 92px;
+  flex-shrink: 0;
+}
+
+.shipmentChartMonthStripRow .countryChips.countryChipsShipment.shipmentChartMonthChips {
+  flex: 1 1 auto;
+  min-width: min(100%, 280px);
+  margin-bottom: 0;
+}
+
+.shipmentChartMonthOnlyLead .shipmentChartMonthOnlyHint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.shipmentChartInsightPanel .shipmentChartMonthOnlyChannelTable {
+  /* .shipmentChartInsightTable 의 width:100% 무력화 — 열 지정 폭이 실제로 적용되도록 표 너비는 내용 기준 */
+  width: auto;
+  max-width: min(480px, 100%);
+  table-layout: fixed;
+}
+
+.shipmentChartMonthOnlyLead > .shipmentChartInsightTableWrap {
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* 월합계만 표: 일별 매트릭스(.shipmentChannelDayMatrix)와 동일 타이포·열 폭·패딩·격자 */
+.shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable {
+  width: auto;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable th,
+.shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable td {
+  border: 1px solid #e2e8f0;
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
+.shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable thead th.shipmentChartMonthOnlyChannelHead {
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+  padding: 9px 8px;
+  background-color: #f8fafd;
+  font-weight: 700;
+  font-size: 12px;
+  color: #5d6574;
+  text-align: left;
+}
+
+.shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable tbody td:first-child {
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+  padding: 9px 8px;
+  background-color: #ffffff;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #566274;
+  text-align: left;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable thead th.shipmentChartInsightNumCol,
+.shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable tbody td.shipmentChartInsightNumCol {
+  width: 81px;
+  min-width: 81px;
+  max-width: 81px;
+  padding: 9px 7px;
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 700;
+  background-color: #eef2f7;
+  color: #566274;
+  box-shadow:
+    inset 1px 0 0 #94a3b8,
+    inset -1px 0 0 #94a3b8,
+    4px 0 12px -4px rgba(15, 23, 42, 0.12);
+  background-clip: padding-box;
+}
+
+.shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable thead th.shipmentChartInsightNumCol {
+  color: #5d6574;
+  text-align: center;
+  white-space: normal;
+}
+
+.shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable tbody td.shipmentChartInsightNumCol {
+  text-align: right;
+  white-space: normal;
+}
+
+.shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable tbody tr:last-child td {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+/*
+ * 연도 2025 선택 시: 월합계 폴백 표 래퍼만 카드 형태(.tableCardShipmentChart 와 조화).
+ */
+.tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartMonthOnlyLead .shipmentChartInsightTableWrap {
+  border-radius: 12px;
+  border: 1px solid #e5e9f0;
+  background: #ffffff;
+}
+
+/* 판매처·창고 분해 표: 합계 열만 동일 강조(판매·창고이동 열은 일반 격자 유지) */
+.tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) th,
+.tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) td {
+  border: 1px solid #e2e8f0;
+}
+
+.tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) thead th {
+  border-bottom: 1px solid #cbd5e1;
+  background-color: #f8fafd;
+  font-weight: 600;
+  color: #5d6574;
+}
+
+.tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) thead th:first-child {
+  font-weight: 700;
+}
+
+.tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) thead th:last-child {
+  background-color: #eef2f7;
+  font-weight: 700;
+  box-shadow:
+    inset 1px 0 0 #94a3b8,
+    inset -1px 0 0 #94a3b8,
+    4px 0 12px -4px rgba(15, 23, 42, 0.12);
+  background-clip: padding-box;
+}
+
+.tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) tbody td:first-child {
+  background-color: #ffffff;
+  color: #566274;
+}
+
+.tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) tbody td:last-child {
+  background-color: #eef2f7;
+  font-weight: 700;
+  color: #566274;
+  box-shadow:
+    inset 1px 0 0 #94a3b8,
+    inset -1px 0 0 #94a3b8,
+    4px 0 12px -4px rgba(15, 23, 42, 0.12);
+  background-clip: padding-box;
+}
+
+.tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) tbody tr:last-child td {
+  border-bottom: 1px solid #e2e8f0;
+}
+
 .shipmentChartInsightPanel {
   flex-shrink: 0;
   margin-bottom: 18px;
@@ -1257,7 +1426,7 @@ body {
   position: sticky;
   left: 0;
   text-align: left;
-  font-weight: 600;
+  font-weight: 700;
   min-width: 112px;
   width: 112px;
   padding: 9px 8px;
