@@ -543,11 +543,7 @@ def _mapping_item_payload(group: ProductGroup) -> dict:
         "segment": seg_coerced,
         "segment_display": format_item_segment_display(seg_coerced),
         "locales": [
-            {
-                "country_code": locale.country_code,
-                "name": locale.name,
-                "sku": locale.sku,
-            }
+            {"country_code": locale.country_code, "name": locale.name, "sku": locale.sku}
             for locale in locales
         ],
     }
@@ -1432,6 +1428,39 @@ def upsert_product_sku_mapping(db: Session, payload: dict[str, object]) -> dict:
         raise
 
     return _mapping_item_payload(target)
+
+
+def patch_product_sku_mapping_segment(db: Session, group_id: str, discontinued: bool) -> dict:
+    """한국 상품 그룹(item) 단종 여부만 수동 변경. DB에는 단종 문자열만 저장."""
+    settings = get_runtime_settings()
+    if not settings.database_enabled:
+        raise HTTPException(status_code=500, detail="DATABASE_URL이 설정되지 않았습니다.")
+
+    raw = str(group_id or "").strip()
+    try:
+        gid = uuid.UUID(raw)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="유효하지 않은 group_id입니다.") from None
+
+    group = db.get(ProductGroup, gid)
+    if group is None:
+        raise HTTPException(status_code=404, detail="상품 그룹을 찾을 수 없습니다.")
+
+    now = datetime.now(timezone.utc)
+    group.segment = "단종" if discontinued else None
+    group.manual_updated_at = now
+    group.updated_at = now
+
+    try:
+        db.commit()
+        fresh = db.execute(
+            select(ProductGroup).where(ProductGroup.id == gid).options(selectinload(ProductGroup.locales))
+        ).scalar_one()
+    except Exception:
+        db.rollback()
+        raise
+
+    return _mapping_item_payload(fresh)
 
 
 def list_product_sku_mappings(db: Session, query: str | None = None, limit: int = 100) -> list[dict]:

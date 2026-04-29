@@ -136,12 +136,19 @@ class InventorySkuMappingUpsertRequest(BaseModel):
         return s
 
 
+class InventorySkuMappingSegmentPatchRequest(BaseModel):
+    """상품 단종 관리: 한국 상품 그룹(item) 단종 여부만 반영."""
+
+    group_id: str = Field(..., min_length=1)
+    discontinued: bool
+
+
 class InventorySkuMappingItemResponse(BaseModel):
     group_id: str
     kr_name: str
     brand: str | None = None
     barcode: str | None = None
-    # item.segment — coerce 후 DB에는 단종만 저장. 목록/검색 응답에 포함(프론트 단종 배지 등).
+    # item.segment — 단종만 저장. 한국 상품 그룹 단줄 단종 표시용.
     segment: str | None = None
     segment_display: str | None = None
     locales: list[InventorySkuMappingLocaleResponse] = Field(default_factory=list)

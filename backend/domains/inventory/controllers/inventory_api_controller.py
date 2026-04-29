@@ -12,6 +12,7 @@ from domains.inventory.dto.inventory_api_dto import (
     InventoryFilePatchBaseDateRequest,
     InventorySkuMappingListResponse,
     InventorySkuMappingItemResponse,
+    InventorySkuMappingSegmentPatchRequest,
     InventorySkuMappingSummaryResponse,
     InventorySkuMappingUpsertRequest,
     InventorySkuMappingUploadResponse,
@@ -32,6 +33,7 @@ from domains.inventory.services.inventory_mapping_service import (
     list_product_sku_mappings,
     lookup_product_by_any_country_sku,
     merge_product_sku_mappings,
+    patch_product_sku_mapping_segment,
     upsert_product_sku_mapping,
 )
 from domains.inventory.services.inventory_aggregate_service import (
@@ -231,6 +233,20 @@ def inventory_mapping_upsert(
     db: Session = Depends(get_db_session),
 ) -> InventorySkuMappingItemResponse:
     return InventorySkuMappingItemResponse(**upsert_product_sku_mapping(db=db, payload=payload.model_dump()))
+
+
+@router.patch("/mappings/segment", response_model=InventorySkuMappingItemResponse)
+def inventory_mapping_patch_segment(
+    payload: InventorySkuMappingSegmentPatchRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> InventorySkuMappingItemResponse:
+    return InventorySkuMappingItemResponse(
+        **patch_product_sku_mapping_segment(
+            db=db,
+            group_id=payload.group_id,
+            discontinued=payload.discontinued,
+        )
+    )
 
 
 @router.delete("/mappings")

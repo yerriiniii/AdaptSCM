@@ -392,18 +392,18 @@ const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
   {
     code: "KR",
     fileLabel: "한국",
-    headers: ["한국 SKU", "브랜드", "한국 상품명", "옵션", "바코드", "구분"],
+    headers: ["한국 SKU", "바코드", "브랜드", "한국 상품명", "옵션", "구분"],
     columnWidthsPx: {
       "한국 상품명": 200,
       구분: 213,
     },
     exampleHintRow: [
       "예: 05803",
+      "예: X0041I3ECT",
       "예: 푸드올로지",
       "예: 푸드올로지 보틀 500ml",
-      "예: 레드 (공백 허용)",
-      "예: X0041I3ECT",
-      "예: 단종 (단종이 아니면 공백)",
+      "예: 레드 (필수 입력 X)",
+      "예: 단종 (단종이 아니면 입력 X)",
     ],
     headerNotes: {
       구분:
@@ -1374,6 +1374,13 @@ function getProductMappingCountries(row = {}) {
     .filter(Boolean);
 }
 
+/** SKU 매핑 행에서 한국 SKU 추출 */
+function mappingRowKrSku(row = {}) {
+  const locales = Array.isArray(row?.locales) ? row.locales : [];
+  const kr = locales.find((l) => String(l?.country_code || "").trim().toUpperCase() === "KR");
+  return String(kr?.sku ?? "").trim();
+}
+
 function getLatestDateKey(dateKeys = []) {
   if (!dateKeys.length) return "";
   return [...dateKeys].sort().at(-1) || "";
@@ -1938,6 +1945,11 @@ export default function App() {
   const [manualSkuFormKey, setManualSkuFormKey] = useState(0);
   const [mappingInputKey, setMappingInputKey] = useState(0);
   const [skuManageMode, setSkuManageMode] = useState("UPLOAD");
+  const [discontinuedMgmtKeyword, setDiscontinuedMgmtKeyword] = useState("");
+  const [discontinuedMgmtRows, setDiscontinuedMgmtRows] = useState([]);
+  const [discontinuedMgmtLoading, setDiscontinuedMgmtLoading] = useState(false);
+  const [discontinuedMgmtError, setDiscontinuedMgmtError] = useState("");
+  const [discontinuedSegmentSavingId, setDiscontinuedSegmentSavingId] = useState(null);
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [purchaseOrdersLoading, setPurchaseOrdersLoading] = useState(false);
   const [purchaseOrderError, setPurchaseOrderError] = useState("");
@@ -5063,6 +5075,26 @@ export default function App() {
     run();
   }, [isProductSearchScope, mappingSearchKeyword]);
 
+  useEffect(() => {
+    if (!isSkuMappingScope || skuManageMode !== "DISCONTINUED") return;
+    const run = async () => {
+      try {
+        setDiscontinuedMgmtLoading(true);
+        setDiscontinuedMgmtError("");
+        const items = await fetchSkuMappingItems(discontinuedMgmtKeyword.trim());
+        setDiscontinuedMgmtRows(items);
+      } catch (err) {
+        const detail = err?.response?.data?.detail;
+        setDiscontinuedMgmtError(
+          Array.isArray(detail) ? detail.join("\n") : detail || "목록을 불러오지 못했습니다."
+        );
+      } finally {
+        setDiscontinuedMgmtLoading(false);
+      }
+    };
+    void run();
+  }, [isSkuMappingScope, skuManageMode, discontinuedMgmtKeyword]);
+
   function openSkuMappingInput() {
     document.getElementById("sku-mapping-input")?.click();
   }
@@ -5140,6 +5172,30 @@ export default function App() {
       window.alert(msg);
     } finally {
       setSettingsMutating(false);
+    }
+  }
+
+  async function patchSkuMappingDiscontinued(groupId, discontinued) {
+    const gid = String(groupId || "").trim();
+    if (!gid) return;
+    setDiscontinuedSegmentSavingId(gid);
+    setDiscontinuedMgmtError("");
+    try {
+      await axios.patch(`${API_BASE}/api/inventory/mappings/segment`, {
+        group_id: gid,
+        discontinued,
+      });
+      const items = await fetchSkuMappingItems(discontinuedMgmtKeyword.trim());
+      setDiscontinuedMgmtRows(items);
+      const latest = await fetchSkuMappingSummary();
+      setMappingSummary(latest);
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "단종 여부 저장 중 오류";
+      setDiscontinuedMgmtError(msg);
+      window.alert(msg);
+    } finally {
+      setDiscontinuedSegmentSavingId(null);
     }
   }
 
@@ -6609,7 +6665,7 @@ export default function App() {
                   type="text"
                   value={inventoryKeyword}
                   onChange={(e) => setInventoryKeyword(e.target.value)}
-                  placeholder="상품코드 또는 한국상품명 검색..."
+                  placeholder="상품코드 또는 상품명 검색..."
                 />
               </div>
               <input
@@ -8843,24 +8899,27 @@ export default function App() {
               <div className="cautionSectionTitle">출고 기록</div>
               <ul className="cautionList">
                 <li>
-                  파일 이름은 「YYYY년_출고_현황.xlsx」 형식이어야 합니다(예: 2025년_출고_현황.xlsx). 업로드한 파일의 연도가
-                  그대로 DB에 반영됩니다.
+                  파일 이름은 「YYYY년_출고_현황.xlsx」 형식이어야 합니다(예: 2025년_출고_현황.xlsx).
                 </li>
                 <li>
-                  엑셀에는 「B2B 통합」「쿠팡 현황」 등 정해진 이름의 시트가 모두 있어야 합니다. 시트 상단에 합계 행이 있어도
-                  「품번(대표코드)」가 있는 헤더 행과 그 아래 데이터만 사용합니다.
+                  엑셀에는 「B2B 통합」, 「쿠팡 현황」 등 정해진 이름의 시트가 모두 있어야 합니다.
                 </li>
                 <li>
-                  품번(대표코드)는 SKU 관리에 등록된 한국 SKU와 일치해야 합니다. 마케팅 우선순위·구분·N월 합계·일자별
-                  열은 엑셀 값을 그대로 쓰며, 브랜드·상품명은 DB 매핑 값으로 표시합니다.
+                  품번(대표코드)가 등록되지 않은 상품이 존재한다면 SKU 관리 탭에서 먼저 해당 상품의 SKU 정보를
+                  입력해주세요.
                 </li>
                 <li>
-                  같은 연도 파일을 다시 올리면, <strong>이번 파일에 적힌 상품·날짜·월합계만</strong> 반영합니다. 값이 바뀐 칸은
-                  갱신하고, 새로 나온 상품·날짜는 추가합니다. 파일에 빠져 있는 상품이나 날짜 칸은 이전 저장값을 그대로 둡니다.
+                  마케팅 우선순위, 구분, N월 합계, 일자별 컬럼은 엑셀 값을 그대로 읽어 씁니다.
                 </li>
                 <li>
-                  전체 출고 현황에서 시트(칩)를 바꿔 표를 보고, 상품별 출고 현황에서는 상품을 검색·선택하면 일자·월·시트별
-                  차트와 시트×일자 표가 한 화면에 표시됩니다.
+                  같은 연도 파일을 다시 올리면, 값이 바뀐 칸은 갱신하고, 새로 나온 상품·날짜는 추가합니다. 새로 갱신되거나
+                  추가되지 않은 값이라면 이전 저장값을 그대로 둡니다.
+                </li>
+                <li>
+                  전체 출고 현황에서 판매처별로 전체 상품의 출고 현황을 확인할 수 있습니다.
+                </li>
+                <li>
+                  상품별 출고 현황에서는 상품을 검색하면 해당 상품의 출고 현황과 일자별·월별 차트를 확인할 수 있습니다.
                 </li>
               </ul>
             </div>
@@ -8900,19 +8959,23 @@ export default function App() {
             <div className="cautionSection">
               <div className="cautionSectionTitle">데이터 관리</div>
               <ul className="cautionList">
-                <li>재고 탭에서 올린 파일·통합까지 끝난 파일에 관한 정보가 국가별로 보입니다.</li>
-                <li>출고 탭에서 저장된 출고 엑셀은 「출고」 그룹에서 이름·용량 확인과 삭제, 출고 데이터만 초기화할 수 있습니다.</li>
-                <li>파일 이름, 크기, 해당 파일의 재고 기준 날짜를 확인할 수 있습니다.</li>
+                <li>재고 탭에서 올린 파일·통합까지 끝난 파일에 관한 정보가 국가별로 확인할 수 있습니다.</li>
+                <li>재고 탭에서 올린 파일의 이름, 크기, 해당 파일의 재고 기준 날짜를 확인할 수 있습니다.</li>
                 <li>
-                  각 파일 옆 날짜는 기준일을 잡을 때 참고됩니다. 한국은 파일명 날짜도 중요하니, 여기 입력된 날짜와 파일명이
-                  어긋나지 않게 맞춰 주세요.
+                  각 파일 옆 날짜는 기준일을 잡을 때 참고됩니다. 한국은 파일 이름에 들어있는 날짜를 사용하니, 여기 입력된
+                  날짜와 파일명에 입력된 날짜가 어긋나지 않게 맞춰 주세요.
                 </li>
-                <li>출고 파일에는 재고와 같은 기준일 입력란이 없습니다. 일자는 엑셀 시트·행에서 읽습니다.</li>
-                <li>삭제하면 해당 파일에서 읽어 둔 재고·출고 저장 데이터는 완전히 삭제됩니다.</li>
-                <li>국가별 데이터 초기화는 그 나라에 올린 재고 파일 데이터를 한꺼번에 삭제합니다.</li>
-                <li>맨 위 전체 초기화는 모든 국가 데이터를 지웁니다. 되돌리기 어려우니 신중히 눌러 주세요.</li>
+                <li>출고 탭에서 올린 파일은 「출고」 그룹에서 확인할 수 있습니다.</li>
                 <li>
-                  여기서 지우는 것은 재고 파일·집계 쪽입니다. SKU 관리에 등록한 상품 매핑은 이 탭만으로는 지워지지 않습니다.
+                  출고 파일은 하루당 출고량을 확인하는 것이 아니기 때문에 기준일이 필요하지 않습니다.
+                </li>
+                <li>
+                  파일을 삭제하면 해당 파일에서 읽어 둔 재고·출고 저장 데이터는 완전히 삭제됩니다.
+                </li>
+                <li>국가별 데이터 초기화는 그 나라에 올린 재고 파일 데이터를 한꺼번에 삭제합니다.</li>
+                <li>맨 위 전체 초기화는 모든 데이터를 지웁니다. 되돌리기 어려우니 신중히 눌러 주세요.</li>
+                <li>
+                  데이터 관리 탭에서 지우는 것은 재고 파일·집계 쪽입니다. SKU 관리는 이 탭만으로는 초기화되지 않습니다.
                 </li>
               </ul>
             </div>
@@ -9057,18 +9120,25 @@ export default function App() {
                   className={`skuManageTab ${skuManageMode === "UPLOAD" ? "active" : ""}`}
                   onClick={() => setSkuManageMode("UPLOAD")}
                 >
-                  SKU 파일 업로드
+                  SKU 정보 파일 업로드
                 </button>
                 <button
                   type="button"
                   className={`skuManageTab ${skuManageMode === "MANUAL" ? "active" : ""}`}
                   onClick={() => setSkuManageMode("MANUAL")}
                 >
-                  수기 작성
+                  SKU 정보 수기 작성
+                </button>
+                <button
+                  type="button"
+                  className={`skuManageTab ${skuManageMode === "DISCONTINUED" ? "active" : ""}`}
+                  onClick={() => setSkuManageMode("DISCONTINUED")}
+                >
+                  상품 단종 관리
                 </button>
               </div>
             </div>
-            <div className={`skuManageContent ${skuManageMode === "MANUAL" ? "manual-only" : "upload-only"}`}>
+            <div className={`skuManageContent ${skuManageMode === "MANUAL" ? "manual-only" : ""}`}>
               {skuManageMode === "UPLOAD" ? (
                 <div className="skuUploadStage skuManageSinglePanel poOrderFileUploadStage">
                   <div className="settingsNotice poOrderFileUploadNotice">
@@ -9112,7 +9182,7 @@ export default function App() {
                       : "-"}
                   </div>
                 </div>
-              ) : (
+              ) : skuManageMode === "MANUAL" ? (
                 <div className="skuManualCard skuManageSinglePanel">
                   <div className="skuManualHead skuManualHeadCompact">
                     <div className="skuManualHeadActions">
@@ -9133,6 +9203,36 @@ export default function App() {
                       <div className="skuManualKrGrid">
                       <label className="skuManualKrField">
                         <span className="skuManualKrFieldHead">
+                          한국 SKU <abbr title="필수">*</abbr>
+                        </span>
+                        <div className="skuManualKrFieldBody">
+                          <input
+                            type="text"
+                            value={manualMappingForm.kr_sku}
+                            onChange={(e) =>
+                              setManualMappingForm((prev) => ({ ...prev, kr_sku: e.target.value }))
+                            }
+                            placeholder="예: 05803"
+                            autoComplete="off"
+                          />
+                        </div>
+                      </label>
+                      <label className="skuManualKrField">
+                        <span className="skuManualKrFieldHead">바코드</span>
+                        <div className="skuManualKrFieldBody">
+                          <input
+                            type="text"
+                            value={manualMappingForm.barcode}
+                            onChange={(e) =>
+                              setManualMappingForm((prev) => ({ ...prev, barcode: e.target.value }))
+                            }
+                            placeholder="예: X0041I3ECT"
+                            autoComplete="off"
+                          />
+                        </div>
+                      </label>
+                      <label className="skuManualKrField">
+                        <span className="skuManualKrFieldHead">
                           브랜드 <abbr title="필수">*</abbr>
                         </span>
                         <div className="skuManualKrFieldBody">
@@ -9148,22 +9248,6 @@ export default function App() {
                       </label>
                       <label className="skuManualKrField">
                         <span className="skuManualKrFieldHead">
-                          한국 SKU <abbr title="필수">*</abbr>
-                        </span>
-                        <div className="skuManualKrFieldBody">
-                          <input
-                            type="text"
-                            value={manualMappingForm.kr_sku}
-                            onChange={(e) =>
-                              setManualMappingForm((prev) => ({ ...prev, kr_sku: e.target.value }))
-                            }
-                            placeholder="한국 SKU"
-                            autoComplete="off"
-                          />
-                        </div>
-                      </label>
-                      <label className="skuManualKrField">
-                        <span className="skuManualKrFieldHead">
                           한국 상품명 <abbr title="필수">*</abbr>
                         </span>
                         <div className="skuManualKrFieldBody">
@@ -9173,35 +9257,7 @@ export default function App() {
                             onChange={(e) =>
                               setManualMappingForm((prev) => ({ ...prev, kr_name: e.target.value }))
                             }
-                            placeholder="한국 상품명"
-                            autoComplete="off"
-                          />
-                        </div>
-                      </label>
-                      <label className="skuManualKrField">
-                        <span className="skuManualKrFieldHead">바코드</span>
-                        <div className="skuManualKrFieldBody">
-                          <input
-                            type="text"
-                            value={manualMappingForm.barcode}
-                            onChange={(e) =>
-                              setManualMappingForm((prev) => ({ ...prev, barcode: e.target.value }))
-                            }
-                            placeholder="EAN·UPC 등 (선택)"
-                            autoComplete="off"
-                          />
-                        </div>
-                      </label>
-                      <label className="skuManualKrField">
-                        <span className="skuManualKrFieldHead">구분</span>
-                        <div className="skuManualKrFieldBody">
-                          <input
-                            type="text"
-                            value={manualMappingForm.segment}
-                            onChange={(e) =>
-                              setManualMappingForm((prev) => ({ ...prev, segment: e.target.value }))
-                            }
-                            placeholder="실제 단종만: 단종 또는 (X) 단종 (선택)"
+                            placeholder="예: 푸드올로지 보틀 500ml"
                             autoComplete="off"
                           />
                         </div>
@@ -9215,7 +9271,21 @@ export default function App() {
                             onChange={(e) =>
                               setManualMappingForm((prev) => ({ ...prev, option: e.target.value }))
                             }
-                            placeholder="예: S / M / 13호 아이보리"
+                            placeholder="예: 레드 (필수 입력 X)"
+                            autoComplete="off"
+                          />
+                        </div>
+                      </label>
+                      <label className="skuManualKrField">
+                        <span className="skuManualKrFieldHead">구분</span>
+                        <div className="skuManualKrFieldBody">
+                          <input
+                            type="text"
+                            value={manualMappingForm.segment}
+                            onChange={(e) =>
+                              setManualMappingForm((prev) => ({ ...prev, segment: e.target.value }))
+                            }
+                            placeholder="예: 단종 (단종이 아니면 입력 X)"
                             autoComplete="off"
                           />
                         </div>
@@ -9276,6 +9346,86 @@ export default function App() {
                     </div>
                     <div className="skuManualButtons" />
                   </div>
+                </div>
+              ) : (
+                <div className="skuDiscontinuedPanel skuManageSinglePanel">
+                  <div className="skuDiscontinuedSearchRow">
+                    <div className="searchWrap skuDiscontinuedSearchWrap">
+                      <SearchFieldIcon className="searchIcon" size={16} strokeWidth={2} />
+                      <input
+                        className="searchInput skuDiscontinuedSearchInput"
+                        type="text"
+                        value={discontinuedMgmtKeyword}
+                        onChange={(e) => setDiscontinuedMgmtKeyword(e.target.value)}
+                        placeholder="상품코드 또는 상품명 검색..."
+                        autoComplete="off"
+                      />
+                    </div>
+                  </div>
+                  {discontinuedMgmtError ? (
+                    <pre className="error skuDiscontinuedError">{discontinuedMgmtError}</pre>
+                  ) : null}
+                  {discontinuedMgmtLoading ? (
+                    <div className="searchEmptyState">불러오는 중...</div>
+                  ) : !discontinuedMgmtRows.length && discontinuedMgmtKeyword.trim() ? (
+                    <div className="productMappingNoResult">일치하는 상품이 없습니다.</div>
+                  ) : !discontinuedMgmtRows.length ? (
+                    <div className="skuDiscontinuedEmpty">등록된 상품이 없습니다.</div>
+                  ) : (
+                    <div className="skuDiscontinuedTableWrap">
+                      <div className="skuDiscontinuedTableScroll">
+                        <div className="skuDiscontinuedTableHead" aria-hidden="true">
+                          <div className="skuDiscontinuedHeadCell">한국 상품코드</div>
+                          <div className="skuDiscontinuedHeadCell">브랜드</div>
+                          <div className="skuDiscontinuedHeadCell">한국 상품명</div>
+                          <div className="skuDiscontinuedTableHeadDiscontinued skuDiscontinuedHeadDiscontinuedInner">
+                            <Ban className="skuDiscontinuedHeadBanIcon" size={18} strokeWidth={2} aria-hidden />
+                            <span>단종</span>
+                          </div>
+                        </div>
+                        {discontinuedMgmtRows.map((row, idx) => {
+                          const gid = row.group_id;
+                          const krSku = mappingRowKrSku(row);
+                          const checked =
+                            String(row.segment || "").trim() === "단종" ||
+                            row.segment_display === "단종";
+                          const saving = discontinuedSegmentSavingId === String(gid);
+                          return (
+                            <div key={gid || `disc-${idx}`} className="skuDiscontinuedRow">
+                              <div
+                                className="skuDiscontinuedCellEllipsis skuDiscontinuedSkuMono skuDiscontinuedBodyCell"
+                                title={krSku || ""}
+                              >
+                                {krSku || "–"}
+                              </div>
+                              <div className="skuDiscontinuedCellEllipsis skuDiscontinuedBodyCell" title={String(row.brand || "")}>
+                                {row.brand || "–"}
+                              </div>
+                              <div className="skuDiscontinuedCellEllipsis skuDiscontinuedBodyCell" title={String(row.kr_name || "")}>
+                                {row.kr_name || "–"}
+                              </div>
+                              <div className="skuDiscontinuedColCheck skuDiscontinuedBodyCellCheck">
+                                <label className="skuDiscontinuedCheckLabel">
+                                  <input
+                                    type="checkbox"
+                                    className="skuDiscontinuedCheckbox"
+                                    checked={checked}
+                                    disabled={settingsMutating || saving || !gid}
+                                    onChange={(e) =>
+                                      void patchSkuMappingDiscontinued(gid, e.target.checked)
+                                    }
+                                  />
+                                  <span className="skuDiscontinuedCheckText">
+                                    {checked ? "단종" : ""}
+                                  </span>
+                                </label>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
