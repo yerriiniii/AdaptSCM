@@ -1416,64 +1416,6 @@ function formatShipmentWideDateCell(val) {
   return String(val ?? "–");
 }
 
-/** 출고 일자별 셀 호버: DB에 저장된 판매처 원문 기준 분해 */
-function shipmentDateCellVendorTitle(row, dateKey) {
-  const br = row?.date_vendor_breakdown?.[dateKey];
-  if (!Array.isArray(br) || !br.length) return undefined;
-  const lines = [];
-  for (const part of br) {
-    const vendor = String(part?.vendor ?? "");
-    const sale = Number(part?.sale) || 0;
-    const wh = Number(part?.wh) || 0;
-    if (sale) lines.push(`${vendor}: ${formatInt(sale)}`);
-    if (wh) lines.push(`${vendor} (창고이동): ${formatInt(wh)}`);
-  }
-  return lines.length ? lines.join("\n") : undefined;
-}
-
-/** 출고 현황(매트릭스) 수량 셀: 판매처 분해가 있으면 우선, 없으면 값 출처 안내 */
-function shipmentMatrixQtyCellTitle(row, kind, ctx) {
-  if (kind === "day") {
-    const vendorTitle = shipmentDateCellVendorTitle(row, ctx.dateKey);
-    if (vendorTitle) return vendorTitle;
-    const ch = String(row?.channel || "").trim() || "선택 시트";
-    const dayL = ctx.dayHeadLabel || ctx.dateKey;
-    const raw = row[ctx.dateKey];
-    const n = shipmentCellNumericTotal(raw);
-    const showVal =
-      raw != null &&
-      String(raw).trim() !== "" &&
-      String(raw).trim() !== "–" &&
-      n !== 0;
-    if (!row?.is_total) {
-      const lines = [`출고 매트릭스 엑셀 시트 「${ch}」`, `${dayL} 열에 저장된 수량`];
-      if (showVal) {
-        lines.push(
-          `표시: ${typeof raw === "string" && raw.includes("창고이동") ? raw : formatInt(n)}`,
-        );
-      } else {
-        lines.push("저장된 수량 없음(0 또는 빈 셀)");
-      }
-      return lines.join("\n");
-    }
-    const lines = [`${dayL} — 이 날짜 열 전체 상품 합계`, `합계: ${formatInt(n)}`];
-    return lines.join("\n");
-  }
-  if (kind === "month") {
-    const ch = String(row?.channel || "").trim() || "선택 시트";
-    const ml = ctx.monthColLabel || `${ctx.monthKey}월 합계`;
-    const v = row.month_totals?.[ctx.monthKey];
-    const nv = Number(v) || 0;
-    if (!row?.is_total) {
-      const lines = [`출고 매트릭스 엑셀 시트 「${ch}」`, `「${ml}」 열에 저장된 값`];
-      lines.push(nv !== 0 ? `표시: ${formatInt(nv)}` : "저장된 수량 없음(0 또는 빈 셀)");
-      return lines.join("\n");
-    }
-    return [`${ml} — 전체 상품 합계`, `합계: ${formatInt(nv)}`].join("\n");
-  }
-  return undefined;
-}
-
 /** 출고 차트: 선택 SKU의 모든 행·일자에 대해 판매처(창고이동) 합산 */
 function aggregateShipmentChartVendorTotals(rows, dateKeys) {
   const by = new Map();
@@ -1529,6 +1471,16 @@ function shipmentDateCellVendorTitleAggregated(rows, dateKey) {
     if (q) fb.push(`${ch}: ${formatInt(q)}`);
   }
   return fb.length ? fb.join("\n") : undefined;
+}
+
+/** 상품별 일자별 차트 점 툴팁: 일자에 현황·개별 시트 수량이 있으면 채널(쿠팡·올리브영 등)별로, 없으면 통합 시트 기준 */
+function shipmentDailyChartPointTooltip(allRows, dateKey) {
+  if (!allRows?.length) return undefined;
+  const detailRows = allRows.filter((r) => !SHIPMENT_CHART_SUM_CHANNELS.has(String(r.channel || "").trim()));
+  const aggRows = allRows.filter((r) => SHIPMENT_CHART_SUM_CHANNELS.has(String(r.channel || "").trim()));
+  const detailDayQty = detailRows.reduce((s, r) => s + shipmentCellNumericTotal(r[dateKey]), 0);
+  const rowsForTip = detailDayQty > 0 ? detailRows : aggRows.length ? aggRows : allRows;
+  return shipmentDateCellVendorTitleAggregated(rowsForTip, dateKey);
 }
 
 /** 출고: 선택 기간 내 날짜 열 합계(정렬·합계용) */
@@ -3063,7 +3015,7 @@ export default function App() {
       const dd = String(d).padStart(2, "0");
       const dk = `${shipmentChartMonth}-${dd}`;
       const qty = rows.reduce((sum, row) => sum + shipmentCellNumericTotal(row[dk]), 0);
-      const vendorTooltip = shipmentDateCellVendorTitleAggregated(rows, dk);
+      const vendorTooltip = shipmentDailyChartPointTooltip(shipmentChartRowsForSku, dk);
       out.push({ key: dk, qty, labelShort: String(d), vendorTooltip });
     }
     const sumDaily = out.reduce((s, p) => s + (Number(p.qty) || 0), 0);
@@ -6448,10 +6400,6 @@ export default function App() {
                             <td
                               key={`m-${col.key}`}
                               className="dateCol"
-                              title={shipmentMatrixQtyCellTitle(row, "month", {
-                                monthKey: col.key,
-                                monthColLabel: col.label,
-                              })}
                             >
                               {v != null && Number(v) !== 0 ? formatInt(v) : "–"}
                             </td>
@@ -6461,11 +6409,6 @@ export default function App() {
                           <td
                             key={dt}
                             className="dateCol"
-                            title={shipmentMatrixQtyCellTitle(row, "day", {
-                              dateKey: dt,
-                              dayHeadLabel:
-                                scopeResultCache.SHIPMENT?.shipment_day_labels?.[dt] || dt,
-                            })}
                           >
                             {formatShipmentWideDateCell(row[dt])}
                           </td>

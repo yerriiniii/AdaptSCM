@@ -3776,12 +3776,13 @@ th {
   max-width: 129px;
 }
 
-/* 한국·해외 재고 표: 출고 현황 매트릭스와 동일한 연한 세로·가로 격자 */
+/* 한국·해외 재고·재고비교: 가로 구분선만(세로 격자 없음). 출고 현황 매트릭스는 제외 */
 .inventoryTable.krTable:not(.shipmentMatrixTable) thead th,
 .inventoryTable.krTable:not(.shipmentMatrixTable) tbody td,
 .inventoryTable.overseasTable thead th,
 .inventoryTable.overseasTable tbody td {
-  border: 1px solid #e2e8f0;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .inventoryTable.krTable:not(.shipmentMatrixTable) thead th,
@@ -3789,36 +3790,20 @@ th {
   border-bottom: 1px solid #cbd5e1;
 }
 
-/* 상품명·한국상품명 ↔ 재고 변화 추이 열 사이 세로 윤곽 제거 */
-.inventoryTable.krTable:not(.shipmentMatrixTable) thead th:has(+ th.trendActionCol),
-.inventoryTable.krTable:not(.shipmentMatrixTable) tbody td:has(+ td.trendActionCell),
-.inventoryTable.overseasTable thead th:has(+ th.trendActionCol),
-.inventoryTable.overseasTable tbody td:has(+ td.trendActionCell) {
-  border-right: none;
-}
-
-.inventoryTable.krTable:not(.shipmentMatrixTable) thead th.trendActionCol,
-.inventoryTable.krTable:not(.shipmentMatrixTable) tbody td.trendActionCell,
-.inventoryTable.overseasTable thead th.trendActionCol,
-.inventoryTable.overseasTable tbody td.trendActionCell {
-  border-left: none;
-}
-
 .inventoryTable.overseasTable thead th.krCompareCol,
 .inventoryTable.overseasTable tbody td.krCompareCol {
-  border: 1px solid #e2e8f0;
-  border-left: 1px solid #c4e7d8;
-  border-right: 1px solid #c4e7d8;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .inventoryTable.overseasTable thead th.krCompareCol {
   border-bottom: 1px solid #cbd5e1;
 }
 
-/* 재고 비교 표: 동일 격자 */
 .compareTable thead th,
 .compareTable tbody td {
-  border: 1px solid #e2e8f0;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .compareTable thead th {
@@ -3827,45 +3812,12 @@ th {
 
 .compareTable thead th.krCompareCol,
 .compareTable tbody td.krCompareCol {
-  border: 1px solid #e2e8f0;
-  border-left: 1px solid #c4e7d8;
-  border-right: 1px solid #c4e7d8;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .compareTable thead th.krCompareCol {
   border-bottom: 1px solid #cbd5e1;
-}
-
-/* 한국 재고 고정열: inset 없음(border만) — 상품코드↔브랜드↔상품명에서 inset+border 겹침으로 윤곽이 진해 보이던 현상 방지 */
-
-/* 해외 재고 스티키 열: inset으로 세로선 보강. 상품명에 inset을 넣어 상품명↔한국상품명 사이 경계가 사라지지 않게 함 */
-.inventoryTable.overseasTable thead th.stickyColCode,
-.inventoryTable.overseasTable thead th.stickyColName,
-.inventoryTable.overseasTable thead th.stickyColKrName,
-.inventoryTable.overseasTable tbody td.stickyColCode,
-.inventoryTable.overseasTable tbody td.stickyColName,
-.inventoryTable.overseasTable tbody td.stickyColKrName {
-  box-shadow: inset -1px 0 0 #e2e8f0;
-}
-
-/* 해외: 한국 현재고 열이 있을 때만 추세가 ‘마지막 고정열 앞’이 되어 출고(브랜드~마케팅)처럼 inset 적용 */
-.inventoryTable.overseasTable:has(thead th.stickyColCompare) thead th.trendActionCol,
-.inventoryTable.overseasTable:has(thead th.stickyColCompare) tbody td.trendActionCell {
-  box-shadow: inset -1px 0 0 #e2e8f0;
-}
-
-/* 한국상품명·상품명 열의 inset 우측선이 추이 열과 겹쳐 보이지 않게 함(위 sticky inset보다 뒤에 둠) */
-.inventoryTable.overseasTable thead th.stickyColName:has(+ th.trendActionCol),
-.inventoryTable.overseasTable thead th.stickyColKrName:has(+ th.trendActionCol),
-.inventoryTable.overseasTable tbody td.stickyColName:has(+ td.trendActionCell),
-.inventoryTable.overseasTable tbody td.stickyColKrName:has(+ td.trendActionCell) {
-  box-shadow: none;
-}
-
-/* 재고 비교: 스티키 중 마지막 열(한국상품명) 앞까지만 inset — 출고 구분 열과 동일 */
-.compareTable thead th.stickyColCode,
-.compareTable tbody td.stickyColCode {
-  box-shadow: inset -1px 0 0 #e2e8f0;
 }
 
 /* 출고 현황 매트릭스: 고정 열 순서 상품코드·브랜드·상품명·마케팅·구분 (가로 스크롤 시 구분까지 고정) */
