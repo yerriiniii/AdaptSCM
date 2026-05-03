@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
@@ -11,6 +12,7 @@ from domains.inventory.dto.inventory_api_dto import (
     InventoryDirectUploadRequest,
     InventoryFilePatchBaseDateRequest,
     InventorySkuMappingListResponse,
+    InventorySkuMappingItemPatchRequest,
     InventorySkuMappingItemResponse,
     InventorySkuMappingSegmentPatchRequest,
     InventorySkuMappingSummaryResponse,
@@ -33,6 +35,7 @@ from domains.inventory.services.inventory_mapping_service import (
     list_product_sku_mappings,
     lookup_product_by_any_country_sku,
     merge_product_sku_mappings,
+    patch_product_sku_mapping_item,
     patch_product_sku_mapping_segment,
     upsert_product_sku_mapping,
 )
@@ -42,6 +45,9 @@ from domains.inventory.services.inventory_aggregate_service import (
 )
 from domains.inventory.services.shipment_aggregate_service import _load_kr_sku_brand_name
 from domains.inventory.services.shipment_matrix_service import DEFAULT_SHIPMENT_MATRIX_YEAR
+from domains.inventory.services.shipment_vendor_channel_maps import (
+    parse_shipment_vendor_primary_overrides_from_payload,
+)
 from domains.inventory.services.shipment_persistence_service import (
     get_shipment_view,
     persist_shipment_matrix_uploads,
@@ -130,13 +136,32 @@ def aggregate_inventory(
 @router.post("/shipment/aggregate", response_model=InventoryAggregateResponse)
 def shipment_aggregate(
     files: list[UploadFile] = File(...),
+    shipment_vendor_primary_overrides: str | None = Form(
+        default=None,
+        description='JSON 객체. 예: {"새판매처":"자사"} — 원시 출고에서 미매핑 판매처 구분 선택 시 전달',
+    ),
     db: Session = Depends(get_db_session),
 ) -> InventoryAggregateResponse:
     if not get_runtime_settings().database_enabled:
         raise HTTPException(status_code=503, detail="DATABASE_URL이 설정되지 않았습니다.")
     kr_sku_map = _load_kr_sku_brand_name(db)
     paired: list[tuple[UploadFile, bytes]] = [(uf, _read_upload_bytes(uf)) for uf in files]
-    persisted_files, years_uploaded = persist_shipment_matrix_uploads(db, paired, kr_sku_brand_name=kr_sku_map)
+    vendor_ov: dict[str, str] | None = None
+    if shipment_vendor_primary_overrides and str(shipment_vendor_primary_overrides).strip():
+        try:
+            raw_obj = json.loads(shipment_vendor_primary_overrides)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="shipment_vendor_primary_overrides는 올바른 JSON 문자열이어야 합니다.",
+            ) from exc
+        try:
+            vendor_ov = parse_shipment_vendor_primary_overrides_from_payload(raw_obj)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    persisted_files, years_uploaded = persist_shipment_matrix_uploads(
+        db, paired, kr_sku_brand_name=kr_sku_map, vendor_primary_overrides_internal=vendor_ov
+    )
     year_view = years_uploaded[-1] if years_uploaded else DEFAULT_SHIPMENT_MATRIX_YEAR
     payload = get_shipment_view(db, data_year=year_view)
     merged = {**payload, "files": persisted_files}
@@ -213,7 +238,7 @@ def inventory_mappings(db: Session = Depends(get_db_session)) -> InventorySkuMap
 @router.get("/mappings/items", response_model=InventorySkuMappingListResponse)
 def inventory_mapping_items(
     query: str | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=100, ge=1, le=5000),
     db: Session = Depends(get_db_session),
 ) -> InventorySkuMappingListResponse:
     return InventorySkuMappingListResponse(items=list_product_sku_mappings(db=db, query=query, limit=limit))
@@ -233,6 +258,16 @@ def inventory_mapping_upsert(
     db: Session = Depends(get_db_session),
 ) -> InventorySkuMappingItemResponse:
     return InventorySkuMappingItemResponse(**upsert_product_sku_mapping(db=db, payload=payload.model_dump()))
+
+
+@router.patch("/mappings/item", response_model=InventorySkuMappingItemResponse)
+def inventory_mapping_patch_item(
+    payload: InventorySkuMappingItemPatchRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> InventorySkuMappingItemResponse:
+    return InventorySkuMappingItemResponse(
+        **patch_product_sku_mapping_item(db=db, payload=payload.model_dump(exclude_unset=True))
+    )
 
 
 @router.patch("/mappings/segment", response_model=InventorySkuMappingItemResponse)

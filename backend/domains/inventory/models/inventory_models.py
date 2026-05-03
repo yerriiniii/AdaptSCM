@@ -109,6 +109,7 @@ class ProductGroup(Base):
     brand: Mapped[str | None] = mapped_column(String(255), nullable=True)
     barcode: Mapped[str | None] = mapped_column(String(255), nullable=True)
     segment: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    mkt_priority: Mapped[str | None] = mapped_column(String(255), nullable=True)
     upload_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     manual_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(

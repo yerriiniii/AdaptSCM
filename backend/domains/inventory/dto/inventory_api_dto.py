@@ -126,6 +126,8 @@ class InventorySkuMappingUpsertRequest(BaseModel):
     vn_sku: str | None = None
     th_name: str | None = None
     th_sku: str | None = None
+    segment: str | None = Field(None, max_length=255)
+    mkt_priority: str | None = Field(None, max_length=255)
 
     @field_validator("brand")
     @classmethod
@@ -143,14 +145,27 @@ class InventorySkuMappingSegmentPatchRequest(BaseModel):
     discontinued: bool
 
 
+class InventorySkuMappingItemPatchRequest(BaseModel):
+    """등록된 상품(item) 핵심 필드 수정: 한국 상품코드·바코드·브랜드·상품명·마케팅 우선순위·구분."""
+
+    group_id: str = Field(..., min_length=1)
+    kr_sku: str = Field(..., min_length=1)
+    kr_name: str = Field(..., min_length=1)
+    brand: str = Field(..., min_length=1)
+    barcode: str | None = Field(None, max_length=255)
+    mkt_priority: str | None = None
+    segment: str | None = None
+
+
 class InventorySkuMappingItemResponse(BaseModel):
     group_id: str
     kr_name: str
     brand: str | None = None
     barcode: str | None = None
-    # item.segment — 단종만 저장. 한국 상품 그룹 단줄 단종 표시용.
+    # item.segment — 구분(앞 수식어 (X) 제거 후 저장). 단종 표시는 값이 "단종"일 때.
     segment: str | None = None
     segment_display: str | None = None
+    mkt_priority: str | None = None
     locales: list[InventorySkuMappingLocaleResponse] = Field(default_factory=list)
 
 

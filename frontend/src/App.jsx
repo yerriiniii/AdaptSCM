@@ -11,8 +11,8 @@ import {
   GitCompare,
   Globe2,
   Home,
-  Link2,
   LogOut,
+  Search,
   Truck,
   UserRound,
 } from "lucide-react";
@@ -44,6 +44,20 @@ const SHIPMENT_MATRIX_CHIPS = [
   "일본 현황",
   "그 외 해외 현황",
 ];
+/** 원시 출고: 미매핑 판매처 구분 선택 — 백엔드 SHIPMENT_VENDOR_UI_LABEL_TO_INTERNAL 과 동일 */
+const SHIPMENT_VENDOR_PRIMARY_OPTIONS = [
+  "자사",
+  "쿠팡",
+  "외부몰",
+  "제외",
+  "대만",
+  "B2B",
+  "올리브영",
+  "홍콩",
+  "그 외 해외",
+  "일본",
+  "미국",
+];
 /** 이 칩 앞에 세로 구분 막대 삽입(`styles.css` `.shipmentChipSep`) */
 const SHIPMENT_MATRIX_CHIP_DIVIDER_BEFORE = new Set(["B2B 현황", "자사몰 현황", "대만 현황"]);
 /** 차트·표 하단 합계열: 통합 3시트만(현황 시트 행은 통합에 이미 포함된 분해) */
@@ -64,6 +78,8 @@ const SHIPMENT_MATRIX_STICKY_TOTAL_PX =
   SHIPMENT_MATRIX_COL_SEGMENT;
 /** 한국·해외·출고 통합 표 날짜/월 열 너비 — `styles.css` `.inventoryTable .dateCol`, `.compareTable .dateCol` 과 동기화. */
 const INVENTORY_DATE_COL_PX = 81;
+/** 출고 전체 현황: 월·일자 열에 정렬 셀렉트 넣을 때 열 너비(`shipmentMatrixColGroup`·표 minWidth와 동기화) */
+const SHIPMENT_MATRIX_SORTABLE_DATE_COL_PX = 104;
 /** 고정 열 합(날짜 제외) — 통합 표 글자 12px(13px 대비 12/13)에 맞춘 값. */
 const INVENTORY_KR_FIXED_TOTAL_PX = 761;
 const INVENTORY_OVERSEAS_FIXED_TOTAL_PX = 791;
@@ -106,7 +122,7 @@ const SKU_MAPPING_FIELDS = [
   { code: "TH", label: "태국", nameKey: "th_name", skuKey: "th_sku" },
 ];
 const SKU_MAPPING_TEMPLATE_COLUMNS = SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [nameKey, skuKey]);
-const SKU_MAPPING_OPTIONAL_COLUMNS = ["option", "brand", "barcode", "segment"];
+const SKU_MAPPING_OPTIONAL_COLUMNS = ["option", "brand", "barcode", "mkt_priority", "segment"];
 const EMPTY_SKU_MAPPING_FORM = Object.fromEntries([
   ...SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [
     [nameKey, ""],
@@ -114,8 +130,8 @@ const EMPTY_SKU_MAPPING_FORM = Object.fromEntries([
   ]),
   ["brand", ""],
   ["barcode", ""],
+  ["mkt_priority", ""],
   ["segment", ""],
-  ["option", ""],
 ]);
 
 /** 검색 입력 옆 돋보기 — Lucide Search와 같은 원·두께, 대각 손잡이만 더 길게 */
@@ -392,23 +408,25 @@ const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
   {
     code: "KR",
     fileLabel: "한국",
-    headers: ["한국 SKU", "바코드", "브랜드", "한국 상품명", "옵션", "구분"],
+    headers: ["한국 SKU", "바코드", "브랜드", "한국 상품명", "마케팅 우선순위", "구분"],
     columnWidthsPx: {
       "한국 상품명": 200,
-      구분: 213,
+      구분: 180,
+      "마케팅 우선순위": 132,
     },
     exampleHintRow: [
       "예: 05803",
       "예: X0041I3ECT",
       "예: 푸드올로지",
-      "예: 푸드올로지 보틀 500ml",
-      "예: 레드 (필수 입력 X)",
-      "예: 단종 (단종이 아니면 입력 X)",
+      "예: 푸드올로지 보틀 500ml 레드",
+      "예: A 등급 (필수 입력 X)",
+      "예: (상시) 유통기획 (필수 입력 X)",
     ],
     headerNotes: {
+      "마케팅 우선순위":
+        "선택. item.mkt_priority 로 저장됩니다. 엑셀 헤더는 마케팅 등급·mkt_priority 등도 인식됩니다.",
       구분:
-        "선택. 실제 단종만 DB에 반영됩니다. 단종·(X) 단종 → 단종. 단종 예정·알뜰상품·행사상품·작업용 등 그 외 값은 저장하지 않습니다(빈 칸과 동일).",
-      옵션: "선택. 있으면 각 국가 상품명 끝에 공백과 함께 붙여 저장됩니다.",
+        "선택. item.segment 로 저장. 값은 그대로 저장하되, 앞의 (X) / （X） 수식어만 제거합니다. 예: (X) 단종 → 단종.",
       바코드: "선택. 있으면 상품(item)의 바코드로 저장되며, 업로드 시 값이 있을 때만 갱신됩니다.",
     },
   },
@@ -812,201 +830,7 @@ function normalizeOrderDateInput(rawInput) {
 const PRODUCT_MAPPING_SEARCH_CHIPS = SKU_MAPPING_FIELDS.map(({ code }) => code);
 const SKU_MAPPING_OVERSEAS_FIELDS = SKU_MAPPING_FIELDS.filter(({ code }) => code !== "KR");
 
-/** 수기 입력 브랜드 드롭다운 (순서 유지) */
-const MANUAL_BRAND_PRESETS = Object.freeze([
-  "8APM",
-  "95PROBLEM",
-  "cs",
-  "SC08",
-  "글라센",
-  "뉴트리스토리",
-  "데이알",
-  "듀오렉신",
-  "랍셍스",
-  "레이어",
-  "레이어옵티컬",
-  "리이오",
-  "림트",
-  "마시밀레",
-  "매그드레인",
-  "먼로우",
-  "블랙홀",
-  "슈럭",
-  "스칸디대디",
-  "스킨빌더스",
-  "알브단스",
-  "에스마켓",
-  "에이페",
-  "엠마녹스",
-  "오브제",
-  "옵스테드",
-  "자연미식",
-  "컬러풀선데이",
-  "클릭앤블락",
-  "페닐롭",
-  "페트리스",
-  "푸드올로지",
-  "풀리",
-  "플릭",
-  "필린",
-]);
-
-function normalizeManualBrandSearch(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "");
-}
-
-function ManualBrandCombobox({ value, onChange, disabled }) {
-  const rootRef = useRef(null);
-  const searchInputRef = useRef(null);
-  const customInputRef = useRef(null);
-  const presetSet = useMemo(() => new Set(MANUAL_BRAND_PRESETS), []);
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  /** 빈 칸에서 「직접 입력」으로 들어온 상태(값을 지워도 목록으로 보내기 전까지 유지) */
-  const [customMode, setCustomMode] = useState(() => Boolean(value && !presetSet.has(value)));
-  /** 직접 입력 중에도 프리셋 목록 UI로 전환 */
-  const [pickFromListUi, setPickFromListUi] = useState(false);
-
-  const isPresetValue = Boolean(value && presetSet.has(value));
-  const showCustomRow =
-    !pickFromListUi && (customMode || (Boolean(value) && !presetSet.has(value)));
-
-  useEffect(() => {
-    if (isPresetValue) {
-      setCustomMode(false);
-      setPickFromListUi(false);
-    }
-  }, [isPresetValue]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e) => {
-      if (rootRef.current && !rootRef.current.contains(e.target)) {
-        setOpen(false);
-        setSearch("");
-      }
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
-  useEffect(() => {
-    if (open) searchInputRef.current?.focus();
-  }, [open]);
-
-  useEffect(() => {
-    if (showCustomRow && customMode) customInputRef.current?.focus();
-  }, [showCustomRow, customMode]);
-
-  const filteredPresets = useMemo(() => {
-    const q = normalizeManualBrandSearch(search);
-    if (!q) return [...MANUAL_BRAND_PRESETS];
-    return MANUAL_BRAND_PRESETS.filter((b) => normalizeManualBrandSearch(b).includes(q));
-  }, [search]);
-
-  if (showCustomRow) {
-    return (
-      <div className="manualBrandCombobox manualBrandComboboxCustom" ref={rootRef}>
-        <div className="manualBrandCustomRow">
-          <input
-            ref={customInputRef}
-            type="text"
-            className="manualBrandCustomInput"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            disabled={disabled}
-            placeholder="브랜드 직접 입력"
-            autoComplete="off"
-          />
-          <button
-            type="button"
-            className="manualBrandToPresetsBtn"
-            disabled={disabled}
-            onClick={() => setPickFromListUi(true)}
-          >
-            목록에서 선택
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className={`manualBrandCombobox${open ? " manualBrandComboboxOpen" : ""}`} ref={rootRef}>
-      <button
-        type="button"
-        className="manualBrandTrigger"
-        disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-      >
-        <span className={`manualBrandTriggerText${value ? "" : " isPlaceholder"}`}>
-          {value || "브랜드 선택"}
-        </span>
-        <span className="manualBrandChevron" aria-hidden="true">
-          ▼
-        </span>
-      </button>
-      {open ? (
-        <div className="manualBrandPopover" role="listbox">
-          <input
-            ref={searchInputRef}
-            type="text"
-            className="manualBrandSearch"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="검색…"
-            autoComplete="off"
-            onMouseDown={(e) => e.stopPropagation()}
-          />
-          <ul className="manualBrandList">
-            {filteredPresets.length ? (
-              filteredPresets.map((b) => (
-                <li key={b}>
-                  <button
-                    type="button"
-                    className="manualBrandOption"
-                    onClick={() => {
-                      onChange(b);
-                      setOpen(false);
-                      setSearch("");
-                      setCustomMode(false);
-                      setPickFromListUi(false);
-                    }}
-                  >
-                    {b}
-                  </button>
-                </li>
-              ))
-            ) : (
-              <li className="manualBrandListEmpty">일치하는 브랜드가 없습니다.</li>
-            )}
-          </ul>
-          <button
-            type="button"
-            className="manualBrandOption manualBrandOptionDirect"
-            onClick={() => {
-              setOpen(false);
-              setSearch("");
-              setPickFromListUi(false);
-              setCustomMode(true);
-              const keepCustom = Boolean(value && !presetSet.has(value));
-              if (!keepCustom) onChange("");
-            }}
-          >
-            직접 입력…
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/** 발주 상품유형: SKU 수기 브랜드와 동일(목록 ▼ ↔ 직접입력 칸 + 목록에서 선택) */
+/** 발주 상품유형: 목록 ▼ ↔ 직접입력 칸 + 목록에서 선택 */
 function PurchaseProductTypeField({ preset, custom, onPresetChange, onCustomChange }) {
   const rootRef = useRef(null);
   const customInputRef = useRef(null);
@@ -1381,6 +1205,31 @@ function mappingRowKrSku(row = {}) {
   return String(kr?.sku ?? "").trim();
 }
 
+/** DB·화면 구분: 단종 저장값은 `단종`, 구분 칸 표시는 `(X) 단종` */
+const PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY = "(X) 단종";
+
+/** `단종`, `(X) 단종`, `（X） 단종` 등 → 단종 체크와 동일 */
+function productEditSegmentImpliesDiscontinued(raw) {
+  let s = String(raw ?? "").trim();
+  if (!s) return false;
+  s = s.replace(/^[(\uFF08]\s*[XxＸ]\s*[)\uFF09]\s*/, "").trim();
+  return s === "단종";
+}
+
+function productEditDraftFromRow(row = {}) {
+  const seg = String(row.segment ?? "").trim();
+  const discontinued = productEditSegmentImpliesDiscontinued(seg);
+  return {
+    kr_sku: mappingRowKrSku(row),
+    barcode: String(row.barcode ?? ""),
+    kr_name: String(row.kr_name ?? ""),
+    brand: String(row.brand ?? ""),
+    mkt_priority: String(row.mkt_priority ?? ""),
+    segment: discontinued ? PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY : seg,
+    discontinued,
+  };
+}
+
 function getLatestDateKey(dateKeys = []) {
   if (!dateKeys.length) return "";
   return [...dateKeys].sort().at(-1) || "";
@@ -1542,11 +1391,25 @@ function formatPersistedLoadError(err, apiBase) {
   return parts.filter(Boolean).join(" · ") || "저장된 데이터를 불러오는 중 오류";
 }
 
+/** 출고·재고 API detail 에서 파일/시트 위치 한 줄 (없으면 빈 문자열) */
+function formatShipmentSourceHint(detail) {
+  if (!detail || typeof detail !== "object") return "";
+  const parts = [];
+  const fn = String(detail.filename || "").trim();
+  const shRaw = detail.sheet_name;
+  const sh = shRaw != null && String(shRaw).trim() !== "" ? String(shRaw).trim() : "";
+  if (fn) parts.push(`파일: ${fn}`);
+  if (sh) parts.push(`시트: ${sh}`);
+  return parts.length ? parts.join(" · ") : "";
+}
+
 /** 백엔드 UNKNOWN_SKUS(재고·출고 통합) — 사용자 알림·에러 배너용 한 덩어리 문장 */
 function formatUnknownSkusUserMessage(detail) {
   if (!detail || typeof detail !== "object" || detail.code !== "UNKNOWN_SKUS") return null;
   const intro = String(detail.message || "").trim();
   const blocks = [];
+  const loc = formatShipmentSourceHint(detail);
+  if (loc) blocks.push(loc);
   if (intro) blocks.push(intro);
   const items = Array.isArray(detail.items) ? detail.items : [];
   if (items.length) {
@@ -1558,8 +1421,18 @@ function formatUnknownSkusUserMessage(detail) {
       blocks.push(where ? `- ${where} · ${sku}` : `- ${sku}`);
     }
   }
+  const skuIssues = Array.isArray(detail.sku_issues) ? detail.sku_issues : [];
+  if (skuIssues.length && !items.length) {
+    blocks.push("", "등록이 필요한 상품코드 (엑셀 행 번호):");
+    for (const it of skuIssues) {
+      const sku = it.sku != null ? String(it.sku) : "";
+      const rows = Array.isArray(it.excel_rows) ? it.excel_rows : [];
+      const rowStr = rows.length ? rows.join(", ") : "";
+      blocks.push(rowStr ? `- ${sku} → ${rowStr}행` : `- ${sku}`);
+    }
+  }
   const skus = Array.isArray(detail.skus) ? detail.skus : [];
-  if (skus.length && !items.length) {
+  if (skus.length && !items.length && !skuIssues.length) {
     blocks.push("", "등록이 필요한 상품코드:");
     for (const s of skus) blocks.push(`- ${s}`);
   }
@@ -1586,7 +1459,8 @@ function formatInventoryAggregateFailureMessage(err, fallback = "재고 통합 �
   if (typeof detail === "string" && detail.trim()) return detail.trim();
   if (detail != null && typeof detail === "object") {
     const m = String(detail.message || "").trim();
-    if (m) return m;
+    const loc = formatShipmentSourceHint(detail);
+    if (m) return loc ? `${loc}\n\n${m}` : m;
     try {
       return JSON.stringify(detail);
     } catch {
@@ -1897,6 +1771,10 @@ export default function App() {
   const [shipmentFileEntries, setShipmentFileEntries] = useState([]);
   const [shipmentUploadInputKey, setShipmentUploadInputKey] = useState(0);
   const [shipmentLoading, setShipmentLoading] = useState(false);
+  /** 출고 통합 재시도: 미매핑 판매처 선택 모달 */
+  const [shipmentVendorOverrideModal, setShipmentVendorOverrideModal] = useState(null);
+  const [shipmentVendorOverrideByVendor, setShipmentVendorOverrideByVendor] = useState({});
+  const shipmentPendingAggregateFilesRef = useRef(null);
   const [countryTabMode, setCountryTabMode] = useState("KR");
   /** 출고 현황: 선택한 칩(엑셀 시트명). 빈 값이면 서버 기본 채널 */
   const [shipmentMatrixChannel, setShipmentMatrixChannel] = useState("");
@@ -1913,6 +1791,12 @@ export default function App() {
   shipmentMonthStripYearRef.current = shipmentMonthStripYear;
   /** 출고: 출고 현황(매트릭스 표) | 차트 분석 */
   const [shipmentViewMode, setShipmentViewMode] = useState("status");
+  /** 전체 출고 현황: 월·일자 열별 정렬 — key `month:1`~`month:12` 또는 `date:YYYY-MM-DD`, dir 빈값이면 기본(기간 합계 내림차순) */
+  const [shipmentStatusColumnSort, setShipmentStatusColumnSort] = useState({ key: "", dir: "" });
+  /** 전체 출고 현황: 열별 정렬 메뉴(삼각형) — portal 고정 위치용 */
+  const [shipmentSortMenu, setShipmentSortMenu] = useState(null);
+  const shipmentSortMenuRef = useRef(null);
+  shipmentSortMenuRef.current = shipmentSortMenu;
   /** 차트 일자별: 볼 달(YYYY-MM) — 표 상단 월 드롭다운과 별개 */
   const [shipmentChartMonth, setShipmentChartMonth] = useState("");
   /** 차트 탭 전용 검색(히어로) — 검색 전에는 차트를 띄우지 않음 */
@@ -1944,12 +1828,13 @@ export default function App() {
   const [manualMappingForm, setManualMappingForm] = useState({ ...EMPTY_SKU_MAPPING_FORM });
   const [manualSkuFormKey, setManualSkuFormKey] = useState(0);
   const [mappingInputKey, setMappingInputKey] = useState(0);
-  const [skuManageMode, setSkuManageMode] = useState("UPLOAD");
-  const [discontinuedMgmtKeyword, setDiscontinuedMgmtKeyword] = useState("");
-  const [discontinuedMgmtRows, setDiscontinuedMgmtRows] = useState([]);
-  const [discontinuedMgmtLoading, setDiscontinuedMgmtLoading] = useState(false);
-  const [discontinuedMgmtError, setDiscontinuedMgmtError] = useState("");
-  const [discontinuedSegmentSavingId, setDiscontinuedSegmentSavingId] = useState(null);
+  const [skuManageMode, setSkuManageMode] = useState("PRODUCT_EDIT");
+  const [productEditKeyword, setProductEditKeyword] = useState("");
+  const [productEditRows, setProductEditRows] = useState([]);
+  const [productEditLoading, setProductEditLoading] = useState(false);
+  const [productEditError, setProductEditError] = useState("");
+  const [productEditSavingId, setProductEditSavingId] = useState(null);
+  const [productEditDraftById, setProductEditDraftById] = useState({});
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [purchaseOrdersLoading, setPurchaseOrdersLoading] = useState(false);
   const [purchaseOrderError, setPurchaseOrderError] = useState("");
@@ -2684,6 +2569,57 @@ export default function App() {
     inventoryEndDate,
   ]);
 
+  useEffect(() => {
+    if (!isShipmentScope || shipmentViewMode !== "status") return;
+    const sk = String(shipmentStatusColumnSort?.key || "").trim();
+    if (!sk) return;
+    if (sk.startsWith("date:")) {
+      const dk = sk.slice(5);
+      if (!filteredDateColumns.includes(dk)) {
+        setShipmentStatusColumnSort({ key: "", dir: "" });
+        setShipmentSortMenu(null);
+      }
+      return;
+    }
+    if (sk.startsWith("month:")) {
+      const mk = sk.slice(6);
+      const monthCols = scopeResultCache.SHIPMENT?.shipment_month_columns || [];
+      if (!monthCols.some((c) => String(c.key) === mk)) {
+        setShipmentStatusColumnSort({ key: "", dir: "" });
+        setShipmentSortMenu(null);
+      }
+    }
+  }, [
+    isShipmentScope,
+    shipmentViewMode,
+    shipmentStatusColumnSort.key,
+    filteredDateColumns,
+    scopeResultCache.SHIPMENT?.shipment_month_columns,
+  ]);
+
+  useEffect(() => {
+    if (!shipmentSortMenu) return;
+    const menuKey = shipmentSortMenu.key;
+    const close = (e) => {
+      const t = e.target;
+      if (t.closest?.(".shipmentSortMenuPortal")) return;
+      const wrap = t.closest?.("[data-shipment-sort-anchor]");
+      if (wrap && wrap.getAttribute("data-shipment-sort-anchor") === menuKey) return;
+      setShipmentSortMenu(null);
+    };
+    document.addEventListener("mousedown", close, true);
+    return () => document.removeEventListener("mousedown", close, true);
+  }, [shipmentSortMenu]);
+
+  useEffect(() => {
+    if (!shipmentSortMenu) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setShipmentSortMenu(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shipmentSortMenu]);
+
   const availableInventoryLevels = useMemo(() => {
     if (isKRScope) return [];
     const values = Array.from(
@@ -2858,13 +2794,37 @@ export default function App() {
   const shipmentDisplayRows = useMemo(() => {
     if (!isShipmentScope) return [];
     const dateCols = filteredDateColumns;
+    const sortKey = String(shipmentStatusColumnSort?.key || "").trim();
+    const sortDir = String(shipmentStatusColumnSort?.dir || "").trim();
     const rowsWithSum = filteredRows.map((row) => ({
       row,
       sumKey: row.is_total ? -Infinity : shipmentRowSumInDateCols(row, dateCols),
     }));
+    const sortVal = (entry) => {
+      const r = entry.row;
+      if (r.is_total) return null;
+      if (!sortKey || (sortDir !== "asc" && sortDir !== "desc")) return null;
+      if (sortKey.startsWith("month:")) {
+        const mk = sortKey.slice(6);
+        return shipmentCellNumericTotal((r.month_totals || {})[mk]);
+      }
+      if (sortKey.startsWith("date:")) {
+        const dk = sortKey.slice(5);
+        return shipmentCellNumericTotal(r[dk]);
+      }
+      return null;
+    };
     rowsWithSum.sort((a, b) => {
       if (a.row.is_total) return -1;
       if (b.row.is_total) return 1;
+      if (sortKey && (sortDir === "asc" || sortDir === "desc")) {
+        const va = sortVal(a);
+        const vb = sortVal(b);
+        if (va != null && vb != null) {
+          const cmp = va - vb;
+          if (cmp !== 0) return sortDir === "asc" ? cmp : -cmp;
+        }
+      }
       if (b.sumKey !== a.sumKey) return b.sumKey - a.sumKey;
       const c = String(getRowSku(a.row) || "").localeCompare(String(getRowSku(b.row) || ""), "ko");
       if (c !== 0) return c;
@@ -2874,7 +2834,7 @@ export default function App() {
       ...row,
       trendRowKey: row.is_total ? "SHIP-TOTAL" : `SHIP-${getRowSku(row)}-${idx}`,
     }));
-  }, [isShipmentScope, filteredRows, filteredDateColumns]);
+  }, [isShipmentScope, filteredRows, filteredDateColumns, shipmentStatusColumnSort]);
 
   /** 상품별 출고 현황: 매트릭스(단일 시트) 데이터로 폴백하면 연도·시트 범위가 차트와 어긋남 — all_channels 응답만 사용 */
   const shipmentChartSourceRows = useMemo(() => {
@@ -3233,14 +3193,25 @@ export default function App() {
         m.set(dk, (m.get(dk) || 0) + q);
       }
     }
-    const channels = [...byChannel.keys()].sort((a, b) => {
+    const explicit = effectiveShipmentChannels.map((c) => String(c || "").trim()).filter(Boolean);
+    const seenExplicit = new Set(explicit);
+    const extras = [...byChannel.keys()].filter((k) => k !== "(미지정)" && !seenExplicit.has(k));
+    extras.sort((a, b) => {
       const ia = order.has(a) ? order.get(a) : 999;
       const ib = order.has(b) ? order.get(b) : 999;
       if (ia !== ib) return ia - ib;
       return a.localeCompare(b, "ko");
     });
+    const channels = explicit.length
+      ? [...explicit, ...extras]
+      : [...byChannel.keys()].sort((a, b) => {
+          const ia = order.has(a) ? order.get(a) : 999;
+          const ib = order.has(b) ? order.get(b) : 999;
+          if (ia !== ib) return ia - ib;
+          return a.localeCompare(b, "ko");
+        });
     const rows = channels.map((ch) => {
-      const m = byChannel.get(ch);
+      const m = byChannel.get(ch) || new Map();
       let rowSum = 0;
       const cells = dayKeys.map((dk) => {
         const q = m.get(dk) || 0;
@@ -3259,19 +3230,18 @@ export default function App() {
     );
     let monthlyFallbackRows = null;
     if (!grandTotal) {
-      monthlyFallbackRows = shipmentChartRowsForSku
-        .map((row) => ({
-          channel: String(row.channel || "").trim() || "(미지정)",
-          qty: qtyFromMonthTotalsForYm(row.month_totals || {}, shipmentChartMonth),
-        }))
-        .filter((x) => x.qty > 0)
-        .sort((a, b) => {
-          const ia = order.has(a.channel) ? order.get(a.channel) : 999;
-          const ib = order.has(b.channel) ? order.get(b.channel) : 999;
-          if (ia !== ib) return ia - ib;
-          return a.channel.localeCompare(b.channel, "ko");
-        });
-      if (!monthlyFallbackRows.length) monthlyFallbackRows = null;
+      const rowByCh = new Map();
+      for (const row of shipmentChartRowsForSku) {
+        const ch = String(row.channel || "").trim() || "(미지정)";
+        if (ch === "(미지정)") continue;
+        rowByCh.set(ch, row);
+      }
+      monthlyFallbackRows = channels.map((channelName) => {
+        const row = rowByCh.get(channelName);
+        const qty = row ? qtyFromMonthTotalsForYm(row.month_totals || {}, shipmentChartMonth) : 0;
+        return { channel: channelName, qty };
+      });
+      if (!monthlyFallbackRows.some((x) => x.qty > 0)) monthlyFallbackRows = null;
     }
     return { dayKeys, rows, colTotals, grandTotal, monthlyFallbackRows };
   }, [shipmentChartMonth, shipmentChartRowsForSku, shipmentChartRowsForSkuAggregateOnly, effectiveShipmentChannels]);
@@ -3518,8 +3488,8 @@ export default function App() {
       return Math.max(
         980,
         SHIPMENT_MATRIX_STICKY_TOTAL_PX +
-          shipmentMatrixMonthColCount * INVENTORY_DATE_COL_PX +
-          filteredDateColumns.length * INVENTORY_DATE_COL_PX,
+          shipmentMatrixMonthColCount * SHIPMENT_MATRIX_SORTABLE_DATE_COL_PX +
+          filteredDateColumns.length * SHIPMENT_MATRIX_SORTABLE_DATE_COL_PX,
       );
     }
     if (isKRScope)
@@ -3544,10 +3514,10 @@ export default function App() {
         <col style={{ width: SHIPMENT_MATRIX_COL_MKT }} />
         <col style={{ width: SHIPMENT_MATRIX_COL_SEGMENT }} />
         {monthCols.map((c) => (
-          <col key={`ship-col-m-${c.key}`} style={{ width: INVENTORY_DATE_COL_PX }} />
+          <col key={`ship-col-m-${c.key}`} style={{ width: SHIPMENT_MATRIX_SORTABLE_DATE_COL_PX }} />
         ))}
         {filteredDateColumns.map((dt) => (
-          <col key={`ship-col-d-${dt}`} style={{ width: INVENTORY_DATE_COL_PX }} />
+          <col key={`ship-col-d-${dt}`} style={{ width: SHIPMENT_MATRIX_SORTABLE_DATE_COL_PX }} />
         ))}
       </colgroup>
     );
@@ -3695,6 +3665,7 @@ export default function App() {
   ]);
 
   function syncScroll(source) {
+    if (shipmentSortMenuRef.current) setShipmentSortMenu(null);
     if (syncingScrollRef.current) return;
     const topEl = topScrollRef.current;
     const headerEl = headerScrollRef.current;
@@ -3817,6 +3788,88 @@ export default function App() {
     const monthCols = shipMeta?.shipment_month_columns || [];
     const dayLabels = shipMeta?.shipment_day_labels || {};
     const subCls = asSubBodyRow ? " shipmentMatrixSubHeaderCell" : "";
+    /** 월·일자 th: 라벨 옆 삼각형 → 정렬 메뉴 */
+    const shipmentSortHeaderContent = (colSortKey, labelNode, ariaLabel) => {
+      const open = shipmentSortMenu?.key === colSortKey;
+      const active = shipmentStatusColumnSort.key === colSortKey;
+      const dir = active ? String(shipmentStatusColumnSort.dir || "").trim() : "";
+      const apply = (d) => {
+        if (!d) setShipmentStatusColumnSort({ key: "", dir: "" });
+        else setShipmentStatusColumnSort({ key: colSortKey, dir: d });
+        setShipmentSortMenu(null);
+      };
+      const defaultChosen = !active || !dir;
+      const MENU_MIN_W = 128;
+      return (
+        <>
+          <div className="shipmentThSortWrap shipmentThSortWrapInline">
+            <div className="shipmentThSortLabel">{labelNode}</div>
+            <div className="shipmentThSortTriggerWrap" data-shipment-sort-anchor={colSortKey}>
+              <button
+                type="button"
+                className={`shipmentSortChevronBtn${dir ? " isActive" : ""}`}
+                aria-label={ariaLabel}
+                aria-expanded={open}
+                aria-haspopup="menu"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setShipmentSortMenu((prev) => {
+                    if (prev?.key === colSortKey) return null;
+                    return {
+                      key: colSortKey,
+                      top: r.bottom + 2,
+                      left: Math.min(Math.max(8, r.right - MENU_MIN_W), window.innerWidth - MENU_MIN_W - 8),
+                    };
+                  });
+                }}
+              >
+                <span className="shipmentSortChevron" aria-hidden />
+              </button>
+            </div>
+          </div>
+          {open &&
+            shipmentSortMenu &&
+            createPortal(
+              <div
+                className="shipmentSortMenuPortal"
+                role="menu"
+                style={{
+                  top: shipmentSortMenu.top,
+                  left: shipmentSortMenu.left,
+                  minWidth: MENU_MIN_W,
+                }}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`shipmentSortMenuItem${defaultChosen ? " isCurrent" : ""}`}
+                  onClick={() => apply("")}
+                >
+                  기본
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`shipmentSortMenuItem${dir === "asc" ? " isCurrent" : ""}`}
+                  onClick={() => apply("asc")}
+                >
+                  오름차순
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`shipmentSortMenuItem${dir === "desc" ? " isCurrent" : ""}`}
+                  onClick={() => apply("desc")}
+                >
+                  내림차순
+                </button>
+              </div>,
+              document.body
+            )}
+        </>
+      );
+    };
     const fixed = (cls, k, label) =>
       asSubBodyRow ? (
         <td key={k} className={`${cls}${subCls}`}>
@@ -3837,27 +3890,30 @@ export default function App() {
         {monthCols.map((col, mIdx) => {
           const isLastMonth = monthCols.length > 0 && mIdx === monthCols.length - 1;
           const monthLastCls = isLastMonth ? " shipmentMatrixMonthLastBoundary" : "";
+          const colSortKey = `month:${col.key}`;
           return asSubBodyRow ? (
             <td key={`m-${col.key}`} className={`dateCol${subCls}${monthLastCls}`}>
               {col.label}
             </td>
           ) : (
             <th key={`m-${col.key}`} className={`dateCol${subCls}${monthLastCls}`}>
-              {col.label}
+              {shipmentSortHeaderContent(colSortKey, col.label, `${col.label} 기준 행 정렬 메뉴`)}
             </th>
           );
         })}
-        {filteredDateColumns.map((dt) =>
-          asSubBodyRow ? (
+        {filteredDateColumns.map((dt) => {
+          const colSortKey = `date:${dt}`;
+          const headContent = dayLabels[dt] || renderDateHeader(dt);
+          return asSubBodyRow ? (
             <td key={dt} className={`dateCol${subCls}`}>
-              {dayLabels[dt] || renderDateHeader(dt)}
+              {headContent}
             </td>
           ) : (
             <th key={dt} className={`dateCol${subCls}`}>
-              {dayLabels[dt] || renderDateHeader(dt)}
+              {shipmentSortHeaderContent(colSortKey, headContent, `${String(dt)} 일자 기준 행 정렬 메뉴`)}
             </th>
-          ),
-        )}
+          );
+        })}
       </>
     );
   }
@@ -3956,20 +4012,56 @@ export default function App() {
     }
   }
 
-  async function runShipmentAggregate() {
+  function closeShipmentVendorOverrideModal() {
+    setShipmentVendorOverrideModal(null);
+    setShipmentVendorOverrideByVendor({});
+  }
+
+  async function submitShipmentVendorPrimaryOverrides() {
+    const names = shipmentVendorOverrideModal?.vendors;
+    if (!Array.isArray(names) || !names.length) {
+      closeShipmentVendorOverrideModal();
+      return;
+    }
+    const map = {};
+    for (const name of names) {
+      const sel = shipmentVendorOverrideByVendor[name];
+      if (!sel || !String(sel).trim()) {
+        window.alert("모든 판매처에 구분을 선택해 주세요.");
+        return;
+      }
+      map[name] = String(sel).trim();
+    }
+    closeShipmentVendorOverrideModal();
+    await runShipmentAggregate(map);
+  }
+
+  /** @param {Record<string, string> | undefined} vendorOverridesMap 원시 출고 미매핑 판매처 구분(판매처 표시명 → 구분 라벨) */
+  async function runShipmentAggregate(vendorOverridesMap) {
     if (!isShipmentScope) return false;
     const pending = shipmentFileEntries.filter((e) => e.file);
-    if (!pending.length) {
+    const filesFromEntries = pending.map((e) => e.file).filter(Boolean);
+    const files =
+      filesFromEntries.length > 0
+        ? filesFromEntries
+        : shipmentPendingAggregateFilesRef.current && shipmentPendingAggregateFilesRef.current.length
+          ? [...shipmentPendingAggregateFilesRef.current]
+          : [];
+    if (!files.length) {
       setInventoryError("출고 엑셀 파일을 먼저 업로드해 주세요.");
       return false;
     }
+    shipmentPendingAggregateFilesRef.current = files;
     setInventoryRequested(true);
     setInventoryError("");
     setScopeErrorCache((prev) => ({ ...prev, SHIPMENT: "" }));
     setShipmentLoading(true);
     try {
       const formData = new FormData();
-      pending.forEach((e) => formData.append("files", e.file));
+      files.forEach((f) => formData.append("files", f));
+      if (vendorOverridesMap && typeof vendorOverridesMap === "object" && Object.keys(vendorOverridesMap).length > 0) {
+        formData.append("shipment_vendor_primary_overrides", JSON.stringify(vendorOverridesMap));
+      }
       const res = await axios.post(`${API_BASE}/api/inventory/shipment/aggregate`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -4013,10 +4105,42 @@ export default function App() {
         await new Promise((r) => setTimeout(r, 900));
         await hydratePersistedState().catch(() => {});
       }
+      shipmentPendingAggregateFilesRef.current = null;
       return true;
     } catch (err) {
       const res = err?.response;
       const detail = res?.data?.detail;
+      if (detail && typeof detail === "object" && detail.code === "UNKNOWN_SHIPMENT_VENDORS") {
+        const vendors = Array.isArray(detail.vendors) ? detail.vendors : [];
+        const vendorIssues = Array.isArray(detail.vendor_issues) ? detail.vendor_issues : [];
+        const vendorRowMap = {};
+        for (const it of vendorIssues) {
+          const name = String(it.vendor || "").trim();
+          if (!name) continue;
+          vendorRowMap[name] = Array.isArray(it.excel_rows) ? it.excel_rows.map(Number).filter((n) => Number.isFinite(n)) : [];
+        }
+        const init = {};
+        vendors.forEach((v) => {
+          init[String(v)] = "";
+        });
+        setShipmentVendorOverrideByVendor(init);
+        setShipmentVendorOverrideModal({
+          vendors,
+          vendorRowMap,
+          filename: String(detail.filename || "").trim(),
+          sheetName: detail.sheet_name != null ? String(detail.sheet_name).trim() : "",
+        });
+        const hint = formatShipmentSourceHint(detail);
+        if (hint) {
+          const banner = `${hint}\n\n${String(detail.message || "").trim() || "표에 없는 판매처가 있습니다."}`;
+          setInventoryError(banner);
+          setScopeErrorCache((prev) => ({ ...prev, SHIPMENT: banner }));
+        } else {
+          setInventoryError("");
+          setScopeErrorCache((prev) => ({ ...prev, SHIPMENT: "" }));
+        }
+        return false;
+      }
       const unknownSkusMsg = formatUnknownSkusUserMessage(detail);
       if (unknownSkusMsg) {
         window.alert(unknownSkusMsg);
@@ -4231,9 +4355,9 @@ export default function App() {
     };
   }
 
-  async function fetchSkuMappingItems(query = "") {
+  async function fetchSkuMappingItems(query = "", limit = 200) {
     const res = await axios.get(`${API_BASE}/api/inventory/mappings/items`, {
-      params: { query: query || "", limit: 200 },
+      params: { query: query || "", limit },
     });
     return Array.isArray(res?.data?.items) ? res.data.items : [];
   }
@@ -5081,24 +5205,27 @@ export default function App() {
   }, [isProductSearchScope, mappingSearchKeyword]);
 
   useEffect(() => {
-    if (!isSkuMappingScope || skuManageMode !== "DISCONTINUED") return;
+    if (!isSkuMappingScope || skuManageMode !== "PRODUCT_EDIT") return;
     const run = async () => {
       try {
-        setDiscontinuedMgmtLoading(true);
-        setDiscontinuedMgmtError("");
-        const items = await fetchSkuMappingItems(discontinuedMgmtKeyword.trim());
-        setDiscontinuedMgmtRows(items);
+        setProductEditLoading(true);
+        setProductEditError("");
+        const items = await fetchSkuMappingItems(productEditKeyword.trim(), 3000);
+        setProductEditRows(items);
+        setProductEditDraftById(
+          Object.fromEntries(items.map((r) => [r.group_id, productEditDraftFromRow(r)]))
+        );
       } catch (err) {
         const detail = err?.response?.data?.detail;
-        setDiscontinuedMgmtError(
+        setProductEditError(
           Array.isArray(detail) ? detail.join("\n") : detail || "목록을 불러오지 못했습니다."
         );
       } finally {
-        setDiscontinuedMgmtLoading(false);
+        setProductEditLoading(false);
       }
     };
     void run();
-  }, [isSkuMappingScope, skuManageMode, discontinuedMgmtKeyword]);
+  }, [isSkuMappingScope, skuManageMode, productEditKeyword]);
 
   function openSkuMappingInput() {
     document.getElementById("sku-mapping-input")?.click();
@@ -5162,7 +5289,7 @@ export default function App() {
         return;
       }
       if (!payload.brand) {
-        window.alert("브랜드를 선택하거나 직접 입력해 주세요.");
+        window.alert("브랜드를 입력해 주세요.");
         return;
       }
       await axios.post(`${API_BASE}/api/inventory/mappings/item`, payload);
@@ -5180,27 +5307,46 @@ export default function App() {
     }
   }
 
-  async function patchSkuMappingDiscontinued(groupId, discontinued) {
+  async function saveProductMappingRow(groupId) {
     const gid = String(groupId || "").trim();
-    if (!gid) return;
-    setDiscontinuedSegmentSavingId(gid);
-    setDiscontinuedMgmtError("");
+    const d = productEditDraftById[gid];
+    if (!gid || !d) return;
+    if (!String(d.kr_sku || "").trim() || !String(d.kr_name || "").trim() || !String(d.brand || "").trim()) {
+      window.alert("상품코드, 상품명, 브랜드는 비울 수 없습니다.");
+      return;
+    }
+    setProductEditSavingId(gid);
+    setProductEditError("");
     try {
-      await axios.patch(`${API_BASE}/api/inventory/mappings/segment`, {
+      const segmentOut = d.discontinued
+        ? "단종"
+        : (() => {
+            const s = String(d.segment || "").trim();
+            if (!s || s === PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY) return null;
+            return s;
+          })();
+      await axios.patch(`${API_BASE}/api/inventory/mappings/item`, {
         group_id: gid,
-        discontinued,
+        kr_sku: String(d.kr_sku || "").trim(),
+        kr_name: String(d.kr_name || "").trim(),
+        brand: String(d.brand || "").trim(),
+        barcode: String(d.barcode || "").trim() || null,
+        mkt_priority: String(d.mkt_priority || "").trim() || null,
+        segment: segmentOut,
       });
-      const items = await fetchSkuMappingItems(discontinuedMgmtKeyword.trim());
-      setDiscontinuedMgmtRows(items);
+      const items = await fetchSkuMappingItems(productEditKeyword.trim(), 3000);
+      setProductEditRows(items);
+      setProductEditDraftById(Object.fromEntries(items.map((r) => [r.group_id, productEditDraftFromRow(r)])));
       const latest = await fetchSkuMappingSummary();
       setMappingSummary(latest);
+      window.alert("저장했습니다.");
     } catch (err) {
       const detail = err?.response?.data?.detail;
-      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "단종 여부 저장 중 오류";
-      setDiscontinuedMgmtError(msg);
+      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "저장 중 오류";
+      setProductEditError(msg);
       window.alert(msg);
     } finally {
-      setDiscontinuedSegmentSavingId(null);
+      setProductEditSavingId(null);
     }
   }
 
@@ -5609,8 +5755,16 @@ export default function App() {
             className={`tab tabWithIcon ${countryTabMode === "PRODUCT_SEARCH" ? "active" : ""}`}
             onClick={() => setCountryTabMode("PRODUCT_SEARCH")}
           >
-            <Link2 className="tabIcon tabIconProductMapping" size={TOP_TAB_ICON_SIZE_PX + 2} strokeWidth={2} aria-hidden />
-            <span>상품 매핑</span>
+            <Search className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+            <span>상품 찾기</span>
+          </button>
+          <button
+            type="button"
+            className={`tab tabWithIcon ${countryTabMode === "SKU_MAPPING" ? "active" : ""}`}
+            onClick={() => setCountryTabMode("SKU_MAPPING")}
+          >
+            <Barcode className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+            <span>상품 관리</span>
           </button>
           <button
             type="button"
@@ -5619,14 +5773,6 @@ export default function App() {
           >
             <Database className="tabIcon tabIconDataManagement" size={TOP_TAB_ICON_SIZE_PX - 1} strokeWidth={2} aria-hidden />
             <span>데이터 관리</span>
-          </button>
-          <button
-            type="button"
-            className={`tab tabWithIcon ${countryTabMode === "SKU_MAPPING" ? "active" : ""}`}
-            onClick={() => setCountryTabMode("SKU_MAPPING")}
-          >
-            <Barcode className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-            <span>SKU 관리</span>
           </button>
         </div>
       </header>
@@ -5985,6 +6131,91 @@ export default function App() {
         )}
 
         {inventoryError && <pre className="error">{inventoryError}</pre>}
+
+        {shipmentVendorOverrideModal && (
+          <div
+            className="shipmentVendorModalBackdrop"
+            role="presentation"
+            onClick={() => closeShipmentVendorOverrideModal()}
+          >
+            <div
+              className="shipmentVendorModal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="shipmentVendorModalTitle"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="shipmentVendorModalHead">
+                <h2 id="shipmentVendorModalTitle" className="shipmentVendorModalTitle">
+                  판매처 구분 선택
+                </h2>
+                <button type="button" className="ghost" onClick={() => closeShipmentVendorOverrideModal()}>
+                  닫기
+                </button>
+              </div>
+              {(shipmentVendorOverrideModal.filename || shipmentVendorOverrideModal.sheetName) && (
+                <p className="shipmentVendorModalIntro">
+                  {[
+                    shipmentVendorOverrideModal.filename && `파일: ${shipmentVendorOverrideModal.filename}`,
+                    shipmentVendorOverrideModal.sheetName && `시트: ${shipmentVendorOverrideModal.sheetName}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              )}
+              <p className="shipmentVendorModalIntro">
+                표에 없는 판매처입니다. 구분을 고른 뒤 확인을 누르면 같은 파일로 다시 업로드합니다.
+              </p>
+              <div className="shipmentVendorModalList">
+                {shipmentVendorOverrideModal.vendors.map((v) => {
+                  const rows = shipmentVendorOverrideModal.vendorRowMap?.[v];
+                  const rowHint =
+                    Array.isArray(rows) && rows.length > 0
+                      ? `문제 행(엑셀 번호·헤더 다음 첫 데이터=2행): ${rows.join(", ")}`
+                      : "";
+                  return (
+                    <div key={v} className="shipmentVendorModalRow">
+                      <div className="shipmentVendorModalRowMain">
+                        <div className="shipmentVendorName">{v}</div>
+                        {rowHint ? <div className="shipmentVendorLocs">{rowHint}</div> : null}
+                      </div>
+                      <select
+                        className="shipmentVendorSelect"
+                        value={shipmentVendorOverrideByVendor[v] || ""}
+                        onChange={(e) =>
+                          setShipmentVendorOverrideByVendor((prev) => ({
+                            ...prev,
+                            [v]: e.target.value,
+                          }))
+                        }
+                        aria-label={`${v} 구분`}
+                      >
+                        <option value="">선택…</option>
+                        {SHIPMENT_VENDOR_PRIMARY_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="shipmentVendorModalActions">
+                <button type="button" className="ghost" onClick={() => closeShipmentVendorOverrideModal()}>
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="primaryBtn"
+                  onClick={() => void submitShipmentVendorPrimaryOverrides()}
+                >
+                  확인 후 다시 업로드
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {hasTableData && (
           <>
@@ -8866,7 +9097,7 @@ export default function App() {
                 </li>
                 <li>재고 탭에서는 이미 올린 것과 같은 파일 이름은 다시 올라가지 않습니다.</li>
                 <li>
-                  재고 엑셀에 넣은 상품코드는 SKU 관리에서 그 국가로 먼저 등록되어 있어야 합니다. 하나라도 빠지면 그 파일
+                  재고 엑셀에 넣은 상품코드는 상품 관리에서 그 국가로 먼저 등록되어 있어야 합니다. 하나라도 빠지면 그 파일
                   전체가 반영되지 않을 수 있습니다.
                 </li>
                 <li>재고 표의 상품코드에 마우스를 올리면, 등록되어 있는 바코드를 볼 수 있습니다.</li>
@@ -8917,21 +9148,19 @@ export default function App() {
               <div className="cautionSectionTitle">출고 기록</div>
               <ul className="cautionList">
                 <li>
-                  파일 이름은 「YYYY년_출고_현황.xlsx」 형식이어야 합니다(예: 2025년_출고_현황.xlsx).
+                  파일 이름·시트 이름은 자유입니다. 시트 중 하나에 「판매처」「상품코드」「주문일」「주문수량」(또는
+                  「주문 수」) 네 열만 있으면 됩니다.
                 </li>
                 <li>
-                  엑셀에는 「B2B 통합」, 「쿠팡 현황」 등 정해진 이름의 시트가 모두 있어야 합니다.
+                  상품코드는 DB(상품 관리·한국 매핑)에 등록된 코드만 집계됩니다. 미등록 코드가 있으면 업로드가 거절됩니다.
                 </li>
                 <li>
-                  품번(대표코드)가 등록되지 않은 상품이 존재한다면 SKU 관리 탭에서 먼저 해당 상품의 SKU 정보를
-                  입력해주세요.
+                  판매처는 시스템 표에 따라 1차 구분(자사·쿠팡·외부몰 등) 후, 상세 칩·통합 칩(B2C/B2B/해외)에 합산됩니다.
+                  표에 없는 판매처는 구분을 선택한 뒤 다시 올려야 합니다.
                 </li>
                 <li>
-                  마케팅 우선순위, 구분, N월 합계, 일자별 컬럼은 엑셀 값을 그대로 읽어 씁니다.
-                </li>
-                <li>
-                  같은 연도 파일을 다시 올리면, 값이 바뀐 칸은 갱신하고, 새로 나온 상품·날짜는 추가합니다. 새로 갱신되거나
-                  추가되지 않은 값이라면 이전 저장값을 그대로 둡니다.
+                  주문일에서 월·일별 수량을 합산해 저장합니다. 데이터에 포함된 연도(가장 최근 연도) 기준으로 같은 연도 파일을
+                  다시 올리면 값이 바뀐 날·월은 갱신하고, 새 상품·날짜는 추가합니다. 그 외 이전 저장값은 유지됩니다.
                 </li>
                 <li>
                   전체 출고 현황에서 판매처별로 전체 상품의 출고 현황을 확인할 수 있습니다.
@@ -8968,9 +9197,13 @@ export default function App() {
             </div>
 
             <div className="cautionSection">
-              <div className="cautionSectionTitle">상품 매핑</div>
+              <div className="cautionSectionTitle">상품 찾기</div>
               <ul className="cautionList">
                 <li>상품명이나 SKU로 검색하면, 국가별 상품명·상품코드를 한 번에 볼 수 있습니다.</li>
+                <li>
+                  카드 상단 아래에 마케팅 등급·구분이 표시됩니다. 구분은 엑셀·수기 입력 시 앞의 (X) 표기만 빼고
+                  저장됩니다.
+                </li>
               </ul>
             </div>
 
@@ -8993,13 +9226,13 @@ export default function App() {
                 <li>국가별 데이터 초기화는 그 나라에 올린 재고 파일 데이터를 한꺼번에 삭제합니다.</li>
                 <li>맨 위 전체 초기화는 모든 데이터를 지웁니다. 되돌리기 어려우니 신중히 눌러 주세요.</li>
                 <li>
-                  데이터 관리 탭에서 지우는 것은 재고 파일·집계 쪽입니다. SKU 관리는 이 탭만으로는 초기화되지 않습니다.
+                  데이터 관리 탭에서 지우는 것은 재고 파일·집계 쪽입니다. 상품 관리는 이 탭만으로는 초기화되지 않습니다.
                 </li>
               </ul>
             </div>
 
             <div className="cautionSection">
-              <div className="cautionSectionTitle">SKU 관리</div>
+              <div className="cautionSectionTitle">상품 관리</div>
               <ul className="cautionList">
                 <li>
                   SKU 매핑 엑셀 템플릿(ZIP)으로 한국·미국·대만·홍콩 양식을 받을 수 있습니다. ZIP 안의 한국 파일에 구분
@@ -9013,6 +9246,10 @@ export default function App() {
                 </li>
                 <li>엑셀 원본 파일은 보관하지 않고, 읽은 매핑 정보만 저장합니다.</li>
                 <li>파일이 어렵다면 수기 작성 탭에서 직접 넣을 수 있습니다.</li>
+                <li>
+                  상품 정보 수정 탭에서 등록된 상품의 상품코드·브랜드·상품명·마케팅 우선순위·구분을 검색 후 행 단위로
+                  고칠 수 있습니다.
+                </li>
               </ul>
             </div>
           </div>
@@ -9135,6 +9372,13 @@ export default function App() {
               <div className="skuManageTabs">
                 <button
                   type="button"
+                  className={`skuManageTab ${skuManageMode === "PRODUCT_EDIT" ? "active" : ""}`}
+                  onClick={() => setSkuManageMode("PRODUCT_EDIT")}
+                >
+                  상품 정보 수정
+                </button>
+                <button
+                  type="button"
                   className={`skuManageTab ${skuManageMode === "UPLOAD" ? "active" : ""}`}
                   onClick={() => setSkuManageMode("UPLOAD")}
                 >
@@ -9147,17 +9391,203 @@ export default function App() {
                 >
                   SKU 정보 수기 작성
                 </button>
-                <button
-                  type="button"
-                  className={`skuManageTab ${skuManageMode === "DISCONTINUED" ? "active" : ""}`}
-                  onClick={() => setSkuManageMode("DISCONTINUED")}
-                >
-                  상품 단종 관리
-                </button>
               </div>
             </div>
-            <div className={`skuManageContent ${skuManageMode === "MANUAL" ? "manual-only" : ""}`}>
-              {skuManageMode === "UPLOAD" ? (
+            <div
+              className={`skuManageContent ${skuManageMode === "MANUAL" ? "manual-only" : ""}${
+                skuManageMode === "PRODUCT_EDIT" ? " product-edit-mode" : ""
+              }`}
+            >
+              {skuManageMode === "PRODUCT_EDIT" ? (
+                <div className="skuProductEditPanel skuManageSinglePanel">
+                  <div className="skuProductEditSearchRow">
+                    <div className="searchWrap skuProductEditSearchWrap">
+                      <SearchFieldIcon className="searchIcon" size={16} strokeWidth={2} />
+                      <input
+                        className="searchInput skuProductEditSearchInput"
+                        type="text"
+                        value={productEditKeyword}
+                        onChange={(e) => setProductEditKeyword(e.target.value)}
+                        autoComplete="off"
+                        aria-label="상품 검색"
+                      />
+                    </div>
+                  </div>
+                  {productEditError ? <pre className="error skuProductEditError">{productEditError}</pre> : null}
+                  {productEditLoading ? (
+                    <div className="searchEmptyState">불러오는 중...</div>
+                  ) : !productEditRows.length && productEditKeyword.trim() ? (
+                    <div className="productMappingNoResult">일치하는 상품이 없습니다.</div>
+                  ) : !productEditRows.length ? (
+                    <div className="skuProductEditEmpty">등록된 상품이 없습니다.</div>
+                  ) : (
+                    <div className="skuProductEditTableWrap">
+                      <div className="skuProductEditTableScroll">
+                        <div className="skuProductEditTableHead" aria-hidden="true">
+                          <div className="skuProductEditHeadCell">상품코드</div>
+                          <div className="skuProductEditHeadCell">바코드</div>
+                          <div className="skuProductEditHeadCell">브랜드</div>
+                          <div className="skuProductEditHeadCell">상품명</div>
+                          <div className="skuProductEditHeadCell">마케팅 우선순위</div>
+                          <div className="skuProductEditHeadCell">구분</div>
+                          <div className="skuProductEditHeadCell skuProductEditHeadCellDiscontinued">단종</div>
+                          <div className="skuProductEditHeadCell skuProductEditHeadCellAction">저장</div>
+                        </div>
+                        {productEditRows.map((row, idx) => {
+                          const gid = row.group_id;
+                          const d = productEditDraftById[gid] || productEditDraftFromRow(row);
+                          const saving = productEditSavingId === String(gid);
+                          return (
+                            <div key={gid || `pe-${idx}`} className="skuProductEditRow">
+                              <div className="skuProductEditCell">
+                                <input
+                                  type="text"
+                                  className="skuProductEditInput skuProductEditInputMono"
+                                  value={d.kr_sku ?? ""}
+                                  disabled={settingsMutating || saving || !gid}
+                                  onChange={(e) =>
+                                    setProductEditDraftById((prev) => ({
+                                      ...prev,
+                                      [gid]: { ...d, kr_sku: e.target.value },
+                                    }))
+                                  }
+                                  autoComplete="off"
+                                  aria-label="상품코드"
+                                />
+                              </div>
+                              <div className="skuProductEditCell">
+                                <input
+                                  type="text"
+                                  className="skuProductEditInput skuProductEditInputMono"
+                                  value={d.barcode ?? ""}
+                                  disabled={settingsMutating || saving || !gid}
+                                  onChange={(e) =>
+                                    setProductEditDraftById((prev) => ({
+                                      ...prev,
+                                      [gid]: { ...d, barcode: e.target.value },
+                                    }))
+                                  }
+                                  autoComplete="off"
+                                  aria-label="바코드"
+                                />
+                              </div>
+                              <div className="skuProductEditCell">
+                                <input
+                                  type="text"
+                                  className="skuProductEditInput"
+                                  value={d.brand ?? ""}
+                                  disabled={settingsMutating || saving || !gid}
+                                  onChange={(e) =>
+                                    setProductEditDraftById((prev) => ({
+                                      ...prev,
+                                      [gid]: { ...d, brand: e.target.value },
+                                    }))
+                                  }
+                                  autoComplete="off"
+                                  aria-label="브랜드"
+                                />
+                              </div>
+                              <div className="skuProductEditCell">
+                                <input
+                                  type="text"
+                                  className="skuProductEditInput"
+                                  value={d.kr_name ?? ""}
+                                  disabled={settingsMutating || saving || !gid}
+                                  onChange={(e) =>
+                                    setProductEditDraftById((prev) => ({
+                                      ...prev,
+                                      [gid]: { ...d, kr_name: e.target.value },
+                                    }))
+                                  }
+                                  autoComplete="off"
+                                  aria-label="상품명"
+                                />
+                              </div>
+                              <div className="skuProductEditCell">
+                                <input
+                                  type="text"
+                                  className="skuProductEditInput"
+                                  value={d.mkt_priority ?? ""}
+                                  disabled={settingsMutating || saving || !gid}
+                                  onChange={(e) =>
+                                    setProductEditDraftById((prev) => ({
+                                      ...prev,
+                                      [gid]: { ...d, mkt_priority: e.target.value },
+                                    }))
+                                  }
+                                  autoComplete="off"
+                                  aria-label="마케팅 우선순위"
+                                />
+                              </div>
+                              <div className="skuProductEditCell">
+                                <input
+                                  type="text"
+                                  className={`skuProductEditInput${d.discontinued ? " skuProductEditInputDiscontinuedSegment" : ""}`}
+                                  value={
+                                    d.discontinued
+                                      ? PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY
+                                      : (d.segment ?? "")
+                                  }
+                                  disabled={settingsMutating || saving || !gid || d.discontinued}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    const impliesDc = productEditSegmentImpliesDiscontinued(v);
+                                    setProductEditDraftById((prev) => {
+                                      const cur = prev[gid] ?? productEditDraftFromRow(row);
+                                      return {
+                                        ...prev,
+                                        [gid]: {
+                                          ...cur,
+                                          discontinued: impliesDc,
+                                          segment: impliesDc
+                                            ? PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY
+                                            : v,
+                                        },
+                                      };
+                                    });
+                                  }}
+                                  autoComplete="off"
+                                  aria-label="구분"
+                                />
+                              </div>
+                              <div className="skuProductEditCell skuProductEditCellDiscontinued">
+                                <input
+                                  type="checkbox"
+                                  className="skuProductEditDiscontinuedCheck"
+                                  checked={Boolean(d.discontinued)}
+                                  disabled={settingsMutating || saving || !gid}
+                                  onChange={(e) => {
+                                    const on = e.target.checked;
+                                    setProductEditDraftById((prev) => ({
+                                      ...prev,
+                                      [gid]: {
+                                        ...d,
+                                        discontinued: on,
+                                        segment: on ? PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY : "",
+                                      },
+                                    }));
+                                  }}
+                                  aria-label="단종"
+                                />
+                              </div>
+                              <div className="skuProductEditCell skuProductEditCellAction">
+                                <button
+                                  type="button"
+                                  className="primary skuProductEditSaveBtn"
+                                  disabled={settingsMutating || saving || !gid}
+                                  onClick={() => void saveProductMappingRow(gid)}
+                                >
+                                  {saving ? "…" : "저장"}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : skuManageMode === "UPLOAD" ? (
                 <div className="skuUploadStage skuManageSinglePanel poOrderFileUploadStage">
                   <div className="settingsNotice poOrderFileUploadNotice">
                     <p className="poOrderFileUploadLead">
@@ -9249,65 +9679,71 @@ export default function App() {
                           />
                         </div>
                       </label>
-                      <label className="skuManualKrField">
-                        <span className="skuManualKrFieldHead">
-                          브랜드 <abbr title="필수">*</abbr>
-                        </span>
-                        <div className="skuManualKrFieldBody">
-                          <ManualBrandCombobox
-                            key={manualSkuFormKey}
-                            value={manualMappingForm.brand}
-                            onChange={(next) =>
-                              setManualMappingForm((prev) => ({ ...prev, brand: next }))
-                            }
-                            disabled={settingsMutating}
-                          />
-                        </div>
-                      </label>
-                      <label className="skuManualKrField">
-                        <span className="skuManualKrFieldHead">
-                          한국 상품명 <abbr title="필수">*</abbr>
-                        </span>
-                        <div className="skuManualKrFieldBody">
-                          <input
-                            type="text"
-                            value={manualMappingForm.kr_name}
-                            onChange={(e) =>
-                              setManualMappingForm((prev) => ({ ...prev, kr_name: e.target.value }))
-                            }
-                            placeholder="예: 푸드올로지 보틀 500ml"
-                            autoComplete="off"
-                          />
-                        </div>
-                      </label>
-                      <label className="skuManualKrField">
-                        <span className="skuManualKrFieldHead">옵션</span>
-                        <div className="skuManualKrFieldBody">
-                          <input
-                            type="text"
-                            value={manualMappingForm.option}
-                            onChange={(e) =>
-                              setManualMappingForm((prev) => ({ ...prev, option: e.target.value }))
-                            }
-                            placeholder="예: 레드 (필수 입력 X)"
-                            autoComplete="off"
-                          />
-                        </div>
-                      </label>
-                      <label className="skuManualKrField">
-                        <span className="skuManualKrFieldHead">구분</span>
-                        <div className="skuManualKrFieldBody">
-                          <input
-                            type="text"
-                            value={manualMappingForm.segment}
-                            onChange={(e) =>
-                              setManualMappingForm((prev) => ({ ...prev, segment: e.target.value }))
-                            }
-                            placeholder="예: 단종 (단종이 아니면 입력 X)"
-                            autoComplete="off"
-                          />
-                        </div>
-                      </label>
+                      <div className="skuManualKrSpanRow skuManualKrRow2">
+                        <label className="skuManualKrField">
+                          <span className="skuManualKrFieldHead">
+                            브랜드 <abbr title="필수">*</abbr>
+                          </span>
+                          <div className="skuManualKrFieldBody">
+                            <input
+                              type="text"
+                              value={manualMappingForm.brand}
+                              onChange={(e) =>
+                                setManualMappingForm((prev) => ({ ...prev, brand: e.target.value }))
+                              }
+                              placeholder="예: 푸드올로지"
+                              disabled={settingsMutating}
+                              autoComplete="off"
+                            />
+                          </div>
+                        </label>
+                        <label className="skuManualKrField">
+                          <span className="skuManualKrFieldHead">
+                            한국 상품명 <abbr title="필수">*</abbr>
+                          </span>
+                          <div className="skuManualKrFieldBody">
+                            <input
+                              type="text"
+                              value={manualMappingForm.kr_name}
+                              onChange={(e) =>
+                                setManualMappingForm((prev) => ({ ...prev, kr_name: e.target.value }))
+                              }
+                              placeholder="예: 푸드올로지 보틀 500ml"
+                              autoComplete="off"
+                            />
+                          </div>
+                        </label>
+                      </div>
+                      <div className="skuManualKrSpanRow skuManualKrRow2">
+                        <label className="skuManualKrField">
+                          <span className="skuManualKrFieldHead">마케팅 우선순위</span>
+                          <div className="skuManualKrFieldBody">
+                            <input
+                              type="text"
+                              value={manualMappingForm.mkt_priority}
+                              onChange={(e) =>
+                                setManualMappingForm((prev) => ({ ...prev, mkt_priority: e.target.value }))
+                              }
+                              placeholder="예: A 등급 (필수 입력 X)"
+                              autoComplete="off"
+                            />
+                          </div>
+                        </label>
+                        <label className="skuManualKrField">
+                          <span className="skuManualKrFieldHead">구분</span>
+                          <div className="skuManualKrFieldBody">
+                            <input
+                              type="text"
+                              value={manualMappingForm.segment}
+                              onChange={(e) =>
+                                setManualMappingForm((prev) => ({ ...prev, segment: e.target.value }))
+                              }
+                              placeholder="예: (상시) 유통기획 (필수 입력 X)"
+                              autoComplete="off"
+                            />
+                          </div>
+                        </label>
+                      </div>
                     </div>
                     </div>
                   </div>
@@ -9365,87 +9801,7 @@ export default function App() {
                     <div className="skuManualButtons" />
                   </div>
                 </div>
-              ) : (
-                <div className="skuDiscontinuedPanel skuManageSinglePanel">
-                  <div className="skuDiscontinuedSearchRow">
-                    <div className="searchWrap skuDiscontinuedSearchWrap">
-                      <SearchFieldIcon className="searchIcon" size={16} strokeWidth={2} />
-                      <input
-                        className="searchInput skuDiscontinuedSearchInput"
-                        type="text"
-                        value={discontinuedMgmtKeyword}
-                        onChange={(e) => setDiscontinuedMgmtKeyword(e.target.value)}
-                        placeholder="상품코드 또는 상품명 검색..."
-                        autoComplete="off"
-                      />
-                    </div>
-                  </div>
-                  {discontinuedMgmtError ? (
-                    <pre className="error skuDiscontinuedError">{discontinuedMgmtError}</pre>
-                  ) : null}
-                  {discontinuedMgmtLoading ? (
-                    <div className="searchEmptyState">불러오는 중...</div>
-                  ) : !discontinuedMgmtRows.length && discontinuedMgmtKeyword.trim() ? (
-                    <div className="productMappingNoResult">일치하는 상품이 없습니다.</div>
-                  ) : !discontinuedMgmtRows.length ? (
-                    <div className="skuDiscontinuedEmpty">등록된 상품이 없습니다.</div>
-                  ) : (
-                    <div className="skuDiscontinuedTableWrap">
-                      <div className="skuDiscontinuedTableScroll">
-                        <div className="skuDiscontinuedTableHead" aria-hidden="true">
-                          <div className="skuDiscontinuedHeadCell">한국 상품코드</div>
-                          <div className="skuDiscontinuedHeadCell">브랜드</div>
-                          <div className="skuDiscontinuedHeadCell">한국 상품명</div>
-                          <div className="skuDiscontinuedTableHeadDiscontinued skuDiscontinuedHeadDiscontinuedInner">
-                            <Ban className="skuDiscontinuedHeadBanIcon" size={18} strokeWidth={2} aria-hidden />
-                            <span>단종</span>
-                          </div>
-                        </div>
-                        {discontinuedMgmtRows.map((row, idx) => {
-                          const gid = row.group_id;
-                          const krSku = mappingRowKrSku(row);
-                          const checked =
-                            String(row.segment || "").trim() === "단종" ||
-                            row.segment_display === "단종";
-                          const saving = discontinuedSegmentSavingId === String(gid);
-                          return (
-                            <div key={gid || `disc-${idx}`} className="skuDiscontinuedRow">
-                              <div
-                                className="skuDiscontinuedCellEllipsis skuDiscontinuedSkuMono skuDiscontinuedBodyCell"
-                                title={krSku || ""}
-                              >
-                                {krSku || "–"}
-                              </div>
-                              <div className="skuDiscontinuedCellEllipsis skuDiscontinuedBodyCell" title={String(row.brand || "")}>
-                                {row.brand || "–"}
-                              </div>
-                              <div className="skuDiscontinuedCellEllipsis skuDiscontinuedBodyCell" title={String(row.kr_name || "")}>
-                                {row.kr_name || "–"}
-                              </div>
-                              <div className="skuDiscontinuedColCheck skuDiscontinuedBodyCellCheck">
-                                <label className="skuDiscontinuedCheckLabel">
-                                  <input
-                                    type="checkbox"
-                                    className="skuDiscontinuedCheckbox"
-                                    checked={checked}
-                                    disabled={settingsMutating || saving || !gid}
-                                    onChange={(e) =>
-                                      void patchSkuMappingDiscontinued(gid, e.target.checked)
-                                    }
-                                  />
-                                  <span className="skuDiscontinuedCheckText">
-                                    {checked ? "단종" : ""}
-                                  </span>
-                                </label>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+              ) : null}
             </div>
             {mappingError && (
               <pre ref={mappingErrorRef} className="error mappingError">
@@ -9499,7 +9855,7 @@ export default function App() {
                   <article key={row._id} className="productMappingItemCard">
                     <div
                       className="productMappingAlignGrid"
-                      title={`${row.brand || "–"} | ${row.kr_name || "상품명 없음"}${row.segment ? ` | 구분 ${row.segment}` : ""}${row.barcode ? ` | 바코드 ${row.barcode}` : ""}`}
+                      title={`${row.brand || "–"} | ${row.kr_name || "상품명 없음"}${row.mkt_priority ? ` | 마케팅등급 ${row.mkt_priority}` : ""}${row.segment ? ` | 구분 ${row.segment}` : ""}${row.barcode ? ` | 바코드 ${row.barcode}` : ""}`}
                     >
                       <div className="productMappingGridHeadBand">
                         <div className="productMappingItemBrandPart productMappingGridHeadBrand">
@@ -9520,6 +9876,16 @@ export default function App() {
                             <span>단종</span>
                           </div>
                         ) : null}
+                      </div>
+                      <div className="productMappingItemMetaBand">
+                        <span>
+                          <span className="productMappingMetaLabel">마케팅 등급</span>
+                          {String(row.mkt_priority || "").trim() || "–"}
+                        </span>
+                        <span>
+                          <span className="productMappingMetaLabel">구분</span>
+                          {String(row.segment || "").trim() || "–"}
+                        </span>
                       </div>
                       {row._countries.map((country, countryIdx) => (
                         <Fragment key={`${row._id}-${country.code}`}>
