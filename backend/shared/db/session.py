@@ -134,12 +134,16 @@ def _ensure_inventory_columns(engine: Engine) -> None:
             "brand": "VARCHAR(255)",
             "barcode": "VARCHAR(255)",
             "segment": "VARCHAR(255)",
+            "mkt_priority": "VARCHAR(255)",
         },
         "purchase_inbound_lines": {
             "actual_inbound_note": "VARCHAR(128)",
             "delivery_available_date": "DATE",
             "expected_inbound_date": "DATE",
             "line_memo": "TEXT",
+        },
+        "shipment_matrix_rows": {
+            "mkt_priority": "VARCHAR(255)",
         },
     }
 

@@ -1,13 +1,17 @@
-"""출고 현황: 칩(시트명)별 품번(대표코드) 매트릭스 엑셀 파싱·조회."""
+"""출고 현황: 원시 롱 데이터 → 월·일 집계 → DB(`ShipmentMatrixRow`) → 화면용 피벗.
+
+**업로드**(`persist_shipment_matrix_uploads`): 엑셀은 판매처·상품코드(또는 어드민코드)·주문일·주문수량
+4열만 보며 시트/파일명은 무관. 상품코드는 DB 한국 SKU와 매핑·검증하고, 주문일로 월·일 키 합산.
+판매처는 `shipment_vendor_channel_maps` 로 1차 구분→상세 칩(자사몰 현황 등) 및 통합 칩(B2C/B2B/해외)에 반영.
+"""
 
 from __future__ import annotations
 
 import io
-import os
 import re
 import unicodedata
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any
 
 import pandas as pd
@@ -20,6 +24,12 @@ from domains.inventory.services.inventory_aggregate_service import _normalize_it
 from domains.inventory.services.shipment_aggregate_service import (
     _load_kr_sku_brand_name,
     normalize_shipment_excel_sku,
+)
+from domains.inventory.services.shipment_vendor_channel_maps import (
+    PRIMARY_TO_DETAIL_CHANNEL,
+    PRIMARY_TO_INTEGRATION_CHANNELS,
+    normalize_shipment_vendor_key,
+    resolve_vendor_primary_with_overrides,
 )
 
 # UI 칩 순서와 동일(엑셀 시트 이름과 정확히 일치해야 읽음)
@@ -41,29 +51,7 @@ SHIPMENT_MATRIX_SHEET_NAMES: tuple[str, ...] = (
 DEFAULT_SHIPMENT_MATRIX_YEAR = 2026
 _DEFAULT_DATA_YEAR = DEFAULT_SHIPMENT_MATRIX_YEAR
 
-# 업로드 파일명: 예) 2026년_출고_현황.xlsx / .xls
-_SHIPMENT_MATRIX_FILENAME_RE = re.compile(r"^(?P<year>\d{4})년_출고_현황(?:\.(?:xlsx|xls))?$", re.IGNORECASE)
-
 _WEEKDAYS_KO = ("월", "화", "수", "목", "금", "토", "일")
-
-
-def parse_shipment_matrix_filename(filename: str) -> int:
-    """업로드 파일명에서 데이터 연도 추출. 형식: 「YYYY년_출고_현황.xlsx」."""
-    base = os.path.basename((filename or "").strip())
-    m = _SHIPMENT_MATRIX_FILENAME_RE.match(base)
-    if not m:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "파일 이름은 「YYYY년_출고_현황.xlsx」 형식이어야 합니다. "
-                "예: 2026년_출고_현황.xlsx\n"
-                f"현재 파일 이름: {base or '(이름 없음)'}"
-            ),
-        )
-    y = int(m.group("year"))
-    if y < 2000 or y > 2100:
-        raise HTTPException(status_code=400, detail=f"연도는 2000~2100 범위여야 합니다. (파일명 기준: {y})")
-    return y
 
 
 def list_shipment_matrix_years(db: Session) -> list[int]:
@@ -79,6 +67,16 @@ def _norm_header_cell(raw: object) -> str:
     return re.sub(r"\s+", "", s).casefold()
 
 
+# 원시 출고 첫 시트: 주문 수량 열 — 「주문 수」「주문수량」 등 정규화 후 값
+_RAW_ORDER_QTY_HEADER_NORMS: frozenset[str] = frozenset({"주문수량", "주문수"})
+# 원시 4열 SKU: 어드민 열과 상품코드 열이 동시에 있으면 어드민만 사용
+_RAW_ORDER_SKU_ADMIN_HEADER_NORMS: frozenset[str] = frozenset({"어드민코드"})
+_RAW_ORDER_SKU_PRIMARY_HEADER_NORMS: frozenset[str] = frozenset({"상품코드"})
+_RAW_ORDER_SKU_HEADER_NORMS: frozenset[str] = frozenset(
+    {"상품코드", "어드민코드"}
+)  # 시트 판별용(둘 중 하나 있으면 됨)
+
+
 def _display_dash(val: str | None) -> str:
     s = (val or "").strip()
     return s if s else "–"
@@ -90,11 +88,6 @@ def _ko_weekday_label(d: date) -> str:
 
 def format_matrix_day_header(d: date) -> str:
     return f"{d.month}/{d.day}({_ko_weekday_label(d)})"
-
-
-def _excel_serial_to_date(serial: float) -> date:
-    whole = int(serial)
-    return date(1899, 12, 30) + timedelta(days=whole)
 
 
 def _parse_int_qty(val: object) -> int | None:
@@ -121,100 +114,6 @@ def _parse_int_qty(val: object) -> int | None:
         return None
 
 
-def _is_sku_column_header(norm: str) -> bool:
-    if "품번(대표코드)" in norm:
-        return True
-    if norm == "대표코드":
-        return True
-    return "품번" in norm and "대표코드" in norm
-
-
-def _is_mkt_column_header(norm: str) -> bool:
-    if "마케팅" in norm and "우선순위" in norm:
-        return True
-    if "mkt" in norm and "우선순위" in norm:
-        return True
-    return "mkt" in norm and "우선" in norm
-
-
-def _find_matrix_header_row(grid: list[list[Any]]) -> int:
-    for i, row in enumerate(grid):
-        for cell in row:
-            if _is_sku_column_header(_norm_header_cell(cell)):
-                return i
-    return -1
-
-
-def _month_col_match(norm: str) -> int | None:
-    m = re.fullmatch(r"(\d{1,2})월합계", norm)
-    if not m:
-        return None
-    return int(m.group(1))
-
-
-def _parse_day_from_header_cell(raw_cell: object, default_year: int) -> tuple[date | None, str | None]:
-    """(date_iso용 date, 원본 그대로 쓸 헤더 라벨)."""
-    if isinstance(raw_cell, datetime):
-        d = raw_cell.date()
-        return d, None
-    if isinstance(raw_cell, date) and not isinstance(raw_cell, datetime):
-        return raw_cell, None
-    if isinstance(raw_cell, (int, float)) and not isinstance(raw_cell, bool):
-        if isinstance(raw_cell, float) and pd.isna(raw_cell):
-            return None, None
-        # 엑셀 날짜 직렬(대략)
-        fv = float(raw_cell)
-        if 20000 < fv < 600000:
-            d = _excel_serial_to_date(fv)
-            return d, None
-        # YYYYMMDD 정수
-        if 19000101 < fv < 21001231:
-            s = str(int(fv))
-            if len(s) == 8:
-                y, mo, da = int(s[0:4]), int(s[4:6]), int(s[6:8])
-                try:
-                    return date(y, mo, da), None
-                except ValueError:
-                    pass
-        return None, None
-
-    s_raw = str(raw_cell or "").strip()
-    if not s_raw:
-        return None, None
-    s = unicodedata.normalize("NFKC", s_raw)
-
-    s_compact = re.sub(r"\s+", "", s)
-    m_iso = re.fullmatch(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", s_compact)
-    if m_iso:
-        try:
-            return (
-                date(int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3))),
-                None,
-            )
-        except ValueError:
-            pass
-
-    m = re.fullmatch(r"(\d{4})(\d{2})(\d{2})", s_compact)
-    if m:
-        try:
-            return date(int(m.group(1)), int(m.group(2)), int(m.group(3))), None
-        except ValueError:
-            pass
-
-    m2 = re.match(r"^(\d{1,2})/(\d{1,2})", s)
-    if m2:
-        mo, da = int(m2.group(1)), int(m2.group(2))
-        try:
-            d = date(default_year, mo, da)
-        except ValueError:
-            return None, None
-        if re.search(r"\([월화수목금토일]\)", s):
-            return d, s_raw.strip()
-        return d, None
-
-    return None, None
-
-
 def _merge_qty_maps(base: dict[str, int], incoming: dict[str, int], *, add: bool = False) -> None:
     for k, v in incoming.items():
         if v is None:
@@ -225,166 +124,247 @@ def _merge_qty_maps(base: dict[str, int], incoming: dict[str, int], *, add: bool
             base[k] = int(v)
 
 
-def parse_shipment_matrix_workbook(
+def _first_raw_orders_sheet_name(xl: pd.ExcelFile) -> str | None:
+    """파일명·시트 순서 무관: 필수 4열 헤더가 있는 첫 시트."""
+    for name in xl.sheet_names or []:
+        try:
+            df0 = pd.read_excel(xl, sheet_name=name, header=0, nrows=0, dtype=object)
+        except Exception:
+            continue
+        cols = {_norm_header_cell(c) for c in df0.columns}
+        if not {"판매처", "주문일"}.issubset(cols):
+            continue
+        if not (cols & _RAW_ORDER_SKU_HEADER_NORMS):
+            continue
+        if cols & _RAW_ORDER_QTY_HEADER_NORMS:
+            return name
+    return None
+
+
+def shipment_workbook_is_raw_orders_format(xl: pd.ExcelFile) -> bool:
+    """원시 4열: 판매처·상품코드·주문일·주문수량(또는 주문 수). 어느 시트든 헤더만 맞으면 됨."""
+    return _first_raw_orders_sheet_name(xl) is not None
+
+
+def _excel_data_row_1based(pos_zero_based: int) -> int:
+    """read_excel(header=0) 기준: pos 0 → 엑셀 2행(헤더 다음 첫 데이터 행)."""
+    return int(pos_zero_based) + 2
+
+
+def _is_shipment_total_summary_vendor_cell(raw: object) -> bool:
+    """요약 행: 판매처 칸이 「합계」(공백·전각만 다른 표기 포함)이면 집계하지 않는다."""
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return False
+    s = unicodedata.normalize("NFKC", str(raw).strip())
+    s = re.sub(r"\s+", "", s)
+    return s == "합계"
+
+
+def parse_shipment_raw_orders_workbook(
     db: Session,
     raw: bytes,
     filename: str = "",
     *,
-    kr_sku_brand_name: dict[str, tuple[str, str]] | None = None,
-    data_year: int = _DEFAULT_DATA_YEAR,
-) -> dict[str, list[dict[str, Any]]]:
-    """매칭되는 시트만 읽어 channel_sheet → 행 dict 목록."""
+    kr_sku_brand_name: dict[str, tuple[str, str, str, str]] | None = None,
+    vendor_primary_overrides_internal: dict[str, str] | None = None,
+) -> tuple[dict[str, list[dict[str, Any]]], int]:
+    """판매처·상품코드·주문일·주문수량 롱 데이터 → 칩(시트)별 매트릭스 레코드 + 데이터 연도.
+
+    동일 상품·칩에 대해 월·일 키별 수량을 합산한다.
+    """
     bio = io.BytesIO(raw)
     xl = pd.ExcelFile(bio)
-    names_set = set(xl.sheet_names)
-    missing_required = [n for n in SHIPMENT_MATRIX_SHEET_NAMES if n not in names_set]
-    if missing_required:
+    sheet_name = _first_raw_orders_sheet_name(xl)
+    if sheet_name is None:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"{filename or '파일'}: 출고 현황 파일에는 다음 시트가 모두 있어야 합니다: "
-                + " · ".join(SHIPMENT_MATRIX_SHEET_NAMES)
-                + f"\n누락: {', '.join(missing_required)}"
-            ),
-        )
-    sku_map = kr_sku_brand_name if kr_sku_brand_name is not None else _load_kr_sku_brand_name(db)
-    out: dict[str, list[dict[str, Any]]] = defaultdict(list)
-
-    for sheet_name in SHIPMENT_MATRIX_SHEET_NAMES:
-        df = pd.read_excel(xl, sheet_name=sheet_name, header=None, dtype=object)
-        grid = df.fillna("").values.tolist()
-        h_row = _find_matrix_header_row(grid)
-        if h_row < 0:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"{filename or '파일'}: 시트 「{sheet_name}」에서 "
-                    "「품번(대표코드)」 또는 「대표코드」 열이 있는 헤더 행을 찾지 못했습니다."
+            detail={
+                "code": "SHIPMENT_WRONG_FORMAT",
+                "message": (
+                    f"{filename or '파일'}: 원시 출고 형식이 아닙니다. "
+                    "시트 중 하나에 「판매처」「상품코드」(또는 「어드민코드」/「어드민 코드」)「주문일」「주문수량」(또는 「주문 수」) 열이 있어야 합니다."
                 ),
-            )
+                "filename": (filename or "").strip(),
+                "sheet_name": None,
+            },
+        )
 
-        header_cells = grid[h_row]
-        col_sku = col_mkt = col_cat = None
-        month_cols: dict[int, int] = {}
-        day_cols: dict[int, str] = {}  # col_index -> YYYY-MM-DD
+    df = pd.read_excel(xl, sheet_name=sheet_name, header=0, dtype=object)
+    col_vendor = col_date = col_qty = None
+    col_sku_admin = col_sku_primary = None
+    for c in df.columns:
+        n = _norm_header_cell(c)
+        if n == "판매처":
+            col_vendor = c
+        elif n in _RAW_ORDER_SKU_ADMIN_HEADER_NORMS:
+            col_sku_admin = c
+        elif n in _RAW_ORDER_SKU_PRIMARY_HEADER_NORMS:
+            col_sku_primary = c
+        elif n == "주문일":
+            col_date = c
+        elif n in _RAW_ORDER_QTY_HEADER_NORMS:
+            col_qty = c
+    col_sku = col_sku_admin if col_sku_admin is not None else col_sku_primary
+    if col_vendor is None or col_sku is None or col_date is None or col_qty is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "SHIPMENT_MISSING_COLUMNS",
+                "message": f"{filename or '파일'}: 시트 「{sheet_name}」에서 필수 열을 찾지 못했습니다.",
+                "filename": (filename or "").strip(),
+                "sheet_name": sheet_name,
+            },
+        )
 
-        for j, cell in enumerate(header_cells):
-            norm = _norm_header_cell(cell)
-            if not norm:
-                continue
-            if _is_sku_column_header(norm):
-                col_sku = j
-            elif _is_mkt_column_header(norm):
-                col_mkt = j
-            elif norm == "구분":
-                col_cat = j
-            else:
-                mo = _month_col_match(norm)
-                if mo is not None:
-                    month_cols[j] = mo
-                    continue
-                d_pair = _parse_day_from_header_cell(cell, data_year)
-                if d_pair[0] is not None:
-                    d, _label_override = d_pair
-                    day_cols[j] = d.isoformat()
+    sku_map = kr_sku_brand_name if kr_sku_brand_name is not None else _load_kr_sku_brand_name(db)
+    missing_sku_rows: dict[str, set[int]] = defaultdict(set)
+    unknown_vendor_by_norm: dict[str, dict[str, Any]] = {}
 
-        if col_sku is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{filename or '파일'}: 시트 「{sheet_name}」에 품번(대표코드) 열이 없습니다.",
-            )
+    # channel_sheet -> sku -> { monthly: {str month}, daily: {iso} }
+    acc: dict[str, dict[str, dict[str, dict[str, int]]]] = defaultdict(
+        lambda: defaultdict(lambda: {"monthly": {}, "daily": {}})
+    )
+    years_seen: list[int] = []
 
-        missing_skus: set[str] = set()
-        by_sku: dict[str, dict[str, Any]] = {}
-
-        for r in range(h_row + 1, len(grid)):
-            row = grid[r]
-            if col_sku >= len(row):
-                continue
-            code_cell = row[col_sku]
-            if code_cell is None or (isinstance(code_cell, float) and pd.isna(code_cell)):
-                continue
-            ex_norm = normalize_shipment_excel_sku(code_cell)
-            if not ex_norm:
-                continue
-            # 헤더가 데이터 영역에 반복된 행 스킵
-            if _is_sku_column_header(_norm_header_cell(code_cell)):
-                continue
-
-            canon = _normalize_item_code(ex_norm)
-            if not canon or canon not in sku_map:
-                missing_skus.add(str(ex_norm).strip())
-                continue
-
-            mkt = ""
-            if col_mkt is not None and col_mkt < len(row):
-                mkt = str(row[col_mkt] if row[col_mkt] is not None else "").strip()
-            cat = ""
-            if col_cat is not None and col_cat < len(row):
-                cat = str(row[col_cat] if row[col_cat] is not None else "").strip()
-
-            monthly: dict[str, int] = {}
-            daily: dict[str, int] = {}
-            for j, mo in month_cols.items():
-                if j >= len(row):
-                    continue
-                q = _parse_int_qty(row[j])
-                if q is not None:
-                    monthly[str(mo)] = q
-            for j, iso in day_cols.items():
-                if j >= len(row):
-                    continue
-                q = _parse_int_qty(row[j])
-                if q is not None:
-                    daily[iso] = q
-
-            if canon not in by_sku:
-                by_sku[canon] = {
-                    "sku": canon,
-                    "mkt_priority": mkt,
-                    "category": cat,
-                    "monthly": {},
-                    "daily": {},
-                }
-            acc = by_sku[canon]
-            # 같은 시트·같은 SKU가 여러 행이면 월·일 키별로 수량 합산(원래 동작)
-            _merge_qty_maps(acc["monthly"], monthly, add=True)
-            _merge_qty_maps(acc["daily"], daily, add=True)
-            if mkt:
-                acc["mkt_priority"] = mkt
-            if cat:
-                acc["category"] = cat
-
-        if missing_skus:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "code": "UNKNOWN_SKUS",
-                    "message": (
-                        "데이터베이스에 등록되어 있지 않은 상품코드가 있습니다. "
-                        "아래 코드를 SKU 관리 탭에서 한국 SKU로 먼저 등록한 뒤 다시 업로드해 주세요."
-                    ),
-                    "skus": sorted(missing_skus),
-                },
-            )
-
-        if not by_sku:
+    for pos, (_, row) in enumerate(df.iterrows()):
+        excel_row = _excel_data_row_1based(pos)
+        vendor = row.get(col_vendor)
+        if vendor is None or (isinstance(vendor, float) and pd.isna(vendor)):
+            continue
+        if _is_shipment_total_summary_vendor_cell(vendor):
+            continue
+        primary = resolve_vendor_primary_with_overrides(vendor, vendor_primary_overrides_internal)
+        if primary is None:
+            nk = normalize_shipment_vendor_key(vendor)
+            if nk:
+                if nk not in unknown_vendor_by_norm:
+                    unknown_vendor_by_norm[nk] = {"display": str(vendor).strip(), "rows": set()}
+                unknown_vendor_by_norm[nk]["rows"].add(excel_row)
+            continue
+        if primary == "제외":
             continue
 
-        for rec in by_sku.values():
-            out[sheet_name].append(rec)
+        detail_ch = PRIMARY_TO_DETAIL_CHANNEL.get(primary)
+        if not detail_ch:
+            continue
+        extra_ch = PRIMARY_TO_INTEGRATION_CHANNELS.get(primary, ())
+        target_channels = (detail_ch, *extra_ch)
 
-    if not out:
-        names = " · ".join(SHIPMENT_MATRIX_SHEET_NAMES[:4]) + " …"
+        ex_norm = normalize_shipment_excel_sku(row.get(col_sku))
+        if not ex_norm:
+            continue
+        canon = _normalize_item_code(ex_norm)
+        if not canon or canon not in sku_map:
+            missing_sku_rows[str(ex_norm).strip()].add(excel_row)
+            continue
+
+        raw_dt = row.get(col_date)
+        if raw_dt is None or (isinstance(raw_dt, float) and pd.isna(raw_dt)):
+            continue
+        if isinstance(raw_dt, datetime):
+            d_only = raw_dt.date()
+        elif isinstance(raw_dt, date) and not isinstance(raw_dt, datetime):
+            d_only = raw_dt
+        else:
+            try:
+                parsed = pd.to_datetime(raw_dt, errors="coerce")
+                if pd.isna(parsed):
+                    continue
+                d_only = pd.Timestamp(parsed).date()
+            except Exception:
+                continue
+
+        years_seen.append(d_only.year)
+        mo_key = str(d_only.month)
+        day_key = d_only.isoformat()
+
+        q = _parse_int_qty(row.get(col_qty))
+        if q is None or q == 0:
+            continue
+
+        for ch in target_channels:
+            if not ch:
+                continue
+            bucket = acc[ch][canon]
+            _merge_qty_maps(bucket["monthly"], {mo_key: q}, add=True)
+            _merge_qty_maps(bucket["daily"], {day_key: q}, add=True)
+
+    if unknown_vendor_by_norm:
+        vendor_issues: list[dict[str, Any]] = []
+        vendors_list: list[str] = []
+        for nk in sorted(unknown_vendor_by_norm.keys()):
+            ent = unknown_vendor_by_norm[nk]
+            rows_sorted = sorted(ent["rows"])
+            disp = str(ent["display"] or "").strip()
+            vendor_issues.append({"vendor": disp, "excel_rows": rows_sorted})
+            vendors_list.append(disp)
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"{filename or '파일'}: 읽을 수 있는 출고 시트가 없습니다. "
-                f"다음 이름의 시트만 읽습니다: {names}"
-            ),
+            detail={
+                "code": "UNKNOWN_SHIPMENT_VENDORS",
+                "message": "표에 없는 판매처가 있습니다. 각 판매처의 구분을 선택한 뒤 다시 시도해 주세요.",
+                "filename": (filename or "").strip(),
+                "sheet_name": sheet_name,
+                "vendors": vendors_list,
+                "vendor_issues": vendor_issues,
+            },
         )
 
-    return dict(out)
+    if missing_sku_rows:
+        sku_issues = [
+            {"sku": sku, "excel_rows": sorted(missing_sku_rows[sku])}
+            for sku in sorted(missing_sku_rows.keys())
+        ]
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "UNKNOWN_SKUS",
+                "message": (
+                    "데이터베이스에 등록되어 있지 않은 상품코드가 있습니다. "
+                    "아래 코드를 SKU 관리 탭에서 한국 SKU로 먼저 등록한 뒤 다시 업로드해 주세요."
+                ),
+                "filename": (filename or "").strip(),
+                "sheet_name": sheet_name,
+                "skus": sorted(missing_sku_rows.keys()),
+                "sku_issues": sku_issues,
+            },
+        )
+
+    inferred_year = max(years_seen) if years_seen else _DEFAULT_DATA_YEAR
+    if inferred_year < 2000 or inferred_year > 2100:
+        inferred_year = _DEFAULT_DATA_YEAR
+
+    out: dict[str, list[dict[str, Any]]] = {}
+    for ch_name, by_sku in acc.items():
+        rows_ch: list[dict[str, Any]] = []
+        for sku_key, packs in by_sku.items():
+            rows_ch.append(
+                {
+                    "sku": sku_key,
+                    "mkt_priority": "",
+                    "category": "",
+                    "monthly": {str(k): int(v) for k, v in packs["monthly"].items()},
+                    "daily": {str(k): int(v) for k, v in packs["daily"].items()},
+                }
+            )
+        if rows_ch:
+            out[ch_name] = rows_ch
+
+    if not out:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "SHIPMENT_NO_AGGREGATABLE_ROWS",
+                "message": (
+                    f"{filename or '파일'}: 시트 「{sheet_name}」에서 집계할 출고 행이 없습니다. "
+                    "(제외 판매처·수량 0·날짜 누락 등)"
+                ),
+                "filename": (filename or "").strip(),
+                "sheet_name": sheet_name,
+            },
+        )
+
+    return out, inferred_year
 
 
 def _distinct_channels_with_data(db: Session, data_year: int) -> list[str]:
@@ -492,7 +472,8 @@ def build_shipment_matrix_view(
         rows_orm,
         key=lambda x: (ch_rank.get(str(x.channel_sheet or ""), 999), x.sku),
     ):
-        brand, pname = sku_map.get(rec.sku, ("", ""))
+        _b, _n, db_mkt, db_seg = sku_map.get(rec.sku, ("", "", "", ""))
+        brand, pname = _b, _n
         mt = {str(k): int(v) for k, v in (rec.monthly_totals or {}).items()}
         dt = {str(k): int(v) for k, v in (rec.daily_totals or {}).items()}
         for k, v in mt.items():
@@ -501,13 +482,14 @@ def build_shipment_matrix_view(
             sum_daily[k] += v
 
         row_channel = _rec_channel(rec)
+        mkt_show = db_mkt or (str(rec.mkt_priority or "").strip())
+        seg_show = db_seg or (str(rec.category or "").strip())
         flat: dict[str, Any] = {
             "sku": rec.sku,
             "brand": brand,
             "description": pname,
-            "mkt_priority": _display_dash(rec.mkt_priority),
-            # 구분: SKU 매핑(DB item)이 아니라 업로드 엑셀 「구분」열 원문(category). DB 단종-only 정규화는 item 저장에만 적용.
-            "segment": _display_dash(rec.category or None),
+            "mkt_priority": _display_dash(mkt_show or None),
+            "segment": _display_dash(seg_show or None),
             "country": "KR",
             "channel": row_channel,
             "month_totals": mt,
