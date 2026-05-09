@@ -4238,34 +4238,34 @@ th {
 /* 출고 현황 매트릭스: 고정 열 순서 상품코드·브랜드·상품명·마케팅·구분 (가로 스크롤 시 구분까지 고정) */
 .inventoryTable.krTable.shipmentMatrixTable .stickyColShipCode {
   left: 0;
-  width: 74px;
-  min-width: 74px;
-  max-width: 74px;
+  width: 106px;
+  min-width: 106px;
+  max-width: 106px;
 }
 
 .inventoryTable.krTable.shipmentMatrixTable .stickyColShipBrand {
-  left: 74px;
+  left: 106px;
   width: 103px;
   min-width: 103px;
   max-width: 103px;
 }
 
 .inventoryTable.krTable.shipmentMatrixTable .stickyColShipName {
-  left: 177px;
+  left: 209px;
   width: 318px;
   min-width: 318px;
   max-width: 318px;
 }
 
 .inventoryTable.krTable.shipmentMatrixTable .stickyColShipMkt {
-  left: 495px;
+  left: 527px;
   width: 102px;
   min-width: 102px;
   max-width: 102px;
 }
 
 .inventoryTable.krTable.shipmentMatrixTable .stickyColShipSegment {
-  left: 597px;
+  left: 629px;
   width: 99px;
   min-width: 99px;
   max-width: 99px;
@@ -4510,9 +4510,9 @@ th {
   position: sticky;
   left: 0;
   z-index: 50;
-  width: 696px;
-  min-width: 696px;
-  max-width: 696px;
+  width: 728px;
+  min-width: 728px;
+  max-width: 728px;
   font-weight: 700;
   text-align: center;
   background: #eef2f7;

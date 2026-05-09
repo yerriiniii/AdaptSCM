@@ -139,10 +139,33 @@ def _upsert_shipment_matrix_channel_rows(
     recs: list[dict[str, Any]],
 ) -> None:
     """같은 연도 재업로드: 파일에 있는 (채널×SKU)만 월·일 셀을 병합(값 변경 시 갱신, 새 키 추가). 파일에 없는 SKU·셀은 유지."""
+    recs_norm: list[dict[str, Any]] = []
+    sku_keys: list[str] = []
     for rec in recs:
         sku = str(rec.get("sku") or "").strip()
         if not sku:
             continue
+        recs_norm.append(rec)
+        sku_keys.append(sku)
+    if not recs_norm:
+        return
+
+    # 병목 제거: SKU별 N번 SELECT 대신 채널/연도 기준으로 한 번에 기존 행 조회
+    existing_rows = (
+        db.execute(
+            select(ShipmentMatrixRow).where(
+                ShipmentMatrixRow.channel_sheet == channel_sheet,
+                ShipmentMatrixRow.data_year == data_year,
+                ShipmentMatrixRow.sku.in_(sku_keys),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    existing_by_sku = {str(row.sku): row for row in existing_rows}
+
+    for rec in recs_norm:
+        sku = str(rec.get("sku") or "").strip()
         mt_new = {str(k): int(v) for k, v in (rec.get("monthly") or {}).items()}
         dt_new = {str(k): int(v) for k, v in (rec.get("daily") or {}).items()}
         mkt_raw = rec.get("mkt_priority")
@@ -150,12 +173,7 @@ def _upsert_shipment_matrix_channel_rows(
         mkt = str(mkt_raw).strip() if mkt_raw is not None and str(mkt_raw).strip() else None
         cat = str(cat_raw).strip() if cat_raw is not None and str(cat_raw).strip() else None
 
-        stmt = select(ShipmentMatrixRow).where(
-            ShipmentMatrixRow.channel_sheet == channel_sheet,
-            ShipmentMatrixRow.data_year == data_year,
-            ShipmentMatrixRow.sku == sku,
-        )
-        existing = db.execute(stmt).scalar_one_or_none()
+        existing = existing_by_sku.get(sku)
         if existing:
             mt = {str(k): int(v) for k, v in (existing.monthly_totals or {}).items()}
             for k, v in mt_new.items():
@@ -205,7 +223,7 @@ def persist_shipment_matrix_uploads(
             bio = io.BytesIO(raw)
             xl = pd.ExcelFile(bio)
             if shipment_workbook_is_raw_orders_format(xl):
-                parsed, data_year = parse_shipment_raw_orders_workbook(
+                parsed_by_year, years_from_file = parse_shipment_raw_orders_workbook(
                     db,
                     raw,
                     upload_file.filename or "",
@@ -225,10 +243,12 @@ def persist_shipment_matrix_uploads(
                         "sheet_name": None,
                     },
                 )
-            years_order.append(data_year)
-            for channel_sheet, recs in parsed.items():
-                if recs:
-                    _upsert_shipment_matrix_channel_rows(db, channel_sheet, data_year, recs)
+            years_order.extend(years_from_file)
+            for data_year in sorted(parsed_by_year.keys()):
+                parsed = parsed_by_year[data_year]
+                for channel_sheet, recs in parsed.items():
+                    if recs:
+                        _upsert_shipment_matrix_channel_rows(db, channel_sheet, data_year, recs)
 
             stored_name = f"{uuid.uuid4()}{os.path.splitext(upload_file.filename or '')[1] or '.xlsx'}"
             s3_key = _shipment_s3_key(settings.s3_prefix or "inventory", stored_name)

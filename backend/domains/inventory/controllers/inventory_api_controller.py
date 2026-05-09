@@ -162,7 +162,7 @@ def shipment_aggregate(
     persisted_files, years_uploaded = persist_shipment_matrix_uploads(
         db, paired, kr_sku_brand_name=kr_sku_map, vendor_primary_overrides_internal=vendor_ov
     )
-    year_view = years_uploaded[-1] if years_uploaded else DEFAULT_SHIPMENT_MATRIX_YEAR
+    year_view = max(years_uploaded) if years_uploaded else DEFAULT_SHIPMENT_MATRIX_YEAR
     payload = get_shipment_view(db, data_year=year_view)
     merged = {**payload, "files": persisted_files}
     return InventoryAggregateResponse(**merged)

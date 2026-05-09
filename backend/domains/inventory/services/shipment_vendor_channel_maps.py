@@ -282,6 +282,8 @@ PRIMARY_TO_DETAIL_CHANNEL: dict[str, str] = {
     "일본": "일본 현황",
     "해외": "그 외 해외 현황",
     "미국": "그 외 해외 현황",
+    "중국": "그 외 해외 현황",
+    "신시장": "그 외 해외 현황",
     "제외": "",
 }
 
@@ -297,6 +299,8 @@ PRIMARY_TO_INTEGRATION_CHANNELS: dict[str, tuple[str, ...]] = {
     "해외": ("해외 통합",),
     "일본": ("해외 통합",),
     "미국": ("해외 통합",),
+    "중국": ("해외 통합",),
+    "신시장": ("해외 통합",),
     "제외": (),
 }
 
@@ -332,6 +336,8 @@ SHIPMENT_VENDOR_UI_LABEL_TO_INTERNAL: dict[str, str] = {
     "그 외 해외": "해외",
     "일본": "일본",
     "미국": "미국",
+    "중국": "중국",
+    "신시장": "신시장",
 }
 
 ALLOWED_SHIPMENT_VENDOR_UI_LABELS: frozenset[str] = frozenset(SHIPMENT_VENDOR_UI_LABEL_TO_INTERNAL.keys())

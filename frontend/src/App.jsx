@@ -57,6 +57,8 @@ const SHIPMENT_VENDOR_PRIMARY_OPTIONS = [
   "그 외 해외",
   "일본",
   "미국",
+  "중국",
+  "신시장",
 ];
 /** 이 칩 앞에 세로 구분 막대 삽입(`styles.css` `.shipmentChipSep`) */
 const SHIPMENT_MATRIX_CHIP_DIVIDER_BEFORE = new Set(["B2B 현황", "자사몰 현황", "대만 현황"]);
@@ -66,7 +68,7 @@ const SHIPMENT_CHART_SUM_CHANNELS = new Set(["B2B 통합", "B2C 통합", "해외
 const SHIPMENT_SHEET_CHANNELS = SHIPMENT_MATRIX_CHIPS;
 /** 출고 현황 표 고정 열 너비(px). 열 순서: 상품코드·브랜드·상품명·… — `styles.css` `.stickyColShip*` 의 width·left·`shipmentTotalMergedCell` 과 동기화. */
 const SHIPMENT_MATRIX_COL_BRAND = 103;
-const SHIPMENT_MATRIX_COL_CODE = 74;
+const SHIPMENT_MATRIX_COL_CODE = 106;
 const SHIPMENT_MATRIX_COL_NAME = 318;
 const SHIPMENT_MATRIX_COL_MKT = 102;
 const SHIPMENT_MATRIX_COL_SEGMENT = 99;
