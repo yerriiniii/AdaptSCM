@@ -195,7 +195,13 @@ function formatInt(n) {
   return Number(n || 0).toLocaleString("ko-KR");
 }
 
-export default function ItemMasterTab({ active, embedded = false, settingsMutating, setSettingsMutating }) {
+export default function ItemMasterTab({
+  active,
+  embedded = false,
+  settingsMutating,
+  setSettingsMutating,
+  stickyBaseTop = 0,
+}) {
   const [masterRows, setMasterRows] = useState([]);
   const [masterLoading, setMasterLoading] = useState(false);
   const [masterError, setMasterError] = useState("");
@@ -204,11 +210,15 @@ export default function ItemMasterTab({ active, embedded = false, settingsMutati
   const [masterSavingAll, setMasterSavingAll] = useState(false);
   const [masterEditMode, setMasterEditMode] = useState(false);
   const [masterInputKey, setMasterInputKey] = useState(0);
-  const masterTableScrollRef = useRef(null);
+  const masterToolbarRef = useRef(null);
+  const masterBodyScrollRef = useRef(null);
+  const masterHeaderScrollRef = useRef(null);
   const masterTopScrollRef = useRef(null);
   const masterScrollSyncingRef = useRef(false);
   const [masterShowTopScroll, setMasterShowTopScroll] = useState(false);
   const [masterTopScrollWidth, setMasterTopScrollWidth] = useState(ITEM_MASTER_TABLE_MIN_WIDTH_PX);
+  const [masterToolbarHeight, setMasterToolbarHeight] = useState(0);
+  const [masterTopStripHeight, setMasterTopStripHeight] = useState(0);
 
   useEffect(() => {
     if (!active) return;
@@ -234,6 +244,53 @@ export default function ItemMasterTab({ active, embedded = false, settingsMutati
   }, [active, masterQuery]);
 
   useLayoutEffect(() => {
+    if (!active) {
+      setMasterToolbarHeight(0);
+      return;
+    }
+    const measure = () => {
+      setMasterToolbarHeight(masterToolbarRef.current?.offsetHeight ?? 0);
+    };
+    measure();
+    let ro;
+    if (typeof ResizeObserver !== "undefined" && masterToolbarRef.current) {
+      ro = new ResizeObserver(measure);
+      ro.observe(masterToolbarRef.current);
+    }
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      ro?.disconnect();
+    };
+  }, [active, masterEditMode, masterError]);
+
+  useLayoutEffect(() => {
+    if (!active || !masterShowTopScroll) {
+      setMasterTopStripHeight(0);
+      return;
+    }
+    const measure = () => {
+      setMasterTopStripHeight(masterTopScrollRef.current?.offsetHeight ?? 0);
+    };
+    measure();
+    let ro;
+    if (typeof ResizeObserver !== "undefined" && masterTopScrollRef.current) {
+      ro = new ResizeObserver(measure);
+      ro.observe(masterTopScrollRef.current);
+    }
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      ro?.disconnect();
+    };
+  }, [active, masterShowTopScroll]);
+
+  const masterToolbarStickyTop = stickyBaseTop;
+  const masterTopScrollStickyTop = stickyBaseTop + masterToolbarHeight;
+  const masterHeaderStickyTop =
+    masterTopScrollStickyTop + (masterShowTopScroll ? masterTopStripHeight : 0);
+
+  useLayoutEffect(() => {
     if (!active || masterLoading || !masterRows.length) {
       setMasterShowTopScroll(false);
       return;
@@ -241,13 +298,39 @@ export default function ItemMasterTab({ active, embedded = false, settingsMutati
     let cancelled = false;
     const measure = () => {
       if (cancelled) return;
-      const body = masterTableScrollRef.current;
-      const inner = body?.querySelector(".itemMasterTableInner");
-      if (!body || !inner) return;
-      const w = Math.max(inner.scrollWidth, inner.offsetWidth, ITEM_MASTER_TABLE_MIN_WIDTH_PX);
-      const cw = body.clientWidth;
+      const body = masterBodyScrollRef.current;
+      const head = masterHeaderScrollRef.current;
+      const bodyInner = body?.querySelector(".itemMasterTableInnerBody");
+      const headInner = head?.querySelector(".itemMasterTableInnerHead");
+      if (!body || !bodyInner) return;
+      const wrap = body.closest(".itemMasterTableWrap");
+      const cw = wrap?.clientWidth ?? body.clientWidth;
+      bodyInner.style.width = "";
+      bodyInner.style.minWidth = "";
+      if (headInner) {
+        headInner.style.width = "";
+        headInner.style.minWidth = "";
+      }
+      const w = Math.max(
+        ITEM_MASTER_TABLE_MIN_WIDTH_PX,
+        cw,
+        bodyInner.scrollWidth,
+        bodyInner.offsetWidth,
+        headInner?.scrollWidth ?? 0,
+        headInner?.offsetWidth ?? 0
+      );
+      bodyInner.style.width = `${w}px`;
+      bodyInner.style.minWidth = `${w}px`;
+      if (headInner) {
+        headInner.style.width = `${w}px`;
+        headInner.style.minWidth = `${w}px`;
+      }
       setMasterTopScrollWidth(w);
       setMasterShowTopScroll(w > cw + 1);
+      if (head) {
+        const scrollbarPad = Math.max(0, body.offsetWidth - body.clientWidth);
+        head.style.paddingRight = scrollbarPad ? `${scrollbarPad}px` : "";
+      }
     };
     measure();
     const t1 = requestAnimationFrame(measure);
@@ -255,12 +338,14 @@ export default function ItemMasterTab({ active, embedded = false, settingsMutati
     let ro;
     if (typeof ResizeObserver !== "undefined") {
       ro = new ResizeObserver(measure);
-      const body = masterTableScrollRef.current;
+      const body = masterBodyScrollRef.current;
+      const head = masterHeaderScrollRef.current;
       if (body) {
         ro.observe(body);
-        const inner = body.querySelector(".itemMasterTableInner");
+        const inner = body.querySelector(".itemMasterTableInnerBody");
         if (inner) ro.observe(inner);
       }
+      if (head) ro.observe(head);
     }
     window.addEventListener("resize", measure);
     return () => {
@@ -269,21 +354,42 @@ export default function ItemMasterTab({ active, embedded = false, settingsMutati
       cancelAnimationFrame(t2);
       ro?.disconnect();
       window.removeEventListener("resize", measure);
+      if (masterHeaderScrollRef.current) {
+        masterHeaderScrollRef.current.style.paddingRight = "";
+      }
+      const bodyInner = masterBodyScrollRef.current?.querySelector(".itemMasterTableInnerBody");
+      const headInner = masterHeaderScrollRef.current?.querySelector(".itemMasterTableInnerHead");
+      if (bodyInner) {
+        bodyInner.style.width = "";
+        bodyInner.style.minWidth = "";
+      }
+      if (headInner) {
+        headInner.style.width = "";
+        headInner.style.minWidth = "";
+      }
     };
   }, [active, masterLoading, masterRows, masterEditMode]);
 
   function syncMasterTableScroll(source) {
     if (masterScrollSyncingRef.current) return;
     const topEl = masterTopScrollRef.current;
-    const tableEl = masterTableScrollRef.current;
-    if (!tableEl) return;
+    const headerEl = masterHeaderScrollRef.current;
+    const bodyEl = masterBodyScrollRef.current;
+    if (!bodyEl) return;
     masterScrollSyncingRef.current = true;
-    const raw = source === "top" ? topEl?.scrollLeft ?? 0 : tableEl.scrollLeft ?? 0;
+    const raw =
+      source === "top"
+        ? topEl?.scrollLeft ?? 0
+        : source === "header"
+          ? headerEl?.scrollLeft ?? 0
+          : bodyEl.scrollLeft ?? 0;
     const sl = Math.max(0, Math.round(Number(raw)));
     if (topEl) topEl.scrollLeft = sl;
-    tableEl.scrollLeft = sl;
+    if (headerEl) headerEl.scrollLeft = sl;
+    bodyEl.scrollLeft = sl;
     requestAnimationFrame(() => {
-      if (topEl) topEl.scrollLeft = tableEl.scrollLeft;
+      if (topEl) topEl.scrollLeft = bodyEl.scrollLeft;
+      if (headerEl) headerEl.scrollLeft = bodyEl.scrollLeft;
       masterScrollSyncingRef.current = false;
     });
   }
@@ -378,7 +484,11 @@ export default function ItemMasterTab({ active, embedded = false, settingsMutati
           style={{ display: "none" }}
           onChange={(e) => uploadItemMasterFilesHandler(e.target.files || [])}
         />
-        <div className="itemMasterToolbarRow">
+        <div
+          ref={masterToolbarRef}
+          className="itemMasterToolbarRow itemMasterStickyToolbar"
+          style={{ top: masterToolbarStickyTop }}
+        >
           <button
             type="button"
             className="poOrderFileTemplateBtn itemMasterTemplateBtn"
@@ -434,30 +544,48 @@ export default function ItemMasterTab({ active, embedded = false, settingsMutati
               masterShowTopScroll ? " itemMasterShowTopScrollPair" : ""
             }`}
           >
-            <div className="itemMasterScrollPair">
+            <div
+              className={`itemMasterScrollPair${
+                masterShowTopScroll ? " itemMasterShowTopScrollPair" : ""
+              }`}
+            >
               <div
                 ref={masterTopScrollRef}
-                className={`tableTopScroll itemMasterTopScroll${
+                className={`tableTopScroll itemMasterTopScroll stickyTableTopScroll${
                   masterShowTopScroll ? "" : " itemMasterTopScrollHidden"
                 }`}
+                style={masterShowTopScroll ? { top: masterTopScrollStickyTop } : undefined}
                 onScroll={() => syncMasterTableScroll("top")}
                 aria-hidden={!masterShowTopScroll}
               >
                 <div style={{ width: masterTopScrollWidth }} />
               </div>
               <div
-                ref={masterTableScrollRef}
-                className="skuProductEditTableScroll itemMasterTableScroll"
-                onScroll={() => syncMasterTableScroll("table")}
+                className="itemMasterStickyHeaderShell"
+                style={{ top: masterHeaderStickyTop }}
               >
-                <div className="itemMasterTableInner">
-                  <div className="skuProductEditTableHead itemMasterTableHead" aria-hidden="true">
-                    {ITEM_MASTER_FIELDS.map(({ key, label }) => (
-                      <div key={key} className="skuProductEditHeadCell itemMasterHeadCell">
-                        {label}
-                      </div>
-                    ))}
+                <div
+                  ref={masterHeaderScrollRef}
+                  className="itemMasterHeaderScroll"
+                  onScroll={() => syncMasterTableScroll("header")}
+                >
+                  <div className="itemMasterTableInner itemMasterTableInnerHead">
+                    <div className="skuProductEditTableHead itemMasterTableHead">
+                      {ITEM_MASTER_FIELDS.map(({ key, label }) => (
+                        <div key={key} className="skuProductEditHeadCell itemMasterHeadCell">
+                          {label}
+                        </div>
+                      ))}
+                    </div>
                   </div>
+                </div>
+              </div>
+              <div
+                ref={masterBodyScrollRef}
+                className="itemMasterBodyPane"
+                onScroll={() => syncMasterTableScroll("body")}
+              >
+                <div className="itemMasterTableInner itemMasterTableInnerBody">
                   {masterRows.map((row, idx) => {
                     const gid = row.group_id;
                     const d = masterDraftById[gid] || masterDraftFromRow(row);

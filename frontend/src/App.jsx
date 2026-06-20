@@ -2106,6 +2106,7 @@ export default function App() {
   const [showShipmentChartDayMatrixTopScroll, setShowShipmentChartDayMatrixTopScroll] = useState(false);
   const topbarRef = useRef(null);
   const countryChipsRef = useRef(null);
+  const skuManageHeaderRef = useRef(null);
   const inventoryFilterBarRef = useRef(null);
   const compareFilterBarRef = useRef(null);
   const [stickyHeights, setStickyHeights] = useState({
@@ -2115,6 +2116,7 @@ export default function App() {
     compareFilter: 0,
     topScroll: 0,
   });
+  const [skuManageHeaderHeight, setSkuManageHeaderHeight] = useState(0);
   const productMappingCards = useMemo(() => {
     const cards = mappingRows
       .map((row, idx) => ({
@@ -2280,6 +2282,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!isItemMasterScope) {
+      setSkuManageHeaderHeight(0);
+      return;
+    }
+    const measure = () => {
+      setSkuManageHeaderHeight(skuManageHeaderRef.current?.offsetHeight ?? 0);
+    };
+    measure();
+    let ro;
+    if (typeof ResizeObserver !== "undefined" && skuManageHeaderRef.current) {
+      ro = new ResizeObserver(measure);
+      ro.observe(skuManageHeaderRef.current);
+    }
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      ro?.disconnect();
+    };
+  }, [isItemMasterScope, skuManageMode]);
+
+  useEffect(() => {
     if (!isPurchaseOrderScope) return;
     const measure = () => {
       setPoOrderStickyHeights({
@@ -2333,6 +2356,8 @@ export default function App() {
     filteredPurchaseOrders.length,
     purchaseOrdersLoading,
   ]);
+
+  const itemMasterStickyBaseTop = stickyHeights.topbar + skuManageHeaderHeight;
 
   const inventoryStickyWidth = useMemo(() => {
     if (isShipmentScope) return SHIPMENT_MATRIX_STICKY_TOTAL_PX;
@@ -9687,7 +9712,11 @@ export default function App() {
               style={{ display: "none" }}
               onChange={(e) => uploadSkuMappingFiles(e.target.files || [])}
             />
-            <div className="skuManageHeader">
+            <div
+              className={`skuManageHeader${isItemMasterScope ? " skuManageHeaderSticky" : ""}`}
+              ref={skuManageHeaderRef}
+              style={isItemMasterScope ? { top: stickyHeights.topbar } : undefined}
+            >
               <div className="skuManageTabs">
                 <button
                   type="button"
@@ -9723,6 +9752,7 @@ export default function App() {
                   active={isItemMasterScope}
                   settingsMutating={settingsMutating}
                   setSettingsMutating={setSettingsMutating}
+                  stickyBaseTop={itemMasterStickyBaseTop}
                 />
               ) : skuManageMode === "UPLOAD" ? (
                 <div className="skuUploadStage skuManageSinglePanel poOrderFileUploadStage">

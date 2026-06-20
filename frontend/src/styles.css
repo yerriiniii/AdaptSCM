@@ -8,6 +8,44 @@
   --ui-outline-focus: #94a3b8;
   --ui-outline-inner: #c5cdd8;
   --ui-divider: #d5dde8;
+  /* 가로 스크롤바 — 전역 공통 */
+  --ui-scrollbar-h-size: 12px;
+  --ui-scrollbar-h-strip-bg: #f3f6fa;
+  --ui-scrollbar-h-strip-border: #e2e8f0;
+  --ui-scrollbar-h-track: #eef2f7;
+  --ui-scrollbar-h-thumb: #b0bcc9;
+  --ui-scrollbar-h-thumb-hover: #a3afc0;
+}
+
+/* WebKit — 가로 스크롤바만 전역 적용 (세로 숨김 영역은 각 컴포넌트에서 height/width: 0 유지) */
+*::-webkit-scrollbar:horizontal {
+  height: var(--ui-scrollbar-h-size);
+}
+
+*::-webkit-scrollbar-track:horizontal {
+  background: var(--ui-scrollbar-h-track);
+  border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb:horizontal {
+  background: var(--ui-scrollbar-h-thumb);
+  border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb:horizontal:hover {
+  background: var(--ui-scrollbar-h-thumb-hover);
+}
+
+/* Firefox — 가로 스크롤이 보이는 주요 영역 */
+.tableTopScroll,
+.itemMasterBodyPane,
+.poSavedBodyScroll,
+.skuProductEditTableScroll,
+.skuDiscontinuedTableScroll,
+.tableWrap.shipmentMatrixBodyWrap,
+.shipmentChannelDayMatrixWrap.shipmentChartDayMatrixScrollSync {
+  scrollbar-width: auto;
+  scrollbar-color: var(--ui-scrollbar-h-thumb) var(--ui-scrollbar-h-track);
 }
 
 body {
@@ -1543,7 +1581,7 @@ body {
   min-width: 81px;
   width: 81px;
   max-width: 81px;
-  background: #eef2f7;
+  background: #e2e8f0;
   font-weight: 700;
   color: #5d6574;
   position: sticky;
@@ -2340,6 +2378,13 @@ body {
   border-bottom: none;
 }
 
+.skuManageHeaderSticky {
+  position: sticky;
+  z-index: 32;
+  background: #ffffff;
+  box-shadow: none;
+}
+
 .skuManageTitle {
   font-size: 24px;
   font-weight: 700;
@@ -2398,6 +2443,12 @@ body {
   border: 1px solid var(--ui-outline);
   border-radius: 8px;
   overflow: hidden;
+}
+
+.itemMasterTableWrap.skuProductEditTableWrap {
+  overflow: visible;
+  border: none;
+  border-radius: 0;
 }
 
 .skuProductEditTableScroll {
@@ -2487,6 +2538,15 @@ body {
   flex-wrap: wrap;
 }
 
+.itemMasterStickyToolbar {
+  position: sticky;
+  z-index: 31;
+  background: #ffffff;
+  margin-bottom: 12px;
+  padding-bottom: 0;
+  box-shadow: none;
+}
+
 .itemMasterTemplateBtn,
 .itemMasterUploadBtn {
   display: inline-flex;
@@ -2555,22 +2615,23 @@ body {
   flex-direction: column;
 }
 
-.itemMasterTableInner {
+.itemMasterTableInnerHead,
+.itemMasterTableInnerBody {
   width: max-content;
   min-width: max(100%, 1180px);
+  box-sizing: border-box;
 }
 
 .itemMasterTopScroll.tableTopScroll {
-  overflow-x: auto;
-  overflow-y: hidden;
+  z-index: 30;
+  margin-bottom: 0;
+  flex-shrink: 0;
 }
 
 .itemMasterTopScroll {
   margin-bottom: 0;
   border-bottom: none;
   border-radius: 8px 8px 0 0;
-  height: auto;
-  min-height: 18px;
   flex-shrink: 0;
 }
 
@@ -2583,42 +2644,40 @@ body {
   overflow: hidden;
 }
 
-.itemMasterTableWrap .skuProductEditTableScroll.itemMasterTableScroll {
-  max-height: none;
+.itemMasterStickyHeaderShell {
+  position: sticky;
+  z-index: 29;
+  background: #dde4ec;
+  isolation: isolate;
+  margin: 0;
+}
+
+.itemMasterHeaderScroll {
   overflow-x: auto;
-  overflow-y: clip;
-  scrollbar-gutter: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  background: #dde4ec;
+  box-sizing: border-box;
 }
 
-.itemMasterTableScroll {
-  border-radius: 8px;
-  overflow-x: auto;
-  overflow-y: clip;
-  scrollbar-width: thin;
-  scrollbar-gutter: auto;
-}
-
-.itemMasterHasTopScroll .itemMasterTableScroll,
-.itemMasterShowTopScrollPair .itemMasterTableScroll {
-  border-radius: 0 0 8px 8px;
-}
-
-.itemMasterShowTopScrollPair .itemMasterTableScroll {
+.itemMasterShowTopScrollPair .itemMasterHeaderScroll {
   overflow-x: hidden;
 }
 
-.itemMasterTableScroll::-webkit-scrollbar {
-  height: 12px;
-  width: 12px;
+.itemMasterHeaderScroll::-webkit-scrollbar {
+  height: 0;
 }
 
-.itemMasterTableScroll::-webkit-scrollbar-thumb {
-  background: #c5cdd8;
-  border-radius: 8px;
+.itemMasterBodyPane {
+  overflow-x: auto;
+  overflow-y: visible;
+  box-sizing: border-box;
+  margin: 0;
 }
 
-.itemMasterTableScroll::-webkit-scrollbar-track {
-  background: #f1f5f9;
+.itemMasterShowTopScrollPair .itemMasterBodyPane {
+  overflow-x: hidden;
 }
 
 .itemMasterTableWrap .skuProductEditTableHead,
@@ -2629,13 +2688,14 @@ body {
 }
 
 .itemMasterTableWrap .skuProductEditTableHead {
+  position: static;
+  top: auto;
+  z-index: auto;
+  border-bottom: none;
   font-size: 13px;
   font-weight: 700;
-  color: #1f2937;
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: #e2e8f0;
+  color: #334155;
+  background: #dde4ec;
 }
 
 .itemMasterTableWrap .skuProductEditRow {
@@ -2645,8 +2705,12 @@ body {
   background: #ffffff;
 }
 
-.itemMasterTableWrap .skuProductEditRow:nth-child(even) {
-  background: #f9fafb;
+.itemMasterTableInnerBody .skuProductEditRow:nth-child(odd) {
+  background: #f5f7f9;
+}
+
+.itemMasterTableInnerBody .skuProductEditRow:nth-child(even) {
+  background: #ffffff;
 }
 
 .itemMasterTableHead,
@@ -2669,20 +2733,24 @@ body {
   min-width: 1180px;
 }
 
-.itemMasterTableWrap .itemMasterHeadCell,
-.itemMasterTableWrap .itemMasterCell {
+.itemMasterTableWrap .itemMasterTableHead {
+  border-top: 1px solid var(--ui-outline-inner);
+}
+
+.itemMasterHeadCell,
+.itemMasterCell {
   border-right: 1px solid var(--ui-outline-inner);
   border-bottom: 1px solid var(--ui-outline-inner);
   box-sizing: border-box;
   min-width: 0;
 }
 
-.itemMasterTableWrap .itemMasterTableHead .itemMasterHeadCell:first-child,
-.itemMasterTableWrap .itemMasterTableRow .itemMasterCell:first-child {
+.itemMasterTableHead .itemMasterHeadCell:first-child,
+.itemMasterTableRow .itemMasterCell:first-child {
   border-left: 1px solid var(--ui-outline-inner);
 }
 
-.itemMasterTableWrap .itemMasterTableHead {
+.itemMasterTableHead .itemMasterHeadCell {
   border-top: 1px solid var(--ui-outline-inner);
 }
 
@@ -2691,8 +2759,8 @@ body {
   align-items: center;
   padding: 6px 8px;
   min-height: 32px;
-  background: #e2e8f0;
-  color: #1f2937;
+  background: #dde4ec;
+  color: #334155;
   font-weight: 700;
 }
 
@@ -2721,7 +2789,6 @@ body {
   font-weight: 600;
 }
 
-
 .itemMasterTableWrap .skuProductEditInput {
   font-size: 13px;
   padding: 5px 8px;
@@ -2730,6 +2797,7 @@ body {
   min-height: 34px;
   background: #fff;
   box-shadow: none;
+  width: 100%;
 }
 
 .itemMasterTableWrap .skuProductEditInput:focus {
@@ -4841,7 +4909,7 @@ th {
   max-width: 728px;
   font-weight: 700;
   text-align: center;
-  background: #eef2f7;
+  background: #e2e8f0;
   color: #5d6574;
   box-shadow: 4px 0 12px -4px rgba(15, 23, 42, 0.12);
   border-right: none; /* 2px 강조는 ::after 만 */
@@ -5218,31 +5286,17 @@ th {
   overflow-x: auto;
   overflow-y: hidden;
   margin-bottom: 6px;
-  border: 1px solid #e5e9f0;
+  border: 1px solid var(--ui-scrollbar-h-strip-border);
   border-radius: 6px;
-  height: 14px;
-  background: #f4f6fa;
+  height: 16px;
+  background: var(--ui-scrollbar-h-strip-bg);
   scrollbar-gutter: stable;
 }
 
 .stickyTableTopScroll {
   position: sticky;
   z-index: 6;
-  background-color: #f4f6fa;
-}
-
-.tableTopScroll::-webkit-scrollbar {
-  height: 10px;
-}
-
-.tableTopScroll::-webkit-scrollbar-track {
-  background: #f8fafe;
-  border-radius: 10px;
-}
-
-.tableTopScroll::-webkit-scrollbar-thumb {
-  background: #e2e7ef;
-  border-radius: 10px;
+  background-color: var(--ui-scrollbar-h-strip-bg);
 }
 
 .tableTopScroll > div {
