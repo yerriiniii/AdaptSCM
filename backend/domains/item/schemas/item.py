@@ -100,6 +100,64 @@ class SkuLookupForPurchaseResponse(BaseModel):
     kr_sku: str = ""
     message: str = ""
 
+
+class ItemMasterRowResponse(BaseModel):
+    group_id: str
+    brand: str = ""
+    segment: str = ""
+    version: str = ""
+    kr_sku: str = ""
+    kr_name: str = ""
+    stock_category: str = ""
+    fcst_grade: str = ""
+    stock_grade: str = ""
+    release_month: str = ""
+    code_registered_at: str | None = None
+    us_grade: str = ""
+    tw_grade: str = ""
+    hk_grade: str = ""
+    jp_grade: str = ""
+    updated_at: str | None = None
+
+
+class ItemMasterRowListResponse(BaseModel):
+    items: list[ItemMasterRowResponse] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
+
+
+class ItemMasterUploadResponse(BaseModel):
+    processed_file_count: int = 0
+    processed_row_count: int = 0
+    updated_count: int = 0
+    created_count: int = 0
+    columns: list[str] = Field(default_factory=list)
+
+
+class ItemMasterRowPatchRequest(BaseModel):
+    group_id: str = Field(..., min_length=1)
+    brand: str = Field(..., min_length=1)
+    segment: str | None = None
+    version: str | None = None
+    kr_sku: str = Field(..., min_length=1)
+    kr_name: str = Field(..., min_length=1)
+    stock_category: str | None = None
+    fcst_grade: str | None = None
+    stock_grade: str | None = None
+    release_month: str | None = None
+    code_registered_at: str | None = None
+    us_grade: str | None = None
+    tw_grade: str | None = None
+    hk_grade: str | None = None
+    jp_grade: str | None = None
+
+    @field_validator("brand")
+    @classmethod
+    def normalize_brand(cls, v: object) -> str:
+        s = re.sub(r"\s+", " ", str(v or "").strip())[:255]
+        if not s:
+            raise ValueError("brand is required")
+        return s
+
 __all__ = [
     "InventorySkuMappingSummaryResponse",
     "InventorySkuMappingUploadResponse",
@@ -110,4 +168,8 @@ __all__ = [
     "InventorySkuMappingItemResponse",
     "InventorySkuMappingListResponse",
     "SkuLookupForPurchaseResponse",
+    "ItemMasterRowResponse",
+    "ItemMasterRowListResponse",
+    "ItemMasterUploadResponse",
+    "ItemMasterRowPatchRequest",
 ]

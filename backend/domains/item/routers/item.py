@@ -10,6 +10,10 @@ from domains.item.schemas import (
     InventorySkuMappingSummaryResponse,
     InventorySkuMappingUploadResponse,
     InventorySkuMappingUpsertRequest,
+    ItemMasterRowListResponse,
+    ItemMasterRowPatchRequest,
+    ItemMasterRowResponse,
+    ItemMasterUploadResponse,
 )
 from domains.item.services.item_mapping import (
     clear_item_sku_mappings,
@@ -19,6 +23,13 @@ from domains.item.services.item_mapping import (
     patch_item_sku_mapping_item,
     patch_item_sku_mapping_segment,
     upsert_item_sku_mapping,
+)
+from domains.item.services.item_master import (
+    MASTER_COLUMN_LABELS,
+    MASTER_COLUMN_ORDER,
+    list_item_master_rows,
+    merge_item_master_uploads,
+    patch_item_master_row,
 )
 from shared.db import get_db_session
 
@@ -86,5 +97,36 @@ def inventory_mapping_patch_segment(
 @router.delete("/mappings")
 def inventory_mappings_clear(db: Session = Depends(get_db_session)) -> dict:
     return clear_item_sku_mappings(db=db)
+
+
+@router.get("/mappings/master-rows", response_model=ItemMasterRowListResponse)
+def inventory_master_rows(
+    query: str | None = Query(default=None),
+    limit: int = Query(default=10000, ge=1, le=20000),
+    db: Session = Depends(get_db_session),
+) -> ItemMasterRowListResponse:
+    items = list_item_master_rows(db=db, query=query, limit=limit)
+    return ItemMasterRowListResponse(
+        items=items,
+        columns=[MASTER_COLUMN_LABELS[key] for key in MASTER_COLUMN_ORDER],
+    )
+
+
+@router.post("/mappings/master-rows/upload", response_model=ItemMasterUploadResponse)
+def inventory_master_rows_upload(
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db_session),
+) -> ItemMasterUploadResponse:
+    result = merge_item_master_uploads(db=db, upload_files=files)
+    return ItemMasterUploadResponse(**result)
+
+
+@router.patch("/mappings/master-rows", response_model=ItemMasterRowResponse)
+def inventory_master_row_patch(
+    payload: ItemMasterRowPatchRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> ItemMasterRowResponse:
+    return ItemMasterRowResponse(**patch_item_master_row(db=db, payload=payload.model_dump()))
+
 
 __all__ = ["router"]

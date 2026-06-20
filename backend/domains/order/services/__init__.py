@@ -1,5 +1,6 @@
 from .purchase_order import (
     add_inbound_line,
+    clear_all_purchase_orders,
     create_purchase_order,
     delete_inbound_line,
     delete_purchase_order,
@@ -12,6 +13,7 @@ from .purchase_order import (
 
 __all__ = [
     "add_inbound_line",
+    "clear_all_purchase_orders",
     "create_purchase_order",
     "delete_inbound_line",
     "delete_purchase_order",

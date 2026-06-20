@@ -255,6 +255,16 @@ def delete_purchase_order(db: Session, order_id: uuid.UUID) -> None:
     db.commit()
 
 
+def clear_all_purchase_orders(db: Session) -> int:
+    count = int(db.scalar(select(func.count()).select_from(PurchaseOrder)) or 0)
+    if count == 0:
+        return 0
+    for po in db.scalars(select(PurchaseOrder)).all():
+        db.delete(po)
+    db.commit()
+    return count
+
+
 def create_purchase_order(db: Session, payload: dict, *, commit: bool = True) -> PurchaseOrder:
     erp = str(payload.get("erp_po_number") or "").strip()
     if not erp:

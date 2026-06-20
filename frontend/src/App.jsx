@@ -11,12 +11,14 @@ import {
   GitCompare,
   Globe2,
   Home,
+  LayoutGrid,
   LogOut,
   Search,
   Truck,
   UserRound,
 } from "lucide-react";
 import MyPage from "./MyPage.jsx";
+import ItemMasterTab from "./ItemMasterTab.jsx";
 import * as XLSX from "xlsx";
 
 /** 발주 목록 GET이 응답 없이 멈출 때 UI가 「불러오는 중」에 고정되지 않도록 */
@@ -28,7 +30,70 @@ const DEFAULT_DATE_RANGE = "10d";
 const OVERSEAS_UPLOAD_COUNTRIES = ["US", "TW", "HK", "JP", "SG", "DE", "UK", "AU", "AE", "VN", "TH"];
 /** hydrate 시 해외 `/view` 동시 요청 수 — DB·연결 풀 부하 시 전체가 한꺼번에 막히는 것 완화 */
 const HYDRATE_OVERSEAS_VIEW_CONCURRENCY = 3;
-const SETTINGS_COUNTRY_ORDER = ["KR", "US", "TW", "HK", "JP", "SG", "DE", "UK", "AU", "AE", "VN", "TH", "SHIPMENT"];
+const SETTINGS_COUNTRY_ORDER = [
+  "KR",
+  "US",
+  "TW",
+  "HK",
+  "JP",
+  "SG",
+  "DE",
+  "UK",
+  "AU",
+  "AE",
+  "VN",
+  "TH",
+  "SHIPMENT",
+  "PURCHASE_ORDERS",
+];
+const PO_UPLOADED_FILES_STORAGE_KEY = "inventory_po_uploaded_file_entries";
+const PO_FILE_COUNTRY = "PURCHASE_ORDERS";
+
+function loadPoUploadedFileEntries() {
+  try {
+    const raw = localStorage.getItem(PO_UPLOADED_FILES_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((entry) => ({ ...entry, country: PO_FILE_COUNTRY }));
+  } catch {
+    return [];
+  }
+}
+
+function persistPoUploadedFileEntries(entries) {
+  try {
+    localStorage.setItem(PO_UPLOADED_FILES_STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    /* storage quota 등 — 무시 */
+  }
+}
+/** 메인 탭 노출 — false면 상단 탭 버튼만 숨김(탭 본문·로직은 유지). 복구 시 해당 키를 true로. */
+const MAIN_TAB_VISIBILITY = {
+  PRODUCT_SEARCH: true,
+  SKU_MAPPING: true,
+  SHIPMENT: true,
+  PURCHASE_ORDERS: true,
+  SETTINGS: true,
+  KR: false,
+  OVERSEAS: false,
+  COMPARE: false,
+  ITEM_MASTER: false,
+};
+const DEFAULT_MAIN_TAB =
+  Object.entries(MAIN_TAB_VISIBILITY).find(([, visible]) => visible)?.[0] || "PRODUCT_SEARCH";
+/** 히어로 「파일 업로드」「재고/출고 통합」 — 재고 탭만(출고는 전용 서브탭에서 처리) */
+const SHOW_INVENTORY_FEATURES =
+  MAIN_TAB_VISIBILITY.KR || MAIN_TAB_VISIBILITY.OVERSEAS || MAIN_TAB_VISIBILITY.COMPARE;
+/** 데이터 관리에 표시할 엑셀 파일 그룹(보이는 메인 탭 기준) */
+const SETTINGS_VISIBLE_FILE_COUNTRIES = (() => {
+  const codes = new Set();
+  if (MAIN_TAB_VISIBILITY.KR) codes.add("KR");
+  if (MAIN_TAB_VISIBILITY.OVERSEAS) OVERSEAS_UPLOAD_COUNTRIES.forEach((c) => codes.add(c));
+  if (MAIN_TAB_VISIBILITY.SHIPMENT) codes.add("SHIPMENT");
+  if (MAIN_TAB_VISIBILITY.PURCHASE_ORDERS) codes.add(PO_FILE_COUNTRY);
+  return codes;
+})();
 /** 출고 현황 칩 = 엑셀 시트 이름(백엔드 SHIPMENT_MATRIX_SHEET_NAMES와 동일 순서) */
 const SHIPMENT_MATRIX_CHIPS = [
   "B2B 통합",
@@ -335,6 +400,43 @@ async function downloadPoInboundTemplateXlsx() {
   URL.revokeObjectURL(a.href);
 }
 
+async function downloadShipmentTemplateXlsx() {
+  const ExcelJS = (await import("exceljs")).default;
+  const FONT_9 = { name: "맑은 고딕", size: 9 };
+  const headers = ["판매처", "상품코드", "주문일", "주문수량"];
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("출고_템플릿", { views: [{ showGridLines: true }] });
+  const hr = ws.addRow(headers);
+  hr.height = 18;
+  ws.addRow(["예: 쿠팡-로켓배송", "예: 06184", "예: 2026-04-30 19:08:25", "예: 4176"]).height = 16;
+  headers.forEach((_, i) => {
+    ws.getColumn(i + 1).width = i === 0 ? 24 : i === 2 ? 26 : 16;
+  });
+  ws.eachRow((row, rowNumber) => {
+    row.eachCell((cell) => {
+      cell.font = { ...FONT_9, bold: rowNumber === 1 };
+      cell.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+      if (rowNumber === 1) {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
+      }
+    });
+  });
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "출고_템플릿.xlsx";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 /** 재고 대시보드 내보내기: 헤더 노란 배경·볼드, 본문 9pt (ExcelJS). 출고만 opts 로 헤더(1행) 월·일자 열 배경 지정 가능 */
 async function downloadInventoryDashboardXlsx(filename, sheetName, rows, opts) {
   const ExcelJS = (await import("exceljs")).default;
@@ -405,7 +507,7 @@ function excelColumnWidthFromPxApprox(px) {
   return Math.round((((p - 5) / 7) + Number.EPSILON) * 100) / 100;
 }
 
-/** SKU 탭: 한·미·대·홍 전용 .xlsx를 ZIP으로 내려받기 (파일마다 첫 시트만 업로드 시 읽힘) */
+/** SKU 탭: 국가별 전용 .xlsx를 ZIP으로 내려받기 (파일마다 첫 시트만 업로드 시 읽힘) */
 const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
   {
     code: "KR",
@@ -442,6 +544,15 @@ const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
   },
   { code: "TW", fileLabel: "대만", headers: ["대만 SKU", "대만 상품명"], headerNotes: {} },
   { code: "HK", fileLabel: "홍콩", headers: ["홍콩 SKU", "홍콩 상품명"], headerNotes: {} },
+  {
+    code: "JP",
+    fileLabel: "일본",
+    headers: ["일본 SKU", "일본 상품명"],
+    headerNotes: {
+      "일본 SKU":
+        "DB 일본(jp_sku) 로케일에 저장됩니다. SKU 끝 `-옵션` 접미사는 매칭 시 자동으로 제거·재시도합니다.",
+    },
+  },
 ];
 
 async function buildSkuMappingTemplateWorkbookBuffer(spec) {
@@ -505,7 +616,7 @@ async function downloadSkuMappingCountryTemplatesZip() {
   const blob = await zip.generateAsync({ type: "blob" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "한미대홍_SKU_매핑_템플릿.zip";
+  a.download = "SKU_매핑_템플릿.zip";
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -1163,6 +1274,12 @@ function metaLabelFromCompareIdentityKey(compareKey) {
   return out.join(" / ");
 }
 
+function settingsFileGroupLabel(code = "KR") {
+  if (code === "SHIPMENT") return "출고 파일";
+  if (code === PO_FILE_COUNTRY) return "발주 파일";
+  return countryLabel(code);
+}
+
 function countryLabel(code = "KR") {
   if (code === "SHIPMENT") return "출고";
   if (code === "KR") return "한국";
@@ -1771,13 +1888,14 @@ export default function App() {
   const [showKrCompare, setShowKrCompare] = useState(false);
   const [uploadInputKey, setUploadInputKey] = useState(0);
   const [shipmentFileEntries, setShipmentFileEntries] = useState([]);
+  const [purchaseOrderFileEntries, setPurchaseOrderFileEntries] = useState(() => loadPoUploadedFileEntries());
   const [shipmentUploadInputKey, setShipmentUploadInputKey] = useState(0);
   const [shipmentLoading, setShipmentLoading] = useState(false);
   /** 출고 통합 재시도: 미매핑 판매처 선택 모달 */
   const [shipmentVendorOverrideModal, setShipmentVendorOverrideModal] = useState(null);
   const [shipmentVendorOverrideByVendor, setShipmentVendorOverrideByVendor] = useState({});
   const shipmentPendingAggregateFilesRef = useRef(null);
-  const [countryTabMode, setCountryTabMode] = useState("KR");
+  const [countryTabMode, setCountryTabMode] = useState(DEFAULT_MAIN_TAB);
   /** 출고 현황: 선택한 칩(엑셀 시트명). 빈 값이면 서버 기본 채널 */
   const [shipmentMatrixChannel, setShipmentMatrixChannel] = useState("");
   const shipmentMatrixChannelRef = useRef("");
@@ -1791,8 +1909,8 @@ export default function App() {
   const shipmentMonthStripYearRef = useRef(shipmentMonthStripYear);
   /** 동일 렌더에서 드롭다운 변경 직후 실행되는 출고 fetch effect가 옛 연도로 요청하지 않도록 ref를 렌더 시점에 맞춘다 */
   shipmentMonthStripYearRef.current = shipmentMonthStripYear;
-  /** 출고: 출고 현황(매트릭스 표) | 차트 분석 */
-  const [shipmentViewMode, setShipmentViewMode] = useState("status");
+  /** 출고: 출고 파일 업로드 | 전체 출고 현황 | 상품별 출고 현황 */
+  const [shipmentSubTab, setShipmentSubTab] = useState("status");
   /** 전체 출고 현황: 월·일자 열별 정렬 — key `month:1`~`month:12` 또는 `date:YYYY-MM-DD`, dir 빈값이면 기본(기간 합계 내림차순) */
   const [shipmentStatusColumnSort, setShipmentStatusColumnSort] = useState({ key: "", dir: "" });
   /** 전체 출고 현황: 열별 정렬 메뉴(삼각형) — portal 고정 위치용 */
@@ -1830,7 +1948,7 @@ export default function App() {
   const [manualMappingForm, setManualMappingForm] = useState({ ...EMPTY_SKU_MAPPING_FORM });
   const [manualSkuFormKey, setManualSkuFormKey] = useState(0);
   const [mappingInputKey, setMappingInputKey] = useState(0);
-  const [skuManageMode, setSkuManageMode] = useState("PRODUCT_EDIT");
+  const [skuManageMode, setSkuManageMode] = useState("ITEM_MASTER");
   const [productEditKeyword, setProductEditKeyword] = useState("");
   const [productEditRows, setProductEditRows] = useState([]);
   const [productEditLoading, setProductEditLoading] = useState(false);
@@ -2045,10 +2163,22 @@ export default function App() {
   const isSettingsScope = countryTabMode === "SETTINGS";
   const isSkuMappingScope = countryTabMode === "SKU_MAPPING";
   const isProductSearchScope = countryTabMode === "PRODUCT_SEARCH";
+  const isItemMasterScope = isSkuMappingScope && skuManageMode === "ITEM_MASTER";
   const isPurchaseOrderScope = countryTabMode === "PURCHASE_ORDERS";
   const isShipmentScope = countryTabMode === "SHIPMENT";
   const isInventoryAdminScope =
-    isSettingsScope || isSkuMappingScope || isProductSearchScope || isPurchaseOrderScope;
+    isSettingsScope ||
+    isSkuMappingScope ||
+    isProductSearchScope ||
+    isPurchaseOrderScope ||
+    isItemMasterScope;
+
+  /** 숨긴 탭으로 상태가 남아 있으면 기본 노출 탭으로 보정 */
+  useEffect(() => {
+    if (MAIN_TAB_VISIBILITY[countryTabMode] === false) {
+      setCountryTabMode(DEFAULT_MAIN_TAB);
+    }
+  }, [countryTabMode]);
 
   /** 출고 탭: 칩(시트) 또는 초기 로드 시 뷰 조회 */
   useEffect(() => {
@@ -2447,7 +2577,7 @@ export default function App() {
   }, [isShipmentScope, shipmentAvailableMonths, shipmentMonthStripYear]);
 
   useEffect(() => {
-    if (!isShipmentScope || shipmentViewMode !== "chart") {
+    if (!isShipmentScope || shipmentSubTab !== "chart") {
       setShipmentChartAllChannels(null);
       return;
     }
@@ -2473,7 +2603,7 @@ export default function App() {
       }
     })();
     return () => ac.abort();
-  }, [isShipmentScope, shipmentViewMode, shipmentMonthStripYear]);
+  }, [isShipmentScope, shipmentSubTab, shipmentMonthStripYear]);
 
   /** 출고 일자 열: null 이면 전체 기간( __ALL__ ) */
   const shipmentMonthForDailyFilter = useMemo(() => {
@@ -2572,7 +2702,7 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    if (!isShipmentScope || shipmentViewMode !== "status") return;
+    if (!isShipmentScope || shipmentSubTab !== "status") return;
     const sk = String(shipmentStatusColumnSort?.key || "").trim();
     if (!sk) return;
     if (sk.startsWith("date:")) {
@@ -2593,7 +2723,7 @@ export default function App() {
     }
   }, [
     isShipmentScope,
-    shipmentViewMode,
+    shipmentSubTab,
     shipmentStatusColumnSort.key,
     filteredDateColumns,
     scopeResultCache.SHIPMENT?.shipment_month_columns,
@@ -2727,6 +2857,7 @@ export default function App() {
       groups[code].push(entry);
     }
     groups.SHIPMENT = [...shipmentFileEntries];
+    groups[PO_FILE_COUNTRY] = [...purchaseOrderFileEntries];
     for (const key of Object.keys(groups)) {
       groups[key].sort((a, b) => {
         const ad = String(a.date || "").trim();
@@ -2738,7 +2869,22 @@ export default function App() {
       });
     }
     return groups;
-  }, [fileEntries, shipmentFileEntries]);
+  }, [fileEntries, shipmentFileEntries, purchaseOrderFileEntries]);
+
+  const settingsVisibleFileGroups = useMemo(
+    () =>
+      Object.entries(groupedFileEntries).filter(
+        ([country, entries]) =>
+          SETTINGS_VISIBLE_FILE_COUNTRIES.has(country) &&
+          (entries.length > 0 || country === PO_FILE_COUNTRY)
+      ),
+    [groupedFileEntries]
+  );
+
+  const settingsVisibleFileCount = useMemo(
+    () => settingsVisibleFileGroups.reduce((sum, [, entries]) => sum + entries.length, 0),
+    [settingsVisibleFileGroups]
+  );
 
   /** 해외 행과 맞출 때 브랜드/창고/레벨이 국가마다 달라 행 단위가 다를 수 있음 → 한국 SKU(매핑 우선)로 오늘 재고 합산 */
   const krCompareMap = useMemo(() => {
@@ -2840,16 +2986,16 @@ export default function App() {
 
   /** 상품별 출고 현황: 매트릭스(단일 시트) 데이터로 폴백하면 연도·시트 범위가 차트와 어긋남 — all_channels 응답만 사용 */
   const shipmentChartSourceRows = useMemo(() => {
-    if (!isShipmentScope || shipmentViewMode !== "chart") return rawInventoryRows;
+    if (!isShipmentScope || shipmentSubTab !== "chart") return rawInventoryRows;
     if (shipmentChartAllChannels == null) return [];
     return Array.isArray(shipmentChartAllChannels.rows) ? shipmentChartAllChannels.rows : [];
-  }, [isShipmentScope, shipmentViewMode, shipmentChartAllChannels, rawInventoryRows]);
+  }, [isShipmentScope, shipmentSubTab, shipmentChartAllChannels, rawInventoryRows]);
 
   const shipmentChartSourceDates = useMemo(() => {
-    if (!isShipmentScope || shipmentViewMode !== "chart") return rawInventoryDates;
+    if (!isShipmentScope || shipmentSubTab !== "chart") return rawInventoryDates;
     if (shipmentChartAllChannels == null) return [];
     return Array.isArray(shipmentChartAllChannels.dates) ? shipmentChartAllChannels.dates : [];
-  }, [isShipmentScope, shipmentViewMode, shipmentChartAllChannels, rawInventoryDates]);
+  }, [isShipmentScope, shipmentSubTab, shipmentChartAllChannels, rawInventoryDates]);
 
   /** 출고 뷰: 서버가 준 동적 채널 목록(수동 매핑 탭명 포함), 없으면 기본 시트 탭 순서 */
   const effectiveShipmentChannels = useMemo(() => {
@@ -2860,7 +3006,7 @@ export default function App() {
 
   /** 출고 차트: 상품코드 접두 또는 상품명 부분 일치(전 시트 행 기준) */
   const shipmentChartPrefixRows = useMemo(() => {
-    if (!isShipmentScope || shipmentViewMode !== "chart" || !shipmentChartSourceRows.length) return [];
+    if (!isShipmentScope || shipmentSubTab !== "chart" || !shipmentChartSourceRows.length) return [];
     const needle = shipmentChartSearchKeyword.trim();
     if (!needle) return [];
     const needleLower = needle.toLowerCase();
@@ -2875,7 +3021,7 @@ export default function App() {
     });
   }, [
     isShipmentScope,
-    shipmentViewMode,
+    shipmentSubTab,
     shipmentChartSourceRows,
     shipmentChartSearchKeyword,
     countryTabMode,
@@ -2929,7 +3075,7 @@ export default function App() {
 
   /** 일자 열이 없어도 month_totals 로 칩·월별 차트 월 목록 산출 — 상품별 출고 현황(매트릭스 월합계만 있는 연도) */
   const shipmentChartMonthOptions = useMemo(() => {
-    if (!isShipmentScope || shipmentViewMode !== "chart") return [];
+    if (!isShipmentScope || shipmentSubTab !== "chart") return [];
     const s = new Set();
     for (const d of shipmentChartSourceDates) {
       const mo = String(d).slice(0, 7);
@@ -2955,7 +3101,7 @@ export default function App() {
     return Array.from(s).sort((a, b) => a.localeCompare(b));
   }, [
     isShipmentScope,
-    shipmentViewMode,
+    shipmentSubTab,
     shipmentChartSourceDates,
     shipmentChartRowsForSku,
     shipmentChartPrefixRows,
@@ -3249,7 +3395,7 @@ export default function App() {
   }, [shipmentChartMonth, shipmentChartRowsForSku, shipmentChartRowsForSkuAggregateOnly, effectiveShipmentChannels]);
 
   useEffect(() => {
-    if (!isShipmentScope || shipmentViewMode !== "chart") return;
+    if (!isShipmentScope || shipmentSubTab !== "chart") return;
     if (!shipmentChartSkuOptions.length) {
       if (shipmentChartSelectedSku) setShipmentChartSelectedSku("");
       return;
@@ -3257,10 +3403,10 @@ export default function App() {
     if (shipmentChartSelectedSku && !shipmentChartSkuOptions.includes(shipmentChartSelectedSku)) {
       setShipmentChartSelectedSku("");
     }
-  }, [isShipmentScope, shipmentViewMode, shipmentChartSkuOptions, shipmentChartSelectedSku]);
+  }, [isShipmentScope, shipmentSubTab, shipmentChartSkuOptions, shipmentChartSelectedSku]);
 
   useEffect(() => {
-    if (!isShipmentScope || shipmentViewMode !== "chart") return;
+    if (!isShipmentScope || shipmentSubTab !== "chart") return;
     if (!shipmentChartMonthOptions.length) {
       if (shipmentChartMonth) setShipmentChartMonth("");
       return;
@@ -3268,18 +3414,18 @@ export default function App() {
     if (!shipmentChartMonth || !shipmentChartMonthOptions.includes(shipmentChartMonth)) {
       setShipmentChartMonth(shipmentChartMonthOptions[shipmentChartMonthOptions.length - 1]);
     }
-  }, [isShipmentScope, shipmentViewMode, shipmentChartMonthOptions, shipmentChartMonth]);
+  }, [isShipmentScope, shipmentSubTab, shipmentChartMonthOptions, shipmentChartMonth]);
 
   /** 검색 결과가 상품 하나뿐이면 자동 선택 */
   useEffect(() => {
-    if (!isShipmentScope || shipmentViewMode !== "chart") return;
+    if (!isShipmentScope || shipmentSubTab !== "chart") return;
     if (!shipmentChartSearchKeyword.trim()) return;
     if (shipmentChartSkuOptions.length !== 1) return;
     const only = shipmentChartSkuOptions[0];
     if (shipmentChartSelectedSku !== only) setShipmentChartSelectedSku(only);
   }, [
     isShipmentScope,
-    shipmentViewMode,
+    shipmentSubTab,
     shipmentChartSearchKeyword,
     shipmentChartSkuOptions,
     shipmentChartSelectedSku,
@@ -3292,7 +3438,7 @@ export default function App() {
 
   const hasTableData = useMemo(() => {
     if (isShipmentScope) {
-      if (shipmentViewMode === "chart") {
+      if (shipmentSubTab === "chart") {
         const chartPayload = shipmentChartAllChannels;
         const payloadRows =
           chartPayload != null &&
@@ -3325,7 +3471,7 @@ export default function App() {
     return filteredRows.length > 0 && filteredDateColumns.length > 0;
   }, [
     isShipmentScope,
-    shipmentViewMode,
+    shipmentSubTab,
     shipmentDisplayRows,
     shipmentMatrixMonthColCount,
     rawInventoryRows.length,
@@ -3486,7 +3632,7 @@ export default function App() {
   }, [filteredDateColumns, isOverseasScope, showKrCompare]);
   const inventoryTableWidth = useMemo(() => {
     if (isShipmentScope) {
-      if (shipmentViewMode === "chart") return Math.max(980, tableMinWidth);
+      if (shipmentSubTab === "chart") return Math.max(980, tableMinWidth);
       return Math.max(
         980,
         SHIPMENT_MATRIX_STICKY_TOTAL_PX +
@@ -3499,14 +3645,14 @@ export default function App() {
     return tableMinWidth;
   }, [
     isShipmentScope,
-    shipmentViewMode,
+    shipmentSubTab,
     filteredDateColumns,
     tableMinWidth,
     shipmentMatrixMonthColCount,
   ]);
   /** 헤더/본문 두 테이블의 열 너비를 동일하게 고정(스티키 left와 실제 경계 일치) */
   const shipmentMatrixColGroup = useMemo(() => {
-    if (!isShipmentScope || shipmentViewMode !== "status") return null;
+    if (!isShipmentScope || shipmentSubTab !== "status") return null;
     const monthCols = scopeResultCache.SHIPMENT?.shipment_month_columns || [];
     return (
       <colgroup>
@@ -3525,13 +3671,13 @@ export default function App() {
     );
   }, [
     isShipmentScope,
-    shipmentViewMode,
+    shipmentSubTab,
     scopeResultCache.SHIPMENT?.shipment_month_columns,
     filteredDateColumns,
   ]);
   /** 출고 표: 합계 행 spacer용 전체 열 수(고정 5 + 월 + 일) */
   const shipmentBodyColCount = useMemo(() => {
-    if (!isShipmentScope || shipmentViewMode !== "status") return 0;
+    if (!isShipmentScope || shipmentSubTab !== "status") return 0;
     return (
       5 +
       (scopeResultCache.SHIPMENT?.shipment_month_columns || []).length +
@@ -3539,7 +3685,7 @@ export default function App() {
     );
   }, [
     isShipmentScope,
-    shipmentViewMode,
+    shipmentSubTab,
     scopeResultCache.SHIPMENT?.shipment_month_columns,
     filteredDateColumns,
   ]);
@@ -3597,12 +3743,12 @@ export default function App() {
     isCompareScope,
     isShipmentScope,
     countryTabMode,
-    shipmentViewMode,
+    shipmentSubTab,
     showTopScroll,
   ]);
 
   useEffect(() => {
-    if (!isShipmentScope || shipmentViewMode !== "chart") {
+    if (!isShipmentScope || shipmentSubTab !== "chart") {
       setShowShipmentChartDayMatrixTopScroll(false);
       setShipmentChartDayMatrixTopScrollWidth(0);
       return;
@@ -3626,7 +3772,7 @@ export default function App() {
     return () => window.removeEventListener("resize", measure);
   }, [
     isShipmentScope,
-    shipmentViewMode,
+    shipmentSubTab,
     shipmentChartSelectedSku,
     shipmentChartMonth,
     shipmentChartChannelDailyMatrix,
@@ -3921,7 +4067,7 @@ export default function App() {
   }
 
   function renderInventoryHeaderCells() {
-    if (isShipmentScope && shipmentViewMode === "status") {
+    if (isShipmentScope && shipmentSubTab === "status") {
       return renderShipmentStatusHeaderCells(false);
     }
     return (
@@ -4163,9 +4309,57 @@ export default function App() {
     }
   }
 
+  function openShipmentFileInput() {
+    document.getElementById("shipment-subtab-files-input")?.click();
+  }
+
+  async function handleShipmentFileSelected(event) {
+    const files = Array.from(event?.target?.files || []);
+    if (!files.length) return;
+    const existingNames = new Set(shipmentFileEntries.map((entry) => String(entry.name || "")));
+    const incomingCounts = files.reduce((acc, file) => {
+      acc[file.name] = (acc[file.name] || 0) + 1;
+      return acc;
+    }, {});
+    const duplicateNames = [
+      ...new Set(
+        files
+          .map((file) => file.name)
+          .filter((name) => existingNames.has(name) || incomingCounts[name] > 1)
+      ),
+    ];
+    const uploadableFiles = files.filter(
+      (file, index) =>
+        !existingNames.has(file.name) &&
+        files.findIndex((candidate) => candidate.name === file.name) === index
+    );
+    if (duplicateNames.length) {
+      window.alert(`${duplicateNames.join(", ")}\n같은 파일이 두개입니다.`);
+    }
+    if (!uploadableFiles.length) {
+      setShipmentUploadInputKey((k) => k + 1);
+      return;
+    }
+    setShipmentFileEntries((prev) => [
+      ...prev,
+      ...uploadableFiles.map((file, idx) => ({
+        id: `ship-${Date.now()}-${idx}-${file.name}`,
+        file,
+        name: file.name,
+        size: file.size,
+        country: "SHIPMENT",
+        date: "",
+      })),
+    ]);
+    shipmentPendingAggregateFilesRef.current = uploadableFiles;
+    setShipmentUploadInputKey((k) => k + 1);
+    const ok = await runShipmentAggregate();
+    if (ok) setShipmentSubTab("status");
+  }
+
   async function exportCurrentView() {
     if (isShipmentScope) {
-      if (shipmentViewMode === "chart") return;
+      if (shipmentSubTab === "chart") return;
       if (!shipmentDisplayRows.length) return;
       const monthCols = scopeResultCache.SHIPMENT?.shipment_month_columns || [];
       const dayLabels = scopeResultCache.SHIPMENT?.shipment_day_labels || {};
@@ -4368,7 +4562,9 @@ export default function App() {
     const res = await axios.get(`${API_BASE}/api/inventory/purchase-orders`, {
       timeout: PURCHASE_ORDERS_LIST_TIMEOUT_MS,
     });
-    setPurchaseOrders(Array.isArray(res?.data?.items) ? res.data.items : []);
+    const items = Array.isArray(res?.data?.items) ? res.data.items : [];
+    setPurchaseOrders(items);
+    return items;
   }
 
   /** 저장된 발주 패널용: 로딩·에러를 묶어 처리 (범위 이탈·탭 전환 시에도 끊김 없이) */
@@ -4584,6 +4780,14 @@ export default function App() {
     }
   }
 
+  async function downloadShipmentTemplateClick() {
+    try {
+      await downloadShipmentTemplateXlsx();
+    } catch (err) {
+      window.alert(err?.message || "출고 템플릿을 만드는 중 오류가 났습니다.");
+    }
+  }
+
   function openPoOrderFileInput() {
     const el = document.getElementById("po-order-file-input");
     if (el) el.click();
@@ -4608,6 +4812,20 @@ export default function App() {
         return;
       }
       await axios.post(`${API_BASE}/api/inventory/purchase-orders/import`, { rows });
+      setPurchaseOrderFileEntries((prev) => {
+        const next = [
+          ...prev,
+          {
+            id: `po-${Date.now()}-${f.name}`,
+            name: f.name,
+            size: f.size,
+            country: PO_FILE_COUNTRY,
+            uploadedAt: new Date().toISOString(),
+          },
+        ];
+        persistPoUploadedFileEntries(next);
+        return next;
+      });
       setPurchaseOrderSuccess(`${formatInt(rows.length)}건이 저장된 발주에 반영되었습니다.`);
       setPurchaseOrderSubTab("saved");
       await fetchPurchaseOrdersList();
@@ -5206,29 +5424,6 @@ export default function App() {
     run();
   }, [isProductSearchScope, mappingSearchKeyword]);
 
-  useEffect(() => {
-    if (!isSkuMappingScope || skuManageMode !== "PRODUCT_EDIT") return;
-    const run = async () => {
-      try {
-        setProductEditLoading(true);
-        setProductEditError("");
-        const items = await fetchSkuMappingItems(productEditKeyword.trim(), 3000);
-        setProductEditRows(items);
-        setProductEditDraftById(
-          Object.fromEntries(items.map((r) => [r.group_id, productEditDraftFromRow(r)]))
-        );
-      } catch (err) {
-        const detail = err?.response?.data?.detail;
-        setProductEditError(
-          Array.isArray(detail) ? detail.join("\n") : detail || "목록을 불러오지 못했습니다."
-        );
-      } finally {
-        setProductEditLoading(false);
-      }
-    };
-    void run();
-  }, [isSkuMappingScope, skuManageMode, productEditKeyword]);
-
   function openSkuMappingInput() {
     document.getElementById("sku-mapping-input")?.click();
   }
@@ -5360,7 +5555,29 @@ export default function App() {
   async function deleteFileEntry(entry) {
     if (!entry) return;
     const label = String(entry.name || "").trim() || "이 파일";
-    const isShipmentPersistedFile = String(entry.country || "").toUpperCase() === "SHIPMENT";
+    const entryCountry = String(entry.country || "").toUpperCase();
+    const isPoUploadedFile = entryCountry === PO_FILE_COUNTRY;
+    const isShipmentPersistedFile = entryCountry === "SHIPMENT";
+    if (isPoUploadedFile) {
+      if (
+        !window.confirm(
+          `「${label}」 업로드 기록을 목록에서 제거할까요?\n(저장된 발주 데이터는 삭제되지 않습니다.)`
+        )
+      ) {
+        return;
+      }
+      try {
+        setSettingsMutating(true);
+        setPurchaseOrderFileEntries((prev) => {
+          const next = prev.filter((x) => x.id !== entry.id);
+          persistPoUploadedFileEntries(next);
+          return next;
+        });
+      } finally {
+        setSettingsMutating(false);
+      }
+      return;
+    }
     if (
       !window.confirm(
         `「${label}」을(를) 삭제할까요?\n저장된 재고·출고 데이터에서 이 파일에 해당하는 내용이 제거됩니다.\n이 작업은 되돌릴 수 없습니다.`
@@ -5430,7 +5647,24 @@ export default function App() {
 
   async function clearFilesByCountry(country, entries) {
     if (!entries?.length) return;
-    const label = countryLabel(country);
+    const label = settingsFileGroupLabel(country);
+    if (country === PO_FILE_COUNTRY) {
+      if (
+        !window.confirm(
+          `「${label}」 업로드 기록 ${formatInt(entries.length)}건을 목록에서 모두 제거할까요?\n(저장된 발주 데이터는 삭제되지 않습니다.)`
+        )
+      ) {
+        return;
+      }
+      try {
+        setSettingsMutating(true);
+        setPurchaseOrderFileEntries([]);
+        persistPoUploadedFileEntries([]);
+      } finally {
+        setSettingsMutating(false);
+      }
+      return;
+    }
     if (
       !window.confirm(
         `「${label}」에 저장된 파일과 재고 데이터를 모두 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`
@@ -5455,7 +5689,7 @@ export default function App() {
   async function clearAllFiles() {
     if (
       !window.confirm(
-        "모든 국가·출고에 저장된 업로드 파일과 재고·출고 데이터를 모두 삭제할까요?\n이 작업은 되돌릴 수 없습니다."
+        "모든 국가·출고·발주에 저장된 업로드 파일과 재고·출고 데이터를 모두 삭제할까요?\n(발주 파일 목록만 제거되며 발주 DB 데이터는 유지됩니다.)\n이 작업은 되돌릴 수 없습니다."
       )
     ) {
       return;
@@ -5463,6 +5697,8 @@ export default function App() {
     try {
       setSettingsMutating(true);
       await axios.delete(`${API_BASE}/api/inventory/files`);
+      setPurchaseOrderFileEntries([]);
+      persistPoUploadedFileEntries([]);
       await hydratePersistedState({ preserveLocalOnly: false });
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -5516,7 +5752,15 @@ export default function App() {
         <div className="headerArea">
         <section className="hero">
           <div className="heroHead heroHeadDash">
-            <h1 className="heroTitle">재고 분석 대시보드</h1>
+            <h1 className="heroTitle heroTitleDash">
+              <span className="heroTitleMark" aria-hidden="true">
+                <LayoutGrid size={26} strokeWidth={2.1} />
+              </span>
+              <span className="heroTitleText">
+                <span className="heroTitleBrand">Adapt</span>
+                <span className="heroTitleSub">상품 관리 보드</span>
+              </span>
+            </h1>
             <div className="heroHeadAccount">
               <button
                 type="button"
@@ -5541,14 +5785,8 @@ export default function App() {
               </button>
             </div>
           </div>
+          {SHOW_INVENTORY_FEATURES ? (
           <div className="heroActions">
-            <button
-              type="button"
-              className="cautionBtn heroActionCautionShaped"
-              onClick={() => setShowCautionModal(true)}
-            >
-              안내문
-            </button>
             <button
               className="primary"
               onClick={onClickUpload}
@@ -5574,18 +5812,6 @@ export default function App() {
                 : inventoryLoading
                   ? "통합 중..."
                   : "재고 통합 실행"}
-            </button>
-            <button
-              className="ghost"
-              onClick={exportCurrentView}
-              disabled={isInventoryAdminScope || (isShipmentScope && shipmentViewMode === "chart")}
-              title={
-                isShipmentScope && shipmentViewMode === "chart"
-                  ? "상품별 출고 현황에서는 내보내기를 사용할 수 없습니다."
-                  : undefined
-              }
-            >
-              내보내기
             </button>
             <input
               key={uploadInputKey}
@@ -5700,6 +5926,7 @@ export default function App() {
               }}
             />
           </div>
+          ) : null}
         </section>
         </div>
       </div>
@@ -5709,73 +5936,105 @@ export default function App() {
         className={`topbar stickyTopbar dashboardStripWhite${!hasSecondaryInventoryStrip ? " isBottomCapsule" : ""}`}
       >
         <div className="tabs">
-          <button
-            type="button"
-            className={`tab tabWithIcon ${countryTabMode === "KR" ? "active" : ""}`}
-            onClick={() => setCountryTabMode("KR")}
-          >
-            <Home className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-            <span>한국 재고</span>
-          </button>
-          <button
-            type="button"
-            className={`tab tabWithIcon ${countryTabMode === "OVERSEAS" ? "active" : ""}`}
-            onClick={() => {
-              setCountryTabMode("OVERSEAS");
-              setSelectedOverseasCountry((prev) => prev || OVERSEAS_UPLOAD_COUNTRIES[0]);
-            }}
-          >
-            <Globe2 className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-            <span>해외 재고</span>
-          </button>
-          <button
-            type="button"
-            className={`tab tabWithIcon ${countryTabMode === "COMPARE" ? "active" : ""}`}
-            onClick={() => setCountryTabMode("COMPARE")}
-          >
-            <GitCompare className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-            <span>재고 비교</span>
-          </button>
-          <button
-            type="button"
-            className={`tab tabWithIcon ${countryTabMode === "SHIPMENT" ? "active" : ""}`}
-            onClick={() => setCountryTabMode("SHIPMENT")}
-          >
-            <Truck className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-            <span>출고 기록</span>
-          </button>
-          <button
-            type="button"
-            className={`tab tabWithIcon ${countryTabMode === "PURCHASE_ORDERS" ? "active" : ""}`}
-            onClick={() => setCountryTabMode("PURCHASE_ORDERS")}
-          >
-            <ClipboardList className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-            <span>발주 기록</span>
-          </button>
-          <button
-            type="button"
-            className={`tab tabWithIcon ${countryTabMode === "PRODUCT_SEARCH" ? "active" : ""}`}
-            onClick={() => setCountryTabMode("PRODUCT_SEARCH")}
-          >
-            <Search className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-            <span>상품 찾기</span>
-          </button>
-          <button
-            type="button"
-            className={`tab tabWithIcon ${countryTabMode === "SKU_MAPPING" ? "active" : ""}`}
-            onClick={() => setCountryTabMode("SKU_MAPPING")}
-          >
-            <Barcode className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-            <span>상품 관리</span>
-          </button>
-          <button
-            type="button"
-            className={`tab tabWithIcon ${countryTabMode === "SETTINGS" ? "active" : ""}`}
-            onClick={() => setCountryTabMode("SETTINGS")}
-          >
-            <Database className="tabIcon tabIconDataManagement" size={TOP_TAB_ICON_SIZE_PX - 1} strokeWidth={2} aria-hidden />
-            <span>데이터 관리</span>
-          </button>
+          {MAIN_TAB_VISIBILITY.PRODUCT_SEARCH ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "PRODUCT_SEARCH" ? "active" : ""}`}
+              onClick={() => setCountryTabMode("PRODUCT_SEARCH")}
+            >
+              <Search className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>상품 검색</span>
+            </button>
+          ) : null}
+          {MAIN_TAB_VISIBILITY.SKU_MAPPING ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "SKU_MAPPING" ? "active" : ""}`}
+              onClick={() => setCountryTabMode("SKU_MAPPING")}
+            >
+              <Barcode className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>상품 관리</span>
+            </button>
+          ) : null}
+          {MAIN_TAB_VISIBILITY.SHIPMENT ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "SHIPMENT" ? "active" : ""}`}
+              onClick={() => {
+                setCountryTabMode("SHIPMENT");
+                setShipmentSubTab("status");
+              }}
+            >
+              <Truck className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>출고 기록</span>
+            </button>
+          ) : null}
+          {MAIN_TAB_VISIBILITY.PURCHASE_ORDERS ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "PURCHASE_ORDERS" ? "active" : ""}`}
+              onClick={() => {
+                setCountryTabMode("PURCHASE_ORDERS");
+                setPurchaseOrderSubTab("saved");
+              }}
+            >
+              <ClipboardList className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>발주 기록</span>
+            </button>
+          ) : null}
+          {MAIN_TAB_VISIBILITY.SETTINGS ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "SETTINGS" ? "active" : ""}`}
+              onClick={() => setCountryTabMode("SETTINGS")}
+            >
+              <Database className="tabIcon tabIconDataManagement" size={TOP_TAB_ICON_SIZE_PX - 1} strokeWidth={2} aria-hidden />
+              <span>데이터 관리</span>
+            </button>
+          ) : null}
+          {MAIN_TAB_VISIBILITY.KR ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "KR" ? "active" : ""}`}
+              onClick={() => setCountryTabMode("KR")}
+            >
+              <Home className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>한국 재고</span>
+            </button>
+          ) : null}
+          {MAIN_TAB_VISIBILITY.OVERSEAS ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "OVERSEAS" ? "active" : ""}`}
+              onClick={() => {
+                setCountryTabMode("OVERSEAS");
+                setSelectedOverseasCountry((prev) => prev || OVERSEAS_UPLOAD_COUNTRIES[0]);
+              }}
+            >
+              <Globe2 className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>해외 재고</span>
+            </button>
+          ) : null}
+          {MAIN_TAB_VISIBILITY.COMPARE ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "COMPARE" ? "active" : ""}`}
+              onClick={() => setCountryTabMode("COMPARE")}
+            >
+              <GitCompare className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>재고 비교</span>
+            </button>
+          ) : null}
+          {MAIN_TAB_VISIBILITY.ITEM_MASTER ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "ITEM_MASTER" ? "active" : ""}`}
+              onClick={() => setCountryTabMode("ITEM_MASTER")}
+            >
+              <Database className="tabIcon" size={TOP_TAB_ICON_SIZE_PX - 1} strokeWidth={2} aria-hidden />
+              <span>로우데이터</span>
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -5805,31 +6064,89 @@ export default function App() {
           className="countryChips stickyCountryChips dashboardStripWhite isBottomCapsule"
           style={{ top: stickyHeights.topbar }}
         >
-          <div className="tabs overseasCountryTabs" role="tablist" aria-label="출고 보기 방식">
+          <div className="tabs overseasCountryTabs" role="tablist" aria-label="출고 하위 메뉴">
             <button
               type="button"
               role="tab"
-              aria-selected={shipmentViewMode === "status"}
-              className={`tab ${shipmentViewMode === "status" ? "active" : ""}`}
-              onClick={() => setShipmentViewMode("status")}
+              aria-selected={shipmentSubTab === "fileUpload"}
+              className={`tab ${shipmentSubTab === "fileUpload" ? "active" : ""}`}
+              onClick={() => setShipmentSubTab("fileUpload")}
+            >
+              출고 파일 업로드
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={shipmentSubTab === "status"}
+              className={`tab ${shipmentSubTab === "status" ? "active" : ""}`}
+              onClick={() => setShipmentSubTab("status")}
             >
               전체 출고 현황
             </button>
             <button
               type="button"
               role="tab"
-              aria-selected={shipmentViewMode === "chart"}
-              className={`tab ${shipmentViewMode === "chart" ? "active" : ""}`}
-              onClick={() => setShipmentViewMode("chart")}
+              aria-selected={shipmentSubTab === "chart"}
+              className={`tab ${shipmentSubTab === "chart" ? "active" : ""}`}
+              onClick={() => setShipmentSubTab("chart")}
             >
               상품별 출고 현황
             </button>
           </div>
         </div>
       )}
-      {!isInventoryAdminScope && !isCompareScope && (
+      {isShipmentScope && shipmentSubTab === "fileUpload" && (
+        <section className="settingsPane settingsCard purchaseOrderSection shipmentFileUploadSection">
+          <input
+            key={shipmentUploadInputKey}
+            id="shipment-subtab-files-input"
+            type="file"
+            accept=".xlsx,.xls"
+            multiple
+            style={{ display: "none" }}
+            disabled={shipmentLoading}
+            onChange={(e) => void handleShipmentFileSelected(e)}
+          />
+          <div className="poOrderFileUploadCard">
+            <div className="skuUploadStage skuManageSinglePanel poOrderFileUploadStage">
+              <div className="settingsNotice poOrderFileUploadNotice">
+                <p className="poOrderFileUploadLead">
+                  <strong>출고 엑셀 파일을 업로드하면 자동으로 출고 통합이 실행됩니다.</strong>
+                </p>
+                <p className="poOrderFileUploadLead">
+                  <strong>통합이 끝나면 「전체 출고 현황」 탭에서 결과를 확인할 수 있습니다.</strong>
+                </p>
+              </div>
+              <div className="poOrderFileTemplateRow">
+                <button
+                  type="button"
+                  className="poOrderFileTemplateBtn"
+                  disabled={shipmentLoading}
+                  onClick={() => void downloadShipmentTemplateClick()}
+                >
+                  출고 양식 엑셀 템플릿 다운로드
+                </button>
+              </div>
+              <button
+                type="button"
+                className="skuUploadPanel"
+                disabled={shipmentLoading}
+                onClick={() => openShipmentFileInput()}
+              >
+                <span className="skuUploadMain">
+                  <span className="skuUploadBadge">XLSX</span>
+                  <span className="skuUploadButtonLabel">
+                    {shipmentLoading ? "출고 통합 중..." : "출고 파일 업로드"}
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+      {!isInventoryAdminScope && !isCompareScope && !(isShipmentScope && shipmentSubTab === "fileUpload") && (
         <>
-      {!(isShipmentScope && shipmentViewMode === "chart") && (
+      {!isShipmentScope && (
       <section className="kpiRow inventoryKpiRow">
         <div className="kpiCard">
           <div className="kpiCardLayout">
@@ -5921,9 +6238,9 @@ export default function App() {
       )}
 
       <section
-        className={`tableCard${isShipmentScope && shipmentViewMode === "chart" ? " tableCardShipmentChart" : ""}`}
+        className={`tableCard${isShipmentScope && shipmentSubTab === "chart" ? " tableCardShipmentChart" : ""}`}
       >
-        {isShipmentScope && shipmentViewMode === "status" && (
+        {isShipmentScope && shipmentSubTab === "status" && (
           <div
             className="countryChips countryChipsShipment shipmentChannelChipsInTableCard shipmentChannelChipsCompact"
             role="toolbar"
@@ -5949,7 +6266,7 @@ export default function App() {
             })}
           </div>
         )}
-        {isShipmentScope && shipmentViewMode === "chart" ? (
+        {isShipmentScope && shipmentSubTab === "chart" ? (
           <div ref={inventoryFilterBarRef} className="shipmentChartFilterSpacer" aria-hidden />
         ) : (
         <div
@@ -6120,7 +6437,7 @@ export default function App() {
               setInventoryLevelFilter(defaultInventoryLevelFilter);
               if (isShipmentScope) {
                 setShipmentDisplayMonth("");
-                setShipmentViewMode("status");
+                setShipmentSubTab("status");
                 setShipmentChartMonth("");
                 setShipmentChartSearchKeyword("");
                 setShipmentChartSelectedSku("");
@@ -6221,7 +6538,7 @@ export default function App() {
 
         {hasTableData && (
           <>
-            {isShipmentScope && shipmentViewMode === "chart" ? (
+            {isShipmentScope && shipmentSubTab === "chart" ? (
               <div
                 className={`shipmentChartMappingCard shipmentChartPage${
                   shipmentMonthStripYear === 2025 ? " shipmentChartSkuYear2025" : ""
@@ -6582,7 +6899,7 @@ export default function App() {
               <div
                 ref={topScrollRef}
                 className={`tableTopScroll stickyTableTopScroll${
-                  isShipmentScope && shipmentViewMode === "status" ? " shipmentMatrixTopScroll" : ""
+                  isShipmentScope && shipmentSubTab === "status" ? " shipmentMatrixTopScroll" : ""
                 }`}
                 style={{ top: activeFilterStickyTop + activeFilterHeight }}
                 onScroll={() => syncScroll("top")}
@@ -6592,7 +6909,7 @@ export default function App() {
             )}
             <div
               className={`stickyTableHeader${
-                isShipmentScope && shipmentViewMode === "status" ? " shipmentMatrixStickyHead" : ""
+                isShipmentScope && shipmentSubTab === "status" ? " shipmentMatrixStickyHead" : ""
               }`}
               style={{ top: tableHeaderTop }}
             >
@@ -6618,7 +6935,7 @@ export default function App() {
             <div
               ref={tableScrollRef}
               className={`tableWrap ${datePeekFadeStyle ? "withDatePeekFade" : ""}${
-                isShipmentScope && shipmentViewMode === "status" ? " shipmentMatrixBodyWrap" : ""
+                isShipmentScope && shipmentSubTab === "status" ? " shipmentMatrixBodyWrap" : ""
               }`}
               style={datePeekFadeStyle}
               onScroll={() => syncScroll("table")}
@@ -6830,7 +7147,7 @@ export default function App() {
                 : ""}
               {"\n"}- 날짜/레벨/검색 필터를 초기화해보세요.
               {isShipmentScope
-                ? "\n- 출고 탭에서는 엑셀 업로드 후 「출고 통합 실행」을 해 주세요."
+                ? "\n- 출고 탭 「출고 파일 업로드」에서 엑셀을 올리면 자동으로 출고 통합됩니다."
                 : "\n- 먼저 파일 업로드 후 재고 통합 실행을 1회 해주세요."}
             </pre>
           )}
@@ -7415,12 +7732,10 @@ export default function App() {
               <div className="skuUploadStage skuManageSinglePanel poOrderFileUploadStage">
                 <div className="settingsNotice poOrderFileUploadNotice">
                   <p className="poOrderFileUploadLead">
-                    <strong>
-                      엑셀 템플릿을 받아 작성한 뒤 업로드하면 「저장된 발주」에 그대로 저장됩니다.
-                    </strong>
+                    <strong>발주 엑셀 파일을 업로드하면 발주 기록이 저장됩니다.</strong>
                   </p>
-                  <p className="poOrderFileUploadSub">
-                    상품명과 브랜드는 상품번호를 통해 자동 입력되므로 상품코드만 입력하면 됩니다.
+                  <p className="poOrderFileUploadLead">
+                    <strong>저장된 기록은 「저장된 발주」 탭에서 확인할 수 있습니다.</strong>
                   </p>
                 </div>
                 <div className="poOrderFileTemplateRow">
@@ -9094,8 +9409,7 @@ export default function App() {
               <div className="cautionSectionTitle">공통 (재고·출고·파일)</div>
               <ul className="cautionList">
                 <li>
-                  한국·해외 재고 탭에서 파일 업로드 후에는 재고 통합 실행을, 출고 탭에서는 출고 통합 실행을 눌러야 각
-                  화면에 반영됩니다.
+                  출고 탭 「출고 파일 업로드」에서 엑셀을 올리면 자동으로 출고 통합이 실행되고 결과가 화면에 반영됩니다.
                 </li>
                 <li>재고 탭에서는 이미 올린 것과 같은 파일 이름은 다시 올라가지 않습니다.</li>
                 <li>
@@ -9249,8 +9563,7 @@ export default function App() {
                 <li>엑셀 원본 파일은 보관하지 않고, 읽은 매핑 정보만 저장합니다.</li>
                 <li>파일이 어렵다면 수기 작성 탭에서 직접 넣을 수 있습니다.</li>
                 <li>
-                  상품 정보 수정 탭에서 등록된 상품의 상품코드·브랜드·상품명·마케팅 우선순위·구분을 검색 후 행 단위로
-                  고칠 수 있습니다.
+                  상품마스터 탭에서 등록된 상품의 마스터 필드를 검색 후 행 단위로 고칠 수 있습니다.
                 </li>
               </ul>
             </div>
@@ -9262,19 +9575,19 @@ export default function App() {
         <section className="settingsPane settingsCard">
           <div
             className={`settingsToolbar ${
-              fileEntries.length === 0 && shipmentFileEntries.length === 0 ? "settingsToolbarWithNotice" : ""
+              settingsVisibleFileCount === 0 ? "settingsToolbarWithNotice" : ""
             }`}
           >
             <button
               className="ghost settingsDangerButton"
-              disabled={settingsMutating || (fileEntries.length === 0 && shipmentFileEntries.length === 0)}
+              disabled={settingsMutating || settingsVisibleFileCount === 0}
               onClick={clearAllFiles}
             >
               전체 초기화
             </button>
           </div>
 
-          {Object.entries(groupedFileEntries)
+          {settingsVisibleFileGroups
             .sort(([a], [b]) => {
               const ai = SETTINGS_COUNTRY_ORDER.indexOf(a);
               const bi = SETTINGS_COUNTRY_ORDER.indexOf(b);
@@ -9289,7 +9602,7 @@ export default function App() {
                     <span className="settingsFileThumb" aria-hidden="true">
                       <FileText className="settingsFileThumbIcon" size={20} strokeWidth={2} />
                     </span>
-                    <span>{countryLabel(country)}</span>
+                    <span>{settingsFileGroupLabel(country)}</span>
                   </span>
                   <span className="settingsHeaderRight">
                     <span>{formatInt(entries.length)}개 파일</span>
@@ -9321,6 +9634,10 @@ export default function App() {
                       {country === "SHIPMENT" ? (
                         <div className="fileControl fileControlMuted">
                           <span>출고 엑셀(시트·행 단위 일자)</span>
+                        </div>
+                      ) : country === PO_FILE_COUNTRY ? (
+                        <div className="fileControl fileControlMuted">
+                          <span>발주 엑셀(업로드 이력)</span>
                         </div>
                       ) : (
                         <div className="fileControl">
@@ -9374,10 +9691,10 @@ export default function App() {
               <div className="skuManageTabs">
                 <button
                   type="button"
-                  className={`skuManageTab ${skuManageMode === "PRODUCT_EDIT" ? "active" : ""}`}
-                  onClick={() => setSkuManageMode("PRODUCT_EDIT")}
+                  className={`skuManageTab ${skuManageMode === "ITEM_MASTER" ? "active" : ""}`}
+                  onClick={() => setSkuManageMode("ITEM_MASTER")}
                 >
-                  상품 정보 수정
+                  상품마스터
                 </button>
                 <button
                   type="button"
@@ -9396,206 +9713,25 @@ export default function App() {
               </div>
             </div>
             <div
-              className={`skuManageContent ${skuManageMode === "MANUAL" ? "manual-only" : ""}${
-                skuManageMode === "PRODUCT_EDIT" ? " product-edit-mode" : ""
+              className={`skuManageContent ${skuManageMode === "MANUAL" ? " manual-only" : ""}${
+                skuManageMode === "ITEM_MASTER" ? " item-master-mode" : ""
               }`}
             >
-              {skuManageMode === "PRODUCT_EDIT" ? (
-                <div className="skuProductEditPanel skuManageSinglePanel">
-                  <div className="skuProductEditSearchRow">
-                    <div className="searchWrap skuProductEditSearchWrap">
-                      <SearchFieldIcon className="searchIcon" size={16} strokeWidth={2} />
-                      <input
-                        className="searchInput skuProductEditSearchInput"
-                        type="text"
-                        value={productEditKeyword}
-                        onChange={(e) => setProductEditKeyword(e.target.value)}
-                        autoComplete="off"
-                        aria-label="상품 검색"
-                      />
-                    </div>
-                  </div>
-                  {productEditError ? <pre className="error skuProductEditError">{productEditError}</pre> : null}
-                  {productEditLoading ? (
-                    <div className="searchEmptyState">불러오는 중...</div>
-                  ) : !productEditRows.length && productEditKeyword.trim() ? (
-                    <div className="productMappingNoResult">일치하는 상품이 없습니다.</div>
-                  ) : !productEditRows.length ? (
-                    <div className="skuProductEditEmpty">등록된 상품이 없습니다.</div>
-                  ) : (
-                    <div className="skuProductEditTableWrap">
-                      <div className="skuProductEditTableScroll">
-                        <div className="skuProductEditTableHead" aria-hidden="true">
-                          <div className="skuProductEditHeadCell">상품코드</div>
-                          <div className="skuProductEditHeadCell">바코드</div>
-                          <div className="skuProductEditHeadCell">브랜드</div>
-                          <div className="skuProductEditHeadCell">상품명</div>
-                          <div className="skuProductEditHeadCell">마케팅 우선순위</div>
-                          <div className="skuProductEditHeadCell">구분</div>
-                          <div className="skuProductEditHeadCell skuProductEditHeadCellDiscontinued">단종</div>
-                          <div className="skuProductEditHeadCell skuProductEditHeadCellAction">저장</div>
-                        </div>
-                        {productEditRows.map((row, idx) => {
-                          const gid = row.group_id;
-                          const d = productEditDraftById[gid] || productEditDraftFromRow(row);
-                          const saving = productEditSavingId === String(gid);
-                          return (
-                            <div key={gid || `pe-${idx}`} className="skuProductEditRow">
-                              <div className="skuProductEditCell">
-                                <input
-                                  type="text"
-                                  className="skuProductEditInput skuProductEditInputMono"
-                                  value={d.kr_sku ?? ""}
-                                  disabled={settingsMutating || saving || !gid}
-                                  onChange={(e) =>
-                                    setProductEditDraftById((prev) => ({
-                                      ...prev,
-                                      [gid]: { ...d, kr_sku: e.target.value },
-                                    }))
-                                  }
-                                  autoComplete="off"
-                                  aria-label="상품코드"
-                                />
-                              </div>
-                              <div className="skuProductEditCell">
-                                <input
-                                  type="text"
-                                  className="skuProductEditInput skuProductEditInputMono"
-                                  value={d.barcode ?? ""}
-                                  disabled={settingsMutating || saving || !gid}
-                                  onChange={(e) =>
-                                    setProductEditDraftById((prev) => ({
-                                      ...prev,
-                                      [gid]: { ...d, barcode: e.target.value },
-                                    }))
-                                  }
-                                  autoComplete="off"
-                                  aria-label="바코드"
-                                />
-                              </div>
-                              <div className="skuProductEditCell">
-                                <input
-                                  type="text"
-                                  className="skuProductEditInput"
-                                  value={d.brand ?? ""}
-                                  disabled={settingsMutating || saving || !gid}
-                                  onChange={(e) =>
-                                    setProductEditDraftById((prev) => ({
-                                      ...prev,
-                                      [gid]: { ...d, brand: e.target.value },
-                                    }))
-                                  }
-                                  autoComplete="off"
-                                  aria-label="브랜드"
-                                />
-                              </div>
-                              <div className="skuProductEditCell">
-                                <input
-                                  type="text"
-                                  className="skuProductEditInput"
-                                  value={d.kr_name ?? ""}
-                                  disabled={settingsMutating || saving || !gid}
-                                  onChange={(e) =>
-                                    setProductEditDraftById((prev) => ({
-                                      ...prev,
-                                      [gid]: { ...d, kr_name: e.target.value },
-                                    }))
-                                  }
-                                  autoComplete="off"
-                                  aria-label="상품명"
-                                />
-                              </div>
-                              <div className="skuProductEditCell">
-                                <input
-                                  type="text"
-                                  className="skuProductEditInput"
-                                  value={d.mkt_priority ?? ""}
-                                  disabled={settingsMutating || saving || !gid}
-                                  onChange={(e) =>
-                                    setProductEditDraftById((prev) => ({
-                                      ...prev,
-                                      [gid]: { ...d, mkt_priority: e.target.value },
-                                    }))
-                                  }
-                                  autoComplete="off"
-                                  aria-label="마케팅 우선순위"
-                                />
-                              </div>
-                              <div className="skuProductEditCell">
-                                <input
-                                  type="text"
-                                  className={`skuProductEditInput${d.discontinued ? " skuProductEditInputDiscontinuedSegment" : ""}`}
-                                  value={
-                                    d.discontinued
-                                      ? PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY
-                                      : (d.segment ?? "")
-                                  }
-                                  disabled={settingsMutating || saving || !gid || d.discontinued}
-                                  onChange={(e) => {
-                                    const v = e.target.value;
-                                    const impliesDc = productEditSegmentImpliesDiscontinued(v);
-                                    setProductEditDraftById((prev) => {
-                                      const cur = prev[gid] ?? productEditDraftFromRow(row);
-                                      return {
-                                        ...prev,
-                                        [gid]: {
-                                          ...cur,
-                                          discontinued: impliesDc,
-                                          segment: impliesDc
-                                            ? PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY
-                                            : v,
-                                        },
-                                      };
-                                    });
-                                  }}
-                                  autoComplete="off"
-                                  aria-label="구분"
-                                />
-                              </div>
-                              <div className="skuProductEditCell skuProductEditCellDiscontinued">
-                                <input
-                                  type="checkbox"
-                                  className="skuProductEditDiscontinuedCheck"
-                                  checked={Boolean(d.discontinued)}
-                                  disabled={settingsMutating || saving || !gid}
-                                  onChange={(e) => {
-                                    const on = e.target.checked;
-                                    setProductEditDraftById((prev) => ({
-                                      ...prev,
-                                      [gid]: {
-                                        ...d,
-                                        discontinued: on,
-                                        segment: on ? PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY : "",
-                                      },
-                                    }));
-                                  }}
-                                  aria-label="단종"
-                                />
-                              </div>
-                              <div className="skuProductEditCell skuProductEditCellAction">
-                                <button
-                                  type="button"
-                                  className="primary skuProductEditSaveBtn"
-                                  disabled={settingsMutating || saving || !gid}
-                                  onClick={() => void saveProductMappingRow(gid)}
-                                >
-                                  {saving ? "…" : "저장"}
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
+              {skuManageMode === "ITEM_MASTER" ? (
+                <ItemMasterTab
+                  embedded
+                  active={isItemMasterScope}
+                  settingsMutating={settingsMutating}
+                  setSettingsMutating={setSettingsMutating}
+                />
               ) : skuManageMode === "UPLOAD" ? (
                 <div className="skuUploadStage skuManageSinglePanel poOrderFileUploadStage">
                   <div className="settingsNotice poOrderFileUploadNotice">
                     <p className="poOrderFileUploadLead">
-                      <strong>
-                        한국·미국·대만·홍콩용 엑셀 템플릿을 받아 작성한 뒤, 파일들을 한꺼번에 업로드할 수 있습니다.
-                      </strong>
+                      <strong>엑셀 템플릿을 받아 작성한 뒤, 파일들을 한꺼번에 업로드할 수 있습니다.</strong>
+                    </p>
+                    <p className="poOrderFileUploadLead">
+                      <strong>업로드 된 파일 내용은 새로운 상품 정보로 저장됩니다.</strong>
                     </p>
                   </div>
                   <div className="poOrderFileTemplateRow">
@@ -9857,7 +9993,7 @@ export default function App() {
                   <article key={row._id} className="productMappingItemCard">
                     <div
                       className="productMappingAlignGrid"
-                      title={`${row.brand || "–"} | ${row.kr_name || "상품명 없음"}${row.mkt_priority ? ` | 마케팅등급 ${row.mkt_priority}` : ""}${row.segment ? ` | 구분 ${row.segment}` : ""}${row.barcode ? ` | 바코드 ${row.barcode}` : ""}`}
+                      title={`${row.brand || "–"} | ${row.kr_name || "상품명 없음"}${row.barcode ? ` | 바코드 ${row.barcode}` : ""}`}
                     >
                       <div className="productMappingGridHeadBand">
                         <div className="productMappingItemBrandPart productMappingGridHeadBrand">
@@ -9878,16 +10014,6 @@ export default function App() {
                             <span>단종</span>
                           </div>
                         ) : null}
-                      </div>
-                      <div className="productMappingItemMetaBand">
-                        <span>
-                          <span className="productMappingMetaLabel">마케팅 등급</span>
-                          {String(row.mkt_priority || "").trim() || "–"}
-                        </span>
-                        <span>
-                          <span className="productMappingMetaLabel">구분</span>
-                          {String(row.segment || "").trim() || "–"}
-                        </span>
                       </div>
                       {row._countries.map((country, countryIdx) => (
                         <Fragment key={`${row._id}-${country.code}`}>

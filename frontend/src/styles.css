@@ -3,6 +3,13 @@
   font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", Arial, sans-serif;
 }
 
+:root {
+  --ui-outline: #b8c4d3;
+  --ui-outline-focus: #94a3b8;
+  --ui-outline-inner: #c5cdd8;
+  --ui-divider: #d5dde8;
+}
+
 body {
   margin: 0;
   background: #ffffff;
@@ -78,6 +85,49 @@ body {
   padding-right: min(10rem, 32vw);
   max-width: 100%;
   box-sizing: border-box;
+}
+
+.heroTitleDash {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  line-height: 1.15;
+}
+
+.heroTitleMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #ecfdf5 0%, #dbeafe 100%);
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  box-shadow: 0 2px 10px rgba(29, 78, 216, 0.08);
+}
+
+.heroTitleText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.heroTitleBrand {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.heroTitleSub {
+  font-size: 21px;
+  font-weight: 700;
+  color: #36454f;
+  letter-spacing: -0.02em;
 }
 
 @media (min-width: 700px) {
@@ -418,7 +468,7 @@ body {
   overflow-x: hidden;
   padding: 0;
   scrollbar-gutter: stable;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
   border-radius: 8px;
   background: #ffffff;
   box-sizing: border-box;
@@ -434,7 +484,7 @@ body {
   width: 100%;
   height: 46px;
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
   padding-left: 40px;
   font-size: 14px;
   box-shadow: none;
@@ -570,7 +620,7 @@ body {
   gap: 12px;
   padding-bottom: 18px;
   margin-bottom: 4px;
-  border-bottom: 1px solid #eef2f7;
+  border-bottom: 1px solid var(--ui-divider);
 }
 
 /* 상품 검색 블록: 검색 입력과 아래 구분선 사이 여백(리스트 시작과 가깝게) */
@@ -610,7 +660,7 @@ body {
   width: 100%;
   height: 40px;
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
   padding-left: 36px;
   font-size: 13px;
   box-shadow: none;
@@ -626,7 +676,7 @@ body {
 .shipmentChartSidebarSkuBlock {
   padding-bottom: 20px;
   margin-bottom: 4px;
-  border-bottom: 1px solid #eef2f7;
+  border-bottom: 1px solid var(--ui-divider);
   max-height: min(280px, 42vh);
   overflow-x: hidden;
   overflow-y: auto;
@@ -864,7 +914,7 @@ body {
 
 .shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable th,
 .shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable td {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
   vertical-align: middle;
   box-sizing: border-box;
 }
@@ -926,7 +976,7 @@ body {
 }
 
 .shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable tbody tr:last-child td {
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--ui-outline-inner);
 }
 
 /*
@@ -941,7 +991,7 @@ body {
 /* 판매처·창고 분해 표: 합계 열만 동일 강조(판매·창고이동 열은 일반 격자 유지) */
 .tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) th,
 .tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) td {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
 }
 
 .tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) thead th {
@@ -982,7 +1032,7 @@ body {
 }
 
 .tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) tbody tr:last-child td {
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--ui-outline-inner);
 }
 
 .shipmentChartInsightPanel {
@@ -1102,7 +1152,7 @@ body {
   margin: 0 0 10px;
   min-height: 34px;
   padding: 6px 14px;
-  border: 1px solid #e3e8f0;
+  border: 1px solid var(--ui-outline);
   border-radius: 999px;
   background: #ffffff;
   color: #5d6574;
@@ -1305,7 +1355,7 @@ body {
   gap: 22px;
   margin-bottom: 16px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--ui-outline-inner);
 }
 
 .shipmentChartBlock {
@@ -1382,7 +1432,7 @@ body {
 
 .shipmentChannelDayMatrix th,
 .shipmentChannelDayMatrix td {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
   padding: 9px 7px;
   text-align: right;
   white-space: nowrap;
@@ -1435,7 +1485,7 @@ body {
   width: 112px;
   padding: 9px 8px;
   box-shadow: 4px 0 12px -4px rgba(15, 23, 42, 0.14);
-  border-right: 1px solid #e2e8f0;
+  border-right: 1px solid var(--ui-outline-inner);
   background-clip: padding-box;
 }
 
@@ -2025,7 +2075,7 @@ body {
   height: auto;
   min-height: 32px;
   padding: 5px 12px;
-  border: 1px solid #e3e8f0;
+  border: 1px solid var(--ui-outline);
   border-radius: 999px;
   background: #ffffff;
   color: #5d6574;
@@ -2036,7 +2086,7 @@ body {
 
 .chip:hover:not(:disabled):not(.chipActive) {
   background: #f8fafc;
-  border-color: #d1d9e2;
+  border-color: var(--ui-outline);
   color: #475569;
 }
 
@@ -2305,8 +2355,9 @@ body {
   margin-top: 6px;
 }
 
-.skuManageContent.product-edit-mode {
-  margin-top: 6px;
+.skuManageContent.product-edit-mode,
+.skuManageContent.item-master-mode {
+  margin-top: 20px;
 }
 
 /* SKU 관리 — 상품 정보 수정 서브탭 */
@@ -2344,7 +2395,7 @@ body {
 }
 
 .skuProductEditTableWrap {
-  border: 1px solid #e3e8f0;
+  border: 1px solid var(--ui-outline);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -2377,7 +2428,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 2;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--ui-outline-inner);
 }
 
 .skuProductEditHeadCell {
@@ -2414,7 +2465,7 @@ body {
 }
 
 .skuProductEditRow {
-  border-top: 1px solid #eef2f7;
+  border-top: 1px solid var(--ui-divider);
   font-size: 15px;
   color: #334155;
 }
@@ -2425,6 +2476,267 @@ body {
 
 .skuProductEditCell {
   min-width: 0;
+}
+
+.itemMasterToolbarRow {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 18px;
+  padding: 6px 2px 0;
+  flex-wrap: wrap;
+}
+
+.itemMasterTemplateBtn,
+.itemMasterUploadBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.itemMasterTemplateBtn {
+  border-color: #86efac;
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.itemMasterTemplateBtn:hover:not(:disabled) {
+  background: #d1fae5;
+  border-color: #4ade80;
+  color: #14532d;
+}
+
+.itemMasterToolbarSearch {
+  flex: 1 1 280px;
+  width: auto;
+  max-width: 440px;
+  min-width: 240px;
+  margin: 0;
+}
+
+.itemMasterToolbarSearch .searchInput {
+  min-width: 0;
+  width: 100%;
+  border-color: var(--ui-outline);
+}
+
+.itemMasterToolbarSearch .searchInput:focus {
+  border-color: var(--ui-outline-focus);
+  outline-color: var(--ui-outline-focus);
+}
+
+.itemMasterToolbarEditBtn {
+  margin-left: auto;
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 7px 18px;
+  border: 1px solid #dc2626;
+  background: #dc2626;
+  color: #fff;
+  font-weight: 600;
+}
+
+.itemMasterToolbarEditBtn:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+}
+
+.itemMasterToolbarEditBtnActive {
+  background: #991b1b;
+  border-color: #991b1b;
+  color: #fff;
+}
+
+.itemMasterScrollPair {
+  display: flex;
+  flex-direction: column;
+}
+
+.itemMasterTableInner {
+  width: max-content;
+  min-width: max(100%, 1180px);
+}
+
+.itemMasterTopScroll.tableTopScroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.itemMasterTopScroll {
+  margin-bottom: 0;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  height: auto;
+  min-height: 18px;
+  flex-shrink: 0;
+}
+
+.itemMasterTopScrollHidden {
+  visibility: hidden;
+  min-height: 0;
+  height: 0;
+  border: none;
+  margin: 0;
+  overflow: hidden;
+}
+
+.itemMasterTableWrap .skuProductEditTableScroll.itemMasterTableScroll {
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: clip;
+  scrollbar-gutter: auto;
+}
+
+.itemMasterTableScroll {
+  border-radius: 8px;
+  overflow-x: auto;
+  overflow-y: clip;
+  scrollbar-width: thin;
+  scrollbar-gutter: auto;
+}
+
+.itemMasterHasTopScroll .itemMasterTableScroll,
+.itemMasterShowTopScrollPair .itemMasterTableScroll {
+  border-radius: 0 0 8px 8px;
+}
+
+.itemMasterShowTopScrollPair .itemMasterTableScroll {
+  overflow-x: hidden;
+}
+
+.itemMasterTableScroll::-webkit-scrollbar {
+  height: 12px;
+  width: 12px;
+}
+
+.itemMasterTableScroll::-webkit-scrollbar-thumb {
+  background: #c5cdd8;
+  border-radius: 8px;
+}
+
+.itemMasterTableScroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.itemMasterTableWrap .skuProductEditTableHead,
+.itemMasterTableWrap .skuProductEditRow {
+  gap: 0;
+  padding: 0;
+  align-items: stretch;
+}
+
+.itemMasterTableWrap .skuProductEditTableHead {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2937;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #e2e8f0;
+}
+
+.itemMasterTableWrap .skuProductEditRow {
+  font-size: 13px;
+  line-height: 1.4;
+  color: #111827;
+  background: #ffffff;
+}
+
+.itemMasterTableWrap .skuProductEditRow:nth-child(even) {
+  background: #f9fafb;
+}
+
+.itemMasterTableHead,
+.itemMasterTableRow {
+  grid-template-columns:
+    minmax(82px, 1.05fr)
+    minmax(52px, 0.55fr)
+    minmax(32px, 40px)
+    minmax(56px, 0.58fr)
+    minmax(220px, 3fr)
+    minmax(50px, 0.5fr)
+    minmax(50px, 0.5fr)
+    minmax(50px, 0.5fr)
+    minmax(50px, 0.5fr)
+    minmax(62px, 0.62fr)
+    minmax(46px, 0.48fr)
+    minmax(46px, 0.48fr)
+    minmax(46px, 0.48fr)
+    minmax(46px, 0.48fr);
+  min-width: 1180px;
+}
+
+.itemMasterTableWrap .itemMasterHeadCell,
+.itemMasterTableWrap .itemMasterCell {
+  border-right: 1px solid var(--ui-outline-inner);
+  border-bottom: 1px solid var(--ui-outline-inner);
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.itemMasterTableWrap .itemMasterTableHead .itemMasterHeadCell:first-child,
+.itemMasterTableWrap .itemMasterTableRow .itemMasterCell:first-child {
+  border-left: 1px solid var(--ui-outline-inner);
+}
+
+.itemMasterTableWrap .itemMasterTableHead {
+  border-top: 1px solid var(--ui-outline-inner);
+}
+
+.itemMasterHeadCell {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  min-height: 32px;
+  background: #e2e8f0;
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.itemMasterCell {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0;
+}
+
+.itemMasterCellReadonly {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemMasterCellReadonlyDiscontinued {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+
+.itemMasterTableWrap .skuProductEditInput {
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 0;
+  border: 0;
+  min-height: 34px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.itemMasterTableWrap .skuProductEditInput:focus {
+  outline: 2px solid #93c5fd;
+  outline-offset: -2px;
+  z-index: 1;
+  position: relative;
 }
 
 .skuProductEditCellAction {
@@ -2438,7 +2750,7 @@ body {
   font: inherit;
   font-size: 15px;
   padding: 7px 10px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ui-outline-inner);
   border-radius: 6px;
   background: #fff;
   color: #111827;
@@ -2516,7 +2828,7 @@ body {
 }
 
 .skuDiscontinuedTableWrap {
-  border: 1px solid #e3e8f0;
+  border: 1px solid var(--ui-outline);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -2542,7 +2854,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 2;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--ui-outline-inner);
   align-items: center;
 }
 
@@ -2578,7 +2890,7 @@ body {
   gap: 10px 12px;
   padding: 12px 14px;
   align-items: center;
-  border-top: 1px solid #eef2f7;
+  border-top: 1px solid var(--ui-divider);
   font-size: 15px;
   color: #334155;
 }
@@ -2696,12 +3008,26 @@ body {
   color: inherit;
 }
 
-.skuManageCard .poOrderFileTemplateBtn {
+.skuManageCard .poOrderFileTemplateBtn:not(.itemMasterTemplateBtn) {
   color: #5d6574;
 }
 
-.skuManageCard .poOrderFileTemplateBtn:hover:not(:disabled) {
+.skuManageCard .poOrderFileTemplateBtn:not(.itemMasterTemplateBtn):hover:not(:disabled) {
   color: #5d6574;
+}
+
+.skuManageCard .poOrderFileTemplateBtn.itemMasterTemplateBtn,
+.skuManageCard .poOrderFileTemplateBtn.itemMasterUploadBtn {
+  border-color: #86efac;
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.skuManageCard .poOrderFileTemplateBtn.itemMasterTemplateBtn:hover:not(:disabled),
+.skuManageCard .poOrderFileTemplateBtn.itemMasterUploadBtn:hover:not(:disabled) {
+  background: #d1fae5;
+  border-color: #4ade80;
+  color: #14532d;
 }
 
 .skuManageCard .skuUploadStage.poOrderFileUploadStage .skuUploadPanel {
@@ -2712,7 +3038,7 @@ body {
 .skuUploadPanel {
   width: min(100%, 440px);
   margin: 0 auto;
-  border: 1px dashed #d8dee8;
+  border: 1px dashed var(--ui-outline-inner);
   border-radius: 14px;
   background: #f8f9fb;
   display: flex;
@@ -2728,7 +3054,7 @@ body {
 
 .skuUploadPanel:hover:not(:disabled) {
   background: #f4f6f8;
-  border-color: #cfd7e2;
+  border-color: var(--ui-outline);
 }
 
 .skuUploadMain {
@@ -2923,7 +3249,7 @@ body {
 
 .skuManualKrFieldHead {
   background: #f1f5f9;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--ui-outline-inner);
   padding: 10px 14px;
   font-size: 13px;
   font-weight: 700;
@@ -2952,7 +3278,7 @@ body {
   font-size: 13px;
   line-height: 1.35;
   text-align: center;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
   border-radius: 8px;
   background: #fff;
   color: #0f172a;
@@ -3013,7 +3339,7 @@ body {
   font-size: 13px;
   line-height: 1.35;
   text-align: center;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
   border-radius: 8px;
   background: #fff;
   color: #0f172a;
@@ -3063,7 +3389,7 @@ body {
   color: #0f172a;
   background: #fff;
   /* filterBar 전역 button(#e3e8f0)과 구분 없이 수기 입력칸과 동일 */
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
   border-radius: 10px;
   cursor: pointer;
   outline: none;
@@ -3121,7 +3447,7 @@ body {
   flex-direction: column;
   max-height: min(320px, 55vh);
   background: #fff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
   overflow: hidden;
@@ -3233,7 +3559,7 @@ body {
   font-weight: 600;
   color: #475569;
   background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
   border-radius: 8px;
   cursor: pointer;
   white-space: nowrap;
@@ -3258,7 +3584,7 @@ body {
   font-size: 13px;
   line-height: 1.35;
   text-align: center;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
   border-radius: 10px;
 }
 
@@ -3291,7 +3617,7 @@ body {
   font-size: 13px;
   line-height: 1.35;
   text-align: center;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
   border-radius: 10px;
   background: #fff;
   color: #0f172a;
@@ -3314,7 +3640,7 @@ body {
 
 .skuManualTableHead {
   background: #f1f5f9;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--ui-outline-inner);
   font-size: 13px;
   font-weight: 700;
   color: #566274;
@@ -3449,7 +3775,7 @@ body {
 }
 
 .ghost.settingsDangerButton {
-  border: 1px solid #e3e8f0;
+  border: 1px solid var(--ui-outline);
   color: #3f4754;
   background: #fff;
   height: 32px;
@@ -3463,7 +3789,7 @@ body {
 }
 
 .ghost.settingsCountryResetBtn {
-  border: 1px solid #e3e8f0;
+  border: 1px solid var(--ui-outline);
   color: #3f4754;
   background: #fff;
 }
@@ -3881,7 +4207,7 @@ select,
 button {
   height: 36px;
   border-radius: 8px;
-  border: 1px solid #e3e8f0;
+  border: 1px solid var(--ui-outline);
   padding: 0 10px;
   background: #fff;
   font-size: 13px;
@@ -3899,10 +4225,10 @@ button:disabled {
 input:focus,
 select:focus,
 textarea:focus {
-  outline: 1px solid #cbd5e1;
+  outline: 1px solid var(--ui-outline-focus);
   outline-offset: 0;
-  border-color: #cbd5e1;
-  box-shadow: 0 0 0 2px rgba(203, 213, 225, 0.2);
+  border-color: var(--ui-outline-focus);
+  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.18);
 }
 
 .searchWrap {
@@ -4197,7 +4523,7 @@ th {
 .inventoryTable.overseasTable thead th,
 .inventoryTable.overseasTable tbody td {
   border: none;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--ui-outline-inner);
 }
 
 .inventoryTable.krTable:not(.shipmentMatrixTable) thead th,
@@ -4208,7 +4534,7 @@ th {
 .inventoryTable.overseasTable thead th.krCompareCol,
 .inventoryTable.overseasTable tbody td.krCompareCol {
   border: none;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--ui-outline-inner);
 }
 
 .inventoryTable.overseasTable thead th.krCompareCol {
@@ -4218,7 +4544,7 @@ th {
 .compareTable thead th,
 .compareTable tbody td {
   border: none;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--ui-outline-inner);
 }
 
 .compareTable thead th {
@@ -4228,7 +4554,7 @@ th {
 .compareTable thead th.krCompareCol,
 .compareTable tbody td.krCompareCol {
   border: none;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--ui-outline-inner);
 }
 
 .compareTable thead th.krCompareCol {
@@ -4538,7 +4864,7 @@ th {
 /* 출고 매트릭스: 모든 셀 동일한 연한 격자(일자·월 열과 브랜드~구분 동일 톤) */
 .inventoryTable.krTable.shipmentMatrixTable thead th,
 .inventoryTable.krTable.shipmentMatrixTable tbody td {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
 }
 
 .inventoryTable.krTable.shipmentMatrixTable thead th {
@@ -4552,13 +4878,13 @@ th {
 .inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipCode,
 .inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipBrand,
 .inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipName {
-  box-shadow: inset -1px 0 0 #e2e8f0;
+  box-shadow: inset -1px 0 0 var(--ui-outline-inner);
   border-right: none;
 }
 
 .inventoryTable.krTable.shipmentMatrixTable thead th.stickyColShipMkt,
 .inventoryTable.krTable.shipmentMatrixTable tbody td.stickyColShipMkt {
-  box-shadow: inset -1px 0 0 #e2e8f0;
+  box-shadow: inset -1px 0 0 var(--ui-outline-inner);
   border-right: none;
 }
 
@@ -4875,7 +5201,7 @@ th {
   width: 22px;
   height: 22px;
   border-radius: 999px;
-  border: 1px solid #e3e8f0;
+  border: 1px solid var(--ui-outline);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5317,6 +5643,20 @@ th {
     padding-right: 0;
   }
 
+  .heroTitleMark {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+  }
+
+  .heroTitleSub {
+    font-size: 18px;
+  }
+
+  .heroTitleBrand {
+    font-size: 15px;
+  }
+
   .heroHeadDash .heroHeadAccount {
     position: static;
     margin: 6px 0 0;
@@ -5532,6 +5872,10 @@ th {
   box-shadow: none;
 }
 
+.purchaseOrderSection:not(.shipmentFileUploadSection) .poOrderFileUploadCard {
+  padding-top: 22px;
+}
+
 /* 발주·파일 업로드: 안내·보조 문구·템플릿 버튼 = 비활성 탭 회색 #5d6574 */
 .purchaseOrderSection .poOrderFileUploadCard .poOrderFileUploadLead {
   color: #5d6574;
@@ -5570,6 +5914,11 @@ th {
   margin-bottom: 18px;
 }
 
+/* 출고 파일 업로드: 발주 파일 업로드와 본문 시작 위치 맞춤 (발주 poSubTabsBar margin-bottom 28px 상당) */
+.purchaseOrderSection.shipmentFileUploadSection .poOrderFileUploadCard {
+  padding-top: 28px;
+}
+
 .skuUploadStage.poOrderFileUploadStage {
   justify-content: flex-start;
   min-height: 0;
@@ -5588,6 +5937,10 @@ th {
   font-size: 14px;
   line-height: 1.35;
   color: #374151;
+}
+
+.poOrderFileUploadLead + .poOrderFileUploadLead {
+  margin-top: 10px;
 }
 
 .poOrderFileUploadSub {
@@ -5616,7 +5969,7 @@ th {
   min-height: 0;
   width: auto;
   max-width: 100%;
-  border: 1px solid #d1d9e2;
+  border: 1px solid var(--ui-outline);
   border-radius: 8px;
   background: #ffffff;
   color: #374151;
@@ -5681,7 +6034,7 @@ th {
 .poFormCard {
   margin-bottom: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #eef2f7;
+  border-bottom: 1px solid var(--ui-divider);
 }
 
 .poFormCardHeadRow {
@@ -5867,7 +6220,7 @@ th {
   font-weight: 700;
   font-size: 13px;
   border-bottom: 2px solid #e5e7eb;
-  border-right: 1px solid #eef2f7;
+  border-right: 1px solid var(--ui-divider);
   box-sizing: border-box;
   padding: 8px 10px;
   min-height: 40px;
@@ -5923,7 +6276,7 @@ th {
 /* ERP PO 열(입고 식별 시작) — 헤더 세로 구분과 동일(1px #eef2f7) */
 .poSavedSpreadsheet thead th:nth-child(11),
 .poSavedSpreadsheet tbody td:nth-child(11) {
-  border-left: 1px solid #eef2f7;
+  border-left: 1px solid var(--ui-divider);
 }
 
 .poSavedSpreadsheet .poSavedSsThAction {
@@ -5943,7 +6296,7 @@ th {
   font-size: 13px;
   font-weight: 580;
   color: #475366;
-  border-bottom: 1px solid #eef2f7;
+  border-bottom: 1px solid var(--ui-divider);
   border-right: 1px solid #f1f5f9;
   box-sizing: border-box;
   padding: 8px 10px;
@@ -6072,7 +6425,7 @@ th {
   min-height: 22px;
   line-height: 1.2;
   border-radius: 6px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-outline-inner);
   background: #f8fafc;
   color: #475569;
   cursor: pointer;
@@ -6438,7 +6791,7 @@ th {
   line-height: 1.5;
   padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid #e3e8f0;
+  border: 1px solid var(--ui-outline);
   font-family: inherit;
 }
 
@@ -6565,7 +6918,7 @@ th {
   font-size: 14px;
   padding: 8px 10px;
   border-radius: 8px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ui-outline-inner);
   background: #fff;
   font-family: inherit;
 }
@@ -7006,7 +7359,7 @@ th {
   max-width: 100%;
   min-height: 38px;
   padding: 6px 10px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ui-outline-inner);
   border-radius: 8px;
   font-size: 13px;
   font-weight: 700;
@@ -7210,7 +7563,7 @@ th {
   font-size: 1.08rem;
   border-radius: 10px;
   padding: 0 16px;
-  border: 1px solid #e3e8f0;
+  border: 1px solid var(--ui-outline);
 }
 
 .authGateHeroText {
@@ -7278,7 +7631,7 @@ th {
   min-width: 48px;
   height: 52px;
   padding: 0;
-  border: 1px solid #e3e8f0;
+  border: 1px solid var(--ui-outline);
   border-radius: 10px;
   background: #f8fafc;
   color: #64748b;
@@ -7947,7 +8300,7 @@ th {
   line-height: 1.5;
   color: #5d6574;
   background: #f8fafc;
-  border: 1px dashed #d1d9e3;
+  border: 1px dashed var(--ui-outline-inner);
   border-radius: 10px;
 }
 
@@ -8038,7 +8391,7 @@ th {
   font-size: 15px;
   border-radius: 8px;
   padding: 0 12px;
-  border: 1px solid #e3e8f0;
+  border: 1px solid var(--ui-outline);
   box-sizing: border-box;
 }
 
