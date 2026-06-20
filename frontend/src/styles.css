@@ -8,6 +8,10 @@
   --ui-outline-focus: #94a3b8;
   --ui-outline-inner: #c5cdd8;
   --ui-divider: #d5dde8;
+  /* 탭·칩·라벨·표 헤더 등 서비스 공통 보조 텍스트 */
+  --ui-text-secondary: #475569;
+  /* 스프레드 컬럼 헤더 배경(상품마스터·출고·발주 공통) */
+  --ui-spreadsheet-head-bg: #dde4ec;
   /* 가로 스크롤바 — 전역 공통 */
   --ui-scrollbar-h-size: 12px;
   --ui-scrollbar-h-strip-bg: #f3f6fa;
@@ -158,7 +162,7 @@ body {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--ui-text-secondary);
 }
 
 .heroTitleSub {
@@ -304,7 +308,7 @@ body {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   font-weight: 600;
   font-size: 14px;
   padding: 0 8px;
@@ -549,7 +553,7 @@ body {
   flex-shrink: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   line-height: 1.35;
 }
 
@@ -565,7 +569,7 @@ body {
 .shipmentChartToolbarIdentity .shipmentChartProductName {
   font-size: 16px;
   font-weight: 500;
-  color: #566274;
+  color: var(--ui-text-secondary);
   line-height: 1.35;
   min-width: 0;
   word-break: keep-all;
@@ -631,7 +635,7 @@ body {
   width: 100%;
   font-size: 14px;
   font-weight: 600;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   line-height: 1.35;
   word-break: break-word;
 }
@@ -641,7 +645,7 @@ body {
   width: 100%;
   font-size: 13px;
   font-weight: 500;
-  color: #566274;
+  color: var(--ui-text-secondary);
   line-height: 1.45;
   word-break: keep-all;
   overflow-wrap: anywhere;
@@ -676,7 +680,7 @@ body {
 .shipmentChartSidebarTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #475569;
+  color: var(--ui-text-secondary);
   text-transform: none;
   letter-spacing: normal;
   line-height: 1.25;
@@ -708,7 +712,7 @@ body {
   left: 12px;
   font-size: 14px;
   opacity: 0.45;
-  color: #566274;
+  color: var(--ui-text-secondary);
 }
 
 .shipmentChartSidebarSkuBlock {
@@ -769,7 +773,7 @@ body {
   flex-shrink: 0;
   font-size: 13px;
   font-weight: 400;
-  color: #475569;
+  color: var(--ui-text-secondary);
   line-height: 1.45;
   word-break: break-word;
   overflow-wrap: anywhere;
@@ -782,7 +786,7 @@ body {
   flex-shrink: 0;
   font-size: 12px;
   font-weight: 400;
-  color: #566274;
+  color: var(--ui-text-secondary);
   line-height: 1.5;
   word-break: keep-all;
   overflow-wrap: anywhere;
@@ -793,7 +797,7 @@ body {
 }
 
 .shipmentChartSkuPickItem.active .shipmentChartSkuPickName {
-  color: #475569;
+  color: var(--ui-text-secondary);
 }
 
 .shipmentChartSidebarNoHit {
@@ -826,7 +830,7 @@ body {
   border-radius: 8px;
   border: none;
   background: transparent;
-  color: #475569;
+  color: var(--ui-text-secondary);
   font-size: 14px;
   font-weight: 600;
   text-align: left;
@@ -895,7 +899,7 @@ body {
   text-align: center;
   padding: 32px 20px;
   font-size: 14px;
-  color: #566274;
+  color: var(--ui-text-secondary);
   line-height: 1.55;
 }
 
@@ -928,7 +932,7 @@ body {
   margin: 0 0 12px;
   font-size: 13px;
   line-height: 1.45;
-  color: #64748b;
+  color: var(--ui-text-secondary);
 }
 
 .shipmentChartInsightPanel .shipmentChartMonthOnlyChannelTable {
@@ -965,7 +969,7 @@ body {
   background-color: #f8fafd;
   font-weight: 700;
   font-size: 13px;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   text-align: left;
 }
 
@@ -975,10 +979,10 @@ body {
   max-width: 112px;
   padding: 9px 8px;
   background-color: #ffffff;
-  font-weight: 700;
+  font-weight: 450;
   font-size: 13px;
   line-height: 1.4;
-  color: #5d6574;
+  color: #111827;
   text-align: left;
   word-break: keep-all;
   overflow-wrap: break-word;
@@ -992,9 +996,7 @@ body {
   padding: 9px 7px;
   font-size: 13px;
   line-height: 1.2;
-  font-weight: 700;
   background-color: #eef2f7;
-  color: #5d6574;
   box-shadow:
     inset 1px 0 0 #94a3b8,
     inset -1px 0 0 #94a3b8,
@@ -1003,12 +1005,15 @@ body {
 }
 
 .shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable thead th.shipmentChartInsightNumCol {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
+  font-weight: 700;
   text-align: center;
   white-space: normal;
 }
 
 .shipmentChartInsightTable.shipmentChartMonthOnlyChannelTable tbody td.shipmentChartInsightNumCol {
+  color: #111827;
+  font-weight: 450;
   text-align: right;
   white-space: normal;
 }
@@ -1036,7 +1041,7 @@ body {
   border-bottom: 1px solid #cbd5e1;
   background-color: #f8fafd;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) thead th:first-child {
@@ -1055,13 +1060,14 @@ body {
 
 .tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) tbody td:first-child {
   background-color: #ffffff;
-  color: #5d6574;
+  color: #111827;
+  font-weight: 450;
 }
 
 .tableCardShipmentChart .shipmentChartSkuYear2025 .shipmentChartInsightTable:not(.shipmentChartMonthOnlyChannelTable) tbody td:last-child {
   background-color: #eef2f7;
-  font-weight: 700;
-  color: #5d6574;
+  font-weight: 450;
+  color: #111827;
   box-shadow:
     inset 1px 0 0 #94a3b8,
     inset -1px 0 0 #94a3b8,
@@ -1107,7 +1113,7 @@ body {
   padding: 8px 12px;
   font-size: 12px;
   line-height: 1.45;
-  color: #334155;
+  color: var(--ui-text-secondary);
   background: #fff;
   border-radius: 8px;
   border: 1px solid #e8edf3;
@@ -1119,7 +1125,7 @@ body {
 
 .shipmentChartMetaInlineKey {
   font-weight: 600;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   margin-right: 6px;
 }
 
@@ -1153,7 +1159,7 @@ body {
   margin: 0 0 6px;
   font-size: 13px;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -1161,7 +1167,7 @@ body {
 .shipmentChartChartsBlockHint {
   margin: 0 0 14px;
   font-size: 11px;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   line-height: 1.4;
 }
 
@@ -1193,7 +1199,7 @@ body {
   border: 1px solid var(--ui-outline);
   border-radius: 999px;
   background: #ffffff;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   font-weight: 600;
   font-size: 14px;
   line-height: 1.35;
@@ -1249,26 +1255,26 @@ body {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   margin-bottom: 4px;
 }
 
 .shipmentChartInsightStatValue {
   font-size: 18px;
   font-weight: 700;
-  color: #566274;
+  color: var(--ui-text-secondary);
 }
 
 .shipmentChartInsightStatMuted {
   font-size: 13px;
   font-weight: 500;
-  color: #475569;
+  color: var(--ui-text-secondary);
   word-break: break-all;
 }
 
 .shipmentChartInsightMeta {
   font-size: 13px;
-  color: #334155;
+  color: var(--ui-text-secondary);
   line-height: 1.5;
   margin-bottom: 14px;
   padding: 10px 12px;
@@ -1290,7 +1296,7 @@ body {
   min-width: 5.5rem;
   margin-right: 8px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--ui-text-secondary);
 }
 
 .shipmentChartInsightSection {
@@ -1301,7 +1307,7 @@ body {
   margin: 0 0 8px;
   font-size: 13px;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .shipmentChartInsightTableWrap {
@@ -1333,11 +1339,12 @@ body {
 .shipmentChartInsightTable th {
   background: #f1f5f9;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .shipmentChartInsightTable tbody td {
-  color: #5d6574;
+  color: #111827;
+  font-weight: 450;
 }
 
 .shipmentChartInsightTable tbody tr:last-child td {
@@ -1373,18 +1380,18 @@ body {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #334155;
+  color: var(--ui-text-secondary);
 }
 
 .shipmentChartInsightMonthList li span:last-child {
   font-weight: 600;
-  color: #566274;
+  color: var(--ui-text-secondary);
 }
 
 .shipmentChartInsightHint {
   margin: 8px 0 0;
   font-size: 12px;
-  color: #64748b;
+  color: var(--ui-text-secondary);
 }
 
 .shipmentChartDashboard {
@@ -1406,14 +1413,14 @@ body {
   margin: 0;
   font-size: 14px;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .shipmentChartBlockHint {
   margin: 0;
   font-size: 12px;
   line-height: 1.45;
-  color: #64748b;
+  color: var(--ui-text-secondary);
 }
 
 /* 출고 현황 메인 표(.tableCard)와 맞춘 카드형 래퍼 */
@@ -1481,7 +1488,7 @@ body {
 .shipmentChannelDayMatrix thead th {
   background: #f8fafd;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   /* 일별 합계 행 상단 inset 선과 겹침 방지 */
   border-bottom: none;
 }
@@ -1502,13 +1509,14 @@ body {
   text-align: center;
   font-size: 13px;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   padding: 9px 7px;
 }
 
 .shipmentChannelDayMatrix tbody td.shipmentChannelDayMatrixDayCol {
   background-color: #ffffff;
-  color: #5d6574;
+  color: #111827;
+  font-weight: 450;
   padding: 9px 7px;
   font-size: 13px;
 }
@@ -1518,7 +1526,6 @@ body {
   position: sticky;
   left: 0;
   text-align: left;
-  font-weight: 700;
   min-width: 112px;
   width: 112px;
   padding: 9px 8px;
@@ -1530,7 +1537,7 @@ body {
 .shipmentChannelDayMatrix thead th.shipmentChannelDayMatrixRowLabel {
   z-index: 5;
   background-color: #f8fafd;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   font-weight: 700;
 }
 
@@ -1546,19 +1553,20 @@ body {
 .shipmentChannelDayMatrix tbody th.shipmentChannelDayMatrixRowLabel {
   z-index: 4;
   background-color: #ffffff;
-  color: #5d6574;
+  color: #111827;
+  font-weight: 450;
 }
 
 .shipmentChannelDayMatrix tbody tr.shipmentChannelDayMatrixDailyTotalRow th.shipmentChannelDayMatrixRowLabel {
   background-color: #eef2f7;
-  color: #5d6574;
-  font-weight: 700;
+  color: #111827;
+  font-weight: 450;
 }
 
 .shipmentChannelDayMatrix tbody tr.shipmentChannelDayMatrixDailyTotalRow td.shipmentChannelDayMatrixDayCol {
   background-color: #eef2f7;
-  color: #5d6574;
-  font-weight: 700;
+  color: #111827;
+  font-weight: 450;
 }
 
 /* 일별 합계 행: 판매처별 합계 열과 동일한 inset 1px #94a3b8 윤곽(위·아래) */
@@ -1582,8 +1590,6 @@ body {
   width: 81px;
   max-width: 81px;
   background: #e2e8f0;
-  font-weight: 700;
-  color: #5d6574;
   position: sticky;
   left: 112px;
   box-sizing: border-box;
@@ -1598,7 +1604,7 @@ body {
 .shipmentChannelDayMatrix thead th.shipmentChannelDayMatrixTotalCol {
   z-index: 4;
   background-color: #eef2f7;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   text-align: center;
   white-space: normal;
   line-height: 1.2;
@@ -1611,7 +1617,8 @@ body {
 .shipmentChannelDayMatrix tbody td.shipmentChannelDayMatrixTotalCol {
   z-index: 3;
   background-color: #eef2f7;
-  color: #5d6574;
+  color: #111827;
+  font-weight: 450;
   padding: 9px 7px;
   font-size: 13px;
   white-space: normal;
@@ -1620,7 +1627,8 @@ body {
 
 .shipmentChannelDayMatrix tbody tr.shipmentChannelDayMatrixDailyTotalRow td.shipmentChannelDayMatrixTotalCol {
   background-color: #eef2f7;
-  color: #5d6574;
+  color: #111827;
+  font-weight: 450;
   box-shadow:
     inset 0 1px 0 #94a3b8,
     inset 0 -1px 0 #94a3b8,
@@ -1697,7 +1705,7 @@ body {
   flex-shrink: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   line-height: 1.35;
 }
 
@@ -1713,7 +1721,7 @@ body {
 .shipmentChartMainHeaderIdentity .shipmentChartProductName {
   font-size: 16px;
   font-weight: 500;
-  color: #566274;
+  color: var(--ui-text-secondary);
   line-height: 1.35;
   min-width: 0;
   word-break: keep-all;
@@ -1809,7 +1817,7 @@ body {
 }
 
 .shipmentChartYGridLabel {
-  fill: #5d6574;
+  fill: var(--ui-text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -1819,12 +1827,12 @@ body {
 }
 
 .shipmentLineChartSvg .trendAxis {
-  stroke: #5d6574;
+  stroke: var(--ui-text-secondary);
   stroke-width: 0.6;
 }
 
 .shipmentChannelBarSvg .trendAxis {
-  stroke: #5d6574;
+  stroke: var(--ui-text-secondary);
   stroke-width: 0.6;
 }
 
@@ -1897,7 +1905,7 @@ body {
   gap: 8px;
   font-size: 13px;
   font-weight: 600;
-  color: #475569;
+  color: var(--ui-text-secondary);
 }
 
 .shipmentChartMonthPickLabel {
@@ -1920,7 +1928,7 @@ body {
   gap: 8px;
   font-size: 13px;
   font-weight: 600;
-  color: #475569;
+  color: var(--ui-text-secondary);
 }
 
 .shipmentChartSkuPick select {
@@ -1963,7 +1971,7 @@ body {
   background: #f8fafc;
   border: 1px dashed #cbd5e1;
   border-radius: 10px;
-  color: #566274;
+  color: var(--ui-text-secondary);
   font-size: 14px;
 }
 
@@ -1979,7 +1987,7 @@ body {
   margin-left: 10px;
   font-size: 12px;
   font-weight: 600;
-  color: #566274;
+  color: var(--ui-text-secondary);
   vertical-align: middle;
 }
 
@@ -2029,13 +2037,13 @@ body {
 }
 
 .shipmentChannelBarLabel {
-  fill: #5d6574;
+  fill: var(--ui-text-secondary);
   font-size: 9px;
   font-weight: 600;
 }
 
 .shipmentChannelBarValue {
-  fill: #566274;
+  fill: var(--ui-text-secondary);
   font-size: 9px;
   font-weight: 600;
 }
@@ -2066,19 +2074,19 @@ body {
 .shipmentDailyLineSvg .trendXAxisLabel {
   font-size: 12px;
   font-weight: 600;
-  fill: #5d6574;
+  fill: var(--ui-text-secondary);
 }
 
 .shipmentLineChartSvg .trendDotLabel {
   font-size: 10px;
   font-weight: 700;
-  fill: #475569;
+  fill: var(--ui-text-secondary);
 }
 
 .shipmentDailyLineSvg .trendDotLabel {
   font-size: 10px;
   font-weight: 700;
-  fill: #475569;
+  fill: var(--ui-text-secondary);
 }
 
 .topActions {
@@ -2116,7 +2124,7 @@ body {
   border: 1px solid var(--ui-outline);
   border-radius: 999px;
   background: #ffffff;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   font-weight: 600;
   font-size: 14px;
   line-height: 1.2;
@@ -2125,7 +2133,7 @@ body {
 .chip:hover:not(:disabled):not(.chipActive) {
   background: #f8fafc;
   border-color: var(--ui-outline);
-  color: #475569;
+  color: var(--ui-text-secondary);
 }
 
 .chip.chipActive {
@@ -2253,7 +2261,7 @@ body {
 
 .kpiLabel {
   font-size: 13px;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .kpiValue {
@@ -2283,7 +2291,7 @@ body {
 .kpiValueSuffix {
   font-size: 14px;
   font-weight: 600;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .inventoryKpiRow .kpiValue {
@@ -2319,38 +2327,38 @@ body {
   margin-top: 10px;
 }
 
-/* 데이터 관리(업로드 파일 목록): 본문·버튼·보조글 = 메인 탭 비활성색 `.tab` #5d6574 */
+/* 데이터 관리(업로드 파일 목록): 본문·버튼·보조글 = 메인 탭 비활성색 `.tab` */
 .settingsPane.settingsCard:not(:has(.skuManageCard)) {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .settingsPane.settingsCard:not(:has(.skuManageCard)) .settingsHeader {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .settingsPane.settingsCard:not(:has(.skuManageCard)) .ghost.settingsDangerButton,
 .settingsPane.settingsCard:not(:has(.skuManageCard)) .ghost.settingsCountryResetBtn {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .settingsPane.settingsCard:not(:has(.skuManageCard)) .fileRow .ghost {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .settingsPane.settingsCard:not(:has(.skuManageCard)) .fileMeta small {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .settingsPane.settingsCard:not(:has(.skuManageCard)) .fileControlMuted span {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .settingsPane.settingsCard:not(:has(.skuManageCard)) .settingsFileThumbIcon {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .settingsPane.settingsCard:not(:has(.skuManageCard)) .fileControl input[type="date"] {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .settingsNotice {
@@ -2475,7 +2483,7 @@ body {
   background: #f8fafc;
   font-size: 14px;
   font-weight: 700;
-  color: #475569;
+  color: var(--ui-text-secondary);
   position: sticky;
   top: 0;
   z-index: 2;
@@ -2518,7 +2526,7 @@ body {
 .skuProductEditRow {
   border-top: 1px solid var(--ui-divider);
   font-size: 15px;
-  color: #334155;
+  color: var(--ui-text-secondary);
 }
 
 .skuProductEditTableScroll > .skuProductEditRow:nth-child(2) {
@@ -2669,7 +2677,7 @@ body {
 .itemMasterStickyHeaderShell {
   position: sticky;
   z-index: 29;
-  background: #dde4ec;
+  background: var(--ui-spreadsheet-head-bg);
   isolation: isolate;
   margin: 0;
 }
@@ -2679,7 +2687,7 @@ body {
   overflow-y: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  background: #dde4ec;
+  background: var(--ui-spreadsheet-head-bg);
   box-sizing: border-box;
 }
 
@@ -2716,13 +2724,14 @@ body {
   border-bottom: none;
   font-size: 13px;
   font-weight: 700;
-  color: #334155;
-  background: #dde4ec;
+  color: var(--ui-text-secondary);
+  background: var(--ui-spreadsheet-head-bg);
 }
 
 .itemMasterTableWrap .skuProductEditRow {
   font-size: 13px;
   line-height: 1.4;
+  font-weight: 450;
   color: #111827;
   background: #ffffff;
 }
@@ -2781,8 +2790,8 @@ body {
   align-items: center;
   padding: 6px 8px;
   min-height: 32px;
-  background: #dde4ec;
-  color: #334155;
+  background: var(--ui-spreadsheet-head-bg);
+  color: var(--ui-text-secondary);
   font-weight: 700;
 }
 
@@ -2799,8 +2808,9 @@ body {
   width: 100%;
   padding: 6px 8px;
   font-size: 13px;
+  font-weight: inherit;
   line-height: 1.4;
-  color: #111827;
+  color: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2813,6 +2823,7 @@ body {
 
 .itemMasterTableWrap .skuProductEditInput {
   font-size: 13px;
+  font-weight: inherit;
   padding: 5px 8px;
   border-radius: 0;
   border: 0;
@@ -2882,7 +2893,7 @@ body {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   font-size: 14px;
   font-weight: 600;
   padding: 0 4px;
@@ -2903,7 +2914,7 @@ body {
 }
 
 .skuDiscontinuedLead {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   font-size: 14px;
   line-height: 1.55;
   margin: 0 0 16px;
@@ -2940,7 +2951,7 @@ body {
   background: #f8fafc;
   font-size: 14px;
   font-weight: 700;
-  color: #475569;
+  color: var(--ui-text-secondary);
   position: sticky;
   top: 0;
   z-index: 2;
@@ -2982,7 +2993,7 @@ body {
   align-items: center;
   border-top: 1px solid var(--ui-divider);
   font-size: 15px;
-  color: #334155;
+  color: var(--ui-text-secondary);
 }
 
 .skuDiscontinuedBodyCell {
@@ -3086,7 +3097,7 @@ body {
 }
 
 .skuManageCard .poOrderFileUploadLead {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   margin: 0 0 10px;
 }
 
@@ -3099,11 +3110,11 @@ body {
 }
 
 .skuManageCard .poOrderFileTemplateBtn:not(.itemMasterTemplateBtn) {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .skuManageCard .poOrderFileTemplateBtn:not(.itemMasterTemplateBtn):hover:not(:disabled) {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .skuManageCard .poOrderFileTemplateBtn.itemMasterTemplateBtn,
@@ -3159,7 +3170,7 @@ body {
   font-size: 18px;
   line-height: 1.2;
   font-weight: 700;
-  color: #334155;
+  color: var(--ui-text-secondary);
 }
 
 .skuUploadFooter {
@@ -3167,7 +3178,7 @@ body {
   padding-top: 28px;
   text-align: left;
   font-size: 14px;
-  color: #566274;
+  color: var(--ui-text-secondary);
 }
 
 .skuManualInputCellSpan2 {
@@ -3201,7 +3212,7 @@ body {
 }
 
 .productMappingItemTitleSep {
-  color: #475569;
+  color: var(--ui-text-secondary);
   font-weight: 700;
   flex-shrink: 0;
 }
@@ -3292,7 +3303,7 @@ body {
   font-size: 15px;
   font-weight: 600;
   line-height: 1.5;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   text-align: left;
 }
 
@@ -3343,7 +3354,7 @@ body {
   padding: 10px 14px;
   font-size: 13px;
   font-weight: 700;
-  color: #566274;
+  color: var(--ui-text-secondary);
   text-align: center;
 }
 
@@ -3406,7 +3417,7 @@ body {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
-  color: #475569;
+  color: var(--ui-text-secondary);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
@@ -3518,7 +3529,7 @@ body {
   flex-shrink: 0;
   font-size: 12px;
   line-height: 1;
-  color: #566274;
+  color: var(--ui-text-secondary);
   pointer-events: none;
 }
 
@@ -3584,7 +3595,7 @@ body {
   padding: 9px 14px;
   text-align: left;
   font-size: 14px;
-  color: #334155;
+  color: var(--ui-text-secondary);
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -3647,7 +3658,7 @@ body {
   padding: 0 12px;
   font-size: 12px;
   font-weight: 600;
-  color: #475569;
+  color: var(--ui-text-secondary);
   background: #f8fafc;
   border: 1px solid var(--ui-outline-inner);
   border-radius: 8px;
@@ -3658,7 +3669,7 @@ body {
 .manualBrandToPresetsBtn:hover:not(:disabled) {
   background: #f1f5f9;
   border-color: #cbd5e1;
-  color: #334155;
+  color: var(--ui-text-secondary);
 }
 
 .manualBrandToPresetsBtn:disabled {
@@ -3733,7 +3744,7 @@ body {
   border-bottom: 1px solid var(--ui-outline-inner);
   font-size: 13px;
   font-weight: 700;
-  color: #566274;
+  color: var(--ui-text-secondary);
 }
 
 .skuManualRow {
@@ -3748,7 +3759,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #334155;
+  color: var(--ui-text-secondary);
 }
 
 .skuManualCountryCode {
@@ -3760,7 +3771,7 @@ body {
 .skuManualCountryLabel {
   font-size: 13px;
   font-weight: 600;
-  color: #475569;
+  color: var(--ui-text-secondary);
 }
 
 .skuManualInputCell input {
@@ -3776,7 +3787,7 @@ body {
 .skuField span {
   font-size: 12px;
   font-weight: 600;
-  color: #475569;
+  color: var(--ui-text-secondary);
 }
 
 .skuManualActions {
@@ -3797,7 +3808,7 @@ body {
 
 .skuManageMeta {
   font-size: 14px;
-  color: #566274;
+  color: var(--ui-text-secondary);
   margin-top: 20px;
 }
 
@@ -3929,7 +3940,7 @@ body {
   border: 1px solid #dbe4ee;
   border-radius: 999px;
   background: #ffffff;
-  color: #566274;
+  color: var(--ui-text-secondary);
   font-size: 13px;
   font-weight: 700;
 }
@@ -3980,14 +3991,14 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
-  color: #566274;
+  color: var(--ui-text-secondary);
   font-size: 13px;
   flex-wrap: nowrap;
   white-space: nowrap;
 }
 
 .productMappingSearchStats strong {
-  color: #475569;
+  color: var(--ui-text-secondary);
   font-weight: 700;
 }
 
@@ -4002,7 +4013,7 @@ body {
   margin-top: 18px;
   text-align: center;
   font-size: 15px;
-  color: #566274;
+  color: var(--ui-text-secondary);
 }
 
 .productMappingItemCard {
@@ -4073,13 +4084,13 @@ body {
   gap: 0.35rem 1.25rem;
   padding: 8px 0 6px;
   font-size: 13px;
-  color: #334155;
+  color: var(--ui-text-secondary);
   border-bottom: 1px solid #f1f5f9;
 }
 
 .productMappingMetaLabel {
   font-weight: 600;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   margin-right: 0.35rem;
 }
 
@@ -4123,7 +4134,7 @@ body {
 
 .productMappingCountryLocaleName {
   font-weight: 600;
-  color: #475569;
+  color: var(--ui-text-secondary);
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -4132,7 +4143,7 @@ body {
 }
 
 .productMappingPipe {
-  color: #475569;
+  color: var(--ui-text-secondary);
   font-weight: 500;
   justify-self: center;
   text-align: center;
@@ -4181,7 +4192,7 @@ body {
 .productMappingCountrySkuInline {
   font-size: 14px;
   font-weight: 500;
-  color: #566274;
+  color: var(--ui-text-secondary);
   text-align: right;
   justify-self: end;
   word-break: break-all;
@@ -4196,7 +4207,7 @@ body {
 }
 
 .productMappingCountryName {
-  color: #334155;
+  color: var(--ui-text-secondary);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4206,7 +4217,7 @@ body {
 .productMappingSkuValue {
   font-size: 15px;
   font-weight: 700;
-  color: #566274;
+  color: var(--ui-text-secondary);
   word-break: break-word;
   text-align: right;
 }
@@ -4219,7 +4230,7 @@ body {
   border: 1px dashed #d7dee8;
   border-radius: 10px;
   padding: 18px;
-  color: #566274;
+  color: var(--ui-text-secondary);
   font-size: 15px;
   background: #f8fafc;
 }
@@ -4248,7 +4259,7 @@ body {
 .krOnlyNotice {
   margin-bottom: 10px;
   font-size: 13px;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .filterBar .ghost {
@@ -4334,7 +4345,7 @@ textarea:focus {
   font-size: 13px;
   opacity: 0.65;
   pointer-events: none;
-  color: #566274;
+  color: var(--ui-text-secondary);
   display: block;
 }
 
@@ -4405,7 +4416,7 @@ textarea:focus {
   height: 32px;
   border: 0;
   background: transparent;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   font-size: 12px;
   font-size: 13px;
   padding: 0 10px;
@@ -4478,7 +4489,7 @@ table {
   box-sizing: border-box;
   font-size: 13px;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   padding: 9px 7px;
 }
 
@@ -4494,23 +4505,17 @@ table {
   padding: 9px 7px;
 }
 
-/* 재고·해외·재고비교·출고(시트/차트) — tableCard 내 표: 본문·헤더 볼드 */
-.tableCard .shipmentChannelDayMatrix th,
-.tableCard .shipmentChartInsightTable th,
-.tableCard .shipmentChannelDayMatrix td,
-.tableCard .shipmentChartInsightTable td {
-  color: #5d6574;
-}
-
+/* 재고·해외·재고비교·출고(시트/차트) — tableCard 내 표 타이포는 하단 「스프레드 공통 타이포」 블록 */
 .tableCard .shipmentChannelDayMatrix th,
 .tableCard .shipmentChartInsightTable th {
+  color: var(--ui-text-secondary);
   font-weight: 700;
 }
 
 .tableCard .shipmentChannelDayMatrix td,
 .tableCard .shipmentChartInsightTable td {
-  font-weight: 580;
-  color: #475366;
+  font-weight: 450;
+  color: #111827;
 }
 
 .stickyTableHeader {
@@ -4548,7 +4553,7 @@ td {
 
 th {
   background: #f8fafd;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   font-weight: 700;
 }
 
@@ -4737,7 +4742,7 @@ th {
   position: relative;
   z-index: 0;
   overflow: visible;
-  background-color: #f8fafd;
+  background-color: var(--ui-spreadsheet-head-bg);
 }
 
 /* 전체 출고 현황: N월 합계·일자 열 헤더 — 라벨 옆 삼각형 → 정렬 메뉴 */
@@ -4783,7 +4788,7 @@ th {
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: #475569;
+  color: var(--ui-text-secondary);
   cursor: pointer;
   line-height: 0;
   font: inherit;
@@ -4932,7 +4937,7 @@ th {
   font-weight: 700;
   text-align: center;
   background: #e2e8f0;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   box-shadow: 4px 0 12px -4px rgba(15, 23, 42, 0.12);
   border-right: none; /* 2px 강조는 ::after 만 */
   overflow: visible;
@@ -4959,6 +4964,24 @@ th {
 
 .inventoryTable.krTable.shipmentMatrixTable thead th {
   border-bottom: 1px solid #cbd5e1;
+  color: var(--ui-text-secondary);
+  font-weight: 700;
+  background-color: var(--ui-spreadsheet-head-bg);
+}
+
+.inventoryTable.krTable.shipmentMatrixTable thead .stickyCol {
+  background-color: var(--ui-spreadsheet-head-bg);
+}
+
+/* 전체 출고 현황 — 일반 데이터 행(헤더·합계·보조헤더 제외) */
+.inventoryTable.krTable.shipmentMatrixTable tbody tr:not(.shipmentTotalRow):not(.shipmentTotalGapRow):not(.shipmentMatrixSubHeaderRow) td {
+  font-weight: 450;
+  color: #111827;
+}
+
+.inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentTotalRow td {
+  font-weight: 450;
+  color: #111827;
 }
 
 /* 구분 열 왼쪽(브랜드~마케팅): 일자 열과 같은 연한 세로선(#e2e8f0). sticky+overflow로 경계가 약할 때 보강 */
@@ -5001,13 +5024,13 @@ th {
 
 /* 합계 바로 아래: 브랜드·상품코드·구분·월·일 헤더 재표시(엑셀 2단 헤더) */
 .inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.shipmentMatrixSubHeaderCell {
-  background-color: #f8fafd !important;
-  color: #5d6574;
+  background-color: var(--ui-spreadsheet-head-bg) !important;
+  color: var(--ui-text-secondary);
   font-weight: 700;
 }
 
 .inventoryTable.krTable.shipmentMatrixTable tbody tr.shipmentMatrixSubHeaderRow td.dateCol {
-  background-color: #f8fafd !important;
+  background-color: var(--ui-spreadsheet-head-bg) !important;
   position: relative;
   z-index: 0;
 }
@@ -5050,7 +5073,7 @@ th {
 }
 
 .stickyTableHeader.shipmentMatrixStickyHead .tableHeaderScroll {
-  background: #f8fafd;
+  background: var(--ui-spreadsheet-head-bg);
 }
 
 /* 본문: 헤더(.tableHeaderScroll)와 동일하게 항상 gutter 확보 → 가로 스크롤 동기화 시 열 경계 1px 흔들림 방지 */
@@ -5228,7 +5251,7 @@ th {
 }
 
 .settingsFileThumbIcon {
-  color: #566274;
+  color: var(--ui-text-secondary);
   flex-shrink: 0;
 }
 
@@ -5259,7 +5282,7 @@ th {
 
 .fileControl span {
   font-size: 13px;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .fileControl input[type="date"] {
@@ -5330,7 +5353,7 @@ th {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
-  color: #566274;
+  color: var(--ui-text-secondary);
   border-color: #d6dde8;
   background: #ffffff;
 }
@@ -5472,7 +5495,7 @@ th {
 .trendModalSubtitle {
   margin-top: 4px;
   font-size: 13px;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .trendCloseBtn {
@@ -5500,7 +5523,7 @@ th {
 
 .trendSummaryLabel {
   font-size: 12px;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .trendSummaryValue {
@@ -5558,7 +5581,7 @@ th {
 }
 
 .trendDotLabel {
-  fill: #475569;
+  fill: var(--ui-text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -5580,7 +5603,7 @@ th {
 .trendDetailTable td {
   font-size: 13px;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .cautionModalBackdrop {
@@ -5622,7 +5645,7 @@ th {
 .cautionModalSubtitle {
   margin-top: 4px;
   font-size: 13px;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .cautionCloseBtn {
@@ -5699,7 +5722,7 @@ th {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  color: #334155;
+  color: var(--ui-text-secondary);
 }
 
 .countryOption.active {
@@ -5952,9 +5975,9 @@ th {
   padding-top: 22px;
 }
 
-/* 발주·파일 업로드: 안내·보조 문구·템플릿 버튼 = 비활성 탭 회색 #5d6574 */
+/* 발주·파일 업로드: 안내·보조 문구·템플릿 버튼 = 비활성 탭 회색 */
 .purchaseOrderSection .poOrderFileUploadCard .poOrderFileUploadLead {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .purchaseOrderSection .poOrderFileUploadCard .poOrderFileUploadLead strong {
@@ -5962,15 +5985,15 @@ th {
 }
 
 .purchaseOrderSection .poOrderFileUploadCard .poOrderFileUploadSub {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .purchaseOrderSection .poOrderFileUploadCard .poOrderFileTemplateBtn {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .purchaseOrderSection .poOrderFileUploadCard .poOrderFileTemplateBtn:hover:not(:disabled) {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 /* 발주 — 하위 탭과 본문(안내·템플릿·업로드) 사이·내부 여백 (SKU 관리 탭과 공유 클래스 분리) */
@@ -6087,7 +6110,7 @@ th {
 
 /* 발주 탭 소제목: SKU 수기「한국 | 브랜드…」안내와 동일 톤 */
 .purchaseOrderSection .purchaseOrderSubTitle {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .purchaseOrderError {
@@ -6221,7 +6244,7 @@ th {
 .poSavedStickyHeaderShell {
   position: sticky;
   z-index: 26;
-  background: #ffffff;
+  background: var(--ui-spreadsheet-head-bg);
   border-radius: 10px 10px 0 0;
   /* 본문 세로 스크롤 시 헤더·데이터 경계에 행이 비치는 현상 완화 */
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
@@ -6240,8 +6263,8 @@ th {
   -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
   box-sizing: border-box;
-  /* thead(#f8fafc)와 동일 — 세로 스크롤 시 본문 행이 헤더 틈으로 비치지 않게 */
-  background: #f8fafc;
+  /* thead와 동일 — 세로 스크롤 시 본문 행이 헤더 틈으로 비치지 않게 */
+  background: var(--ui-spreadsheet-head-bg);
 }
 
 .poSavedHeaderScroll::-webkit-scrollbar {
@@ -6286,13 +6309,11 @@ th {
   min-width: 100%;
   font-size: 13px;
   line-height: 1.4;
-  font-weight: 700;
-  color: #5d6574;
 }
 
 .poSavedSpreadsheet thead th {
-  background: #f8fafc;
-  color: #5d6574;
+  background: var(--ui-spreadsheet-head-bg);
+  color: var(--ui-text-secondary);
   font-weight: 700;
   font-size: 13px;
   border-bottom: 2px solid #e5e7eb;
@@ -6370,8 +6391,8 @@ th {
 
 .poSavedSpreadsheet tbody td {
   font-size: 13px;
-  font-weight: 580;
-  color: #475366;
+  font-weight: 450;
+  color: #111827;
   border-bottom: 1px solid var(--ui-divider);
   border-right: 1px solid #f1f5f9;
   box-sizing: border-box;
@@ -6382,19 +6403,25 @@ th {
   line-height: 1.45;
 }
 
+.poSavedSpreadsheet .poSavedSsInlineInput,
+.poSavedSpreadsheet .poSavedSsInlineSelect {
+  font-weight: inherit;
+  color: inherit;
+}
+
 .poSavedSpreadsheet tbody td:last-child {
   border-right: none;
 }
 
 /* 같은 발주의 2행째부터: 발주 공통 열은 값 대신 '-' (입고 예정 셀은 예외로 빨간 톤 유지) */
 .poSavedSsTdSamePo {
-  color: #475366;
-  font-weight: 580;
+  color: #111827;
+  font-weight: 450;
 }
 
 .poSavedSsColDate,
 .poSavedSsColSku {
-  font-weight: 580;
+  font-weight: 450;
 }
 
 .poSavedSpreadsheet thead th.poSavedSsThName {
@@ -6434,7 +6461,7 @@ th {
 }
 
 .poSavedSpreadsheet tbody td.poSavedSsPendingInboundCols:nth-child(14) {
-  font-weight: 700;
+  font-weight: 450;
 }
 
 .poSavedSsDataRow {
@@ -6478,19 +6505,19 @@ th {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   font-size: 20px;
   line-height: 1;
   font-weight: 700;
 }
 
 .poSavedSsAddInboundBtn:hover {
-  color: #475569;
+  color: var(--ui-text-secondary);
 }
 
 .poSavedSsAddInboundPlaceholder {
   display: inline-block;
-  color: #566274;
+  color: var(--ui-text-secondary);
 }
 
 .poSavedSsPoEditBtn {
@@ -6503,7 +6530,7 @@ th {
   border-radius: 6px;
   border: 1px solid var(--ui-outline-inner);
   background: #f8fafc;
-  color: #475569;
+  color: var(--ui-text-secondary);
   cursor: pointer;
 }
 
@@ -6514,7 +6541,7 @@ th {
 
 .poSavedSsNewLineHint {
   font-size: 11px;
-  color: #566274;
+  color: var(--ui-text-secondary);
   font-weight: 500;
 }
 
@@ -6641,7 +6668,7 @@ th {
 
 .poSavedSsAppendRowInbound {
   background: #f8fafc !important;
-  color: #566274;
+  color: var(--ui-text-secondary);
 }
 
 .poSavedSsAppendRow .poSavedSsAppendRowInbound {
@@ -6673,7 +6700,7 @@ th {
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #566274;
+  color: var(--ui-text-secondary);
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
@@ -6683,7 +6710,7 @@ th {
 .poSavedSsPencilBtn:hover {
   opacity: 1;
   background: #f1f5f9;
-  color: #334155;
+  color: var(--ui-text-secondary);
 }
 
 .poSavedSsInlineInput,
@@ -6692,7 +6719,7 @@ th {
   height: 30px;
   font-size: 12px;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   border-radius: 6px;
   border: 1px solid #cbd5e1;
   padding: 0 6px;
@@ -6798,7 +6825,7 @@ th {
 .poSavedPoEditModalTitle {
   font-size: 17px;
   font-weight: 800;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   margin: 0 0 12px;
   padding-bottom: 10px;
   border-bottom: 1px solid #e5e7eb;
@@ -6984,7 +7011,7 @@ th {
   margin-top: 4px;
   font-size: 12px;
   line-height: 1.45;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   word-break: break-word;
 }
 
@@ -7116,7 +7143,7 @@ th {
   width: 100%;
   font-size: 19px;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   padding: 0;
   margin: 0;
   border: none;
@@ -7139,7 +7166,7 @@ th {
 .poCardHeroBand .poCardPo {
   font-size: 19px;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   line-height: 1.3;
 }
 
@@ -7172,13 +7199,13 @@ th {
 
 .poCardMetaK {
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   font-size: 14px;
 }
 
 .poCardMetaV {
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   font-size: 14px;
 }
 
@@ -7199,7 +7226,7 @@ th {
 .poCardMetaLabel {
   font-size: 13px;
   font-weight: 400;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .poCardMetaInput {
@@ -7212,12 +7239,12 @@ th {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #ffffff;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .poCardMetaInput:focus {
   outline: none;
-  border-color: #566274;
+  border-color: var(--ui-text-secondary);
   background: #fff;
 }
 
@@ -7244,7 +7271,7 @@ th {
 }
 
 .poInboundRefReadonly {
-  color: #475569;
+  color: var(--ui-text-secondary);
   vertical-align: middle;
 }
 
@@ -7283,18 +7310,18 @@ th {
 .poCardPo {
   font-size: 17px;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .poCardMeta {
   margin-top: 4px;
   font-size: 13px;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .poCardMeta.poCardMetaLg {
   margin-top: 2px;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 /* 상품유형·제조사 등: 촘촘한 그리드 + 라벨·값 보통 굵기 */
@@ -7340,7 +7367,7 @@ th {
   font-weight: 700;
   line-height: 1.3;
   letter-spacing: -0.02em;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   background: none;
 }
 
@@ -7351,7 +7378,7 @@ th {
   font-size: 13px;
   font-weight: 400;
   line-height: 1.35;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   background: none;
   word-break: break-word;
 }
@@ -7365,7 +7392,7 @@ th {
   margin: 0 0 8px;
   font-size: 14px;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .poInboundTable {
@@ -7380,12 +7407,12 @@ th {
   padding: 8px 10px;
   text-align: left;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .poInboundTable th {
   background: #f1f5f9;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .poRefCell {
@@ -7394,7 +7421,7 @@ th {
 }
 
 .poInboundEmpty {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   text-align: center;
 }
 
@@ -7426,7 +7453,7 @@ th {
   display: block;
   font-size: 11px;
   line-height: 1.35;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 .poInboundCellControl {
@@ -7439,7 +7466,7 @@ th {
   border-radius: 8px;
   font-size: 13px;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   background: #fff;
 }
 
@@ -7527,7 +7554,7 @@ th {
   margin: 18px auto 0;
   font-size: 1.08rem;
   line-height: 1.55;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   max-width: 40rem;
   text-align: center;
 }
@@ -7591,7 +7618,7 @@ th {
   font: inherit;
   font-size: 0.9rem;
   font-weight: 500;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   line-height: 1.4;
   text-align: left;
   text-decoration: underline;
@@ -7710,7 +7737,7 @@ th {
   border: 1px solid var(--ui-outline);
   border-radius: 10px;
   background: #f8fafc;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   cursor: pointer;
   line-height: 0;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
@@ -7718,7 +7745,7 @@ th {
 
 .authGatePasswordToggle:hover {
   background: #f1f5f9;
-  color: #334155;
+  color: var(--ui-text-secondary);
   border-color: #cbd5e1;
 }
 
@@ -7794,7 +7821,7 @@ th {
 .authGateRegPwHintChars {
   margin: 0;
   line-height: 1.3;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
 }
 
 /* 기존 가입 정책 ul(.authGatePolicyList 0.95rem) 대비 1px 축소 */
@@ -7807,7 +7834,7 @@ th {
   font-size: calc(0.8rem - 1px);
   line-height: 1.25;
   word-break: break-all;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
 }
 
@@ -7815,7 +7842,7 @@ th {
   margin: 0 0 16px;
   padding-left: 1.2rem;
   text-align: left;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   font-size: 0.95rem;
   line-height: 1.5;
   max-width: 100%;
@@ -7826,7 +7853,7 @@ th {
   margin-top: 4px;
   font-size: 0.8rem;
   line-height: 1.4;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   word-break: break-all;
   font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
 }
@@ -8072,7 +8099,7 @@ th {
   margin: 0;
   font-size: 14px;
   line-height: 1.55;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   max-width: 40rem;
 }
 
@@ -8219,7 +8246,7 @@ th {
   padding-top: 0;
   font-size: 12px;
   font-weight: 700;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   text-transform: none;
   letter-spacing: 0.02em;
 }
@@ -8316,7 +8343,7 @@ th {
   word-break: break-all;
   font-size: 11px;
   line-height: 1.15;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
 }
 
@@ -8374,7 +8401,7 @@ th {
   text-align: center;
   font-size: 14px;
   line-height: 1.5;
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   background: #f8fafc;
   border: 1px dashed var(--ui-outline-inner);
   border-radius: 10px;
@@ -8417,7 +8444,7 @@ th {
 }
 
 .mypageDataTable th {
-  color: #5d6574;
+  color: var(--ui-text-secondary);
   font-weight: 700;
   background: #f8fafd;
 }
