@@ -6,16 +6,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 
-from domains.auth.bootstrap import run_initial_admin_bootstrap
-from domains.auth.controllers.auth_admin_api_controller import router as auth_admin_router
-from domains.auth.controllers.auth_api_controller import router as auth_router
+from domains.auth.lifecycle import run_initial_admin_bootstrap
+from domains.auth.routers import auth_admin_router, auth_router
 from domains.auth.models import signup_email_proof_model as _auth_signup_proof  # noqa: F401
 from domains.auth.models import signup_email_send_log_model as _auth_signup_send_log  # noqa: F401
 from domains.auth.models import user_models as _auth_user_models  # noqa: F401
-from domains.inventory.controllers.inventory_api_controller import (
-    router as inventory_router,
-)
-from domains.inventory.models import inventory_models as _inventory_models  # noqa: F401
+from domains.order import models as _order_models  # noqa: F401
+from domains.order.routers import router as order_router
+from domains.item import models as _item_models  # noqa: F401
+from domains.item.routers import router as item_router
+from domains.shipment import models as _shipment_models  # noqa: F401
+from domains.shipment.routers import router as shipment_router
+from domains.stock import models as _stock_models  # noqa: F401
+from domains.stock.routers import router as stock_router
 from shared.config import get_runtime_settings
 from shared.db.session import initialize_database, is_database_configured, test_database_connection
 from shared.storage import is_s3_configured
@@ -48,7 +51,10 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(auth_admin_router)
-app.include_router(inventory_router)
+app.include_router(stock_router)
+app.include_router(item_router)
+app.include_router(shipment_router)
+app.include_router(order_router)
 
 
 @app.on_event("startup")
