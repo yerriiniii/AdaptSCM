@@ -11,8 +11,8 @@ import {
   GitCompare,
   Globe2,
   Home,
-  LayoutGrid,
   LogOut,
+  Package,
   Search,
   Truck,
   UserRound,
@@ -5791,7 +5791,7 @@ export default function App() {
           <div className="heroHead heroHeadDash">
             <h1 className="heroTitle heroTitleDash">
               <span className="heroTitleMark" aria-hidden="true">
-                <LayoutGrid size={26} strokeWidth={2.1} />
+                <Package size={34} strokeWidth={2} />
               </span>
               <span className="heroTitleText">
                 <span className="heroTitleBrand">Adapt</span>
