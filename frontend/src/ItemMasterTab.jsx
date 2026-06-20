@@ -28,6 +28,11 @@ const ITEM_MASTER_FIELDS = [
 
 const EMPTY_ITEM_MASTER_DRAFT = Object.fromEntries(ITEM_MASTER_FIELDS.map(({ key }) => [key, ""]));
 const ITEM_MASTER_TABLE_MIN_WIDTH_PX = 1180;
+/** 스크롤 전 툴바 아래 여백 — `.itemMasterStickyToolbar { padding-bottom }` */
+const ITEM_MASTER_FLOW_TOOLBAR_BOTTOM_PAD_PX = 12;
+/** sticky 고정 시 — 스크롤 전보다 살짝 좁게 */
+const ITEM_MASTER_STICKY_TOOLBAR_TOP_GAP_PX = 14;
+const ITEM_MASTER_STICKY_TOOLBAR_BOTTOM_GAP_PX = 6;
 const PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY = "(X) 단종";
 
 function SearchFieldIcon({ className, size = 16, strokeWidth = 2, ...rest }) {
@@ -285,10 +290,16 @@ export default function ItemMasterTab({
     };
   }, [active, masterShowTopScroll]);
 
-  const masterToolbarStickyTop = stickyBaseTop;
-  const masterTopScrollStickyTop = stickyBaseTop + masterToolbarHeight;
+  const masterToolbarStickyTop = stickyBaseTop + ITEM_MASTER_STICKY_TOOLBAR_TOP_GAP_PX;
+  const masterTopScrollStickyTop =
+    masterToolbarStickyTop +
+    masterToolbarHeight -
+    ITEM_MASTER_FLOW_TOOLBAR_BOTTOM_PAD_PX +
+    ITEM_MASTER_STICKY_TOOLBAR_BOTTOM_GAP_PX;
   const masterHeaderStickyTop =
     masterTopScrollStickyTop + (masterShowTopScroll ? masterTopStripHeight : 0);
+  const masterToolbarBottomGapStickyTop =
+    masterToolbarStickyTop + masterToolbarHeight - ITEM_MASTER_FLOW_TOOLBAR_BOTTOM_PAD_PX;
 
   useLayoutEffect(() => {
     if (!active || masterLoading || !masterRows.length) {
@@ -485,6 +496,15 @@ export default function ItemMasterTab({
           onChange={(e) => uploadItemMasterFilesHandler(e.target.files || [])}
         />
         <div
+          className="itemMasterStickySectionGap itemMasterStickySectionGapBelowHeader"
+          style={{
+            top: stickyBaseTop,
+            height: ITEM_MASTER_STICKY_TOOLBAR_TOP_GAP_PX,
+            marginBottom: -ITEM_MASTER_STICKY_TOOLBAR_TOP_GAP_PX,
+          }}
+          aria-hidden="true"
+        />
+        <div
           ref={masterToolbarRef}
           className="itemMasterToolbarRow itemMasterStickyToolbar"
           style={{ top: masterToolbarStickyTop }}
@@ -533,6 +553,15 @@ export default function ItemMasterTab({
             {masterSavingAll ? "저장 중…" : masterEditMode ? "저장" : "수정"}
           </button>
         </div>
+        <div
+          className="itemMasterStickySectionGap itemMasterStickySectionGapBelowToolbar"
+          style={{
+            top: masterToolbarBottomGapStickyTop,
+            height: ITEM_MASTER_STICKY_TOOLBAR_BOTTOM_GAP_PX,
+            marginBottom: -ITEM_MASTER_STICKY_TOOLBAR_BOTTOM_GAP_PX,
+          }}
+          aria-hidden="true"
+        />
         {masterError ? <pre className="error skuProductEditError">{masterError}</pre> : null}
         {masterLoading ? (
           <div className="searchEmptyState">불러오는 중...</div>

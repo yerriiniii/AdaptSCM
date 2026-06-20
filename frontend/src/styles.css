@@ -2542,9 +2542,31 @@ body {
   position: sticky;
   z-index: 31;
   background: #ffffff;
-  margin-bottom: 12px;
-  padding-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 12px;
   box-shadow: none;
+}
+
+/* sticky 구간 틈 — 스크롤 시 스프레드 본문이 비치지 않게 (발주 poSavedStickyFilterTableGap 패턴) */
+.itemMasterStickySectionGap {
+  position: sticky;
+  z-index: 30;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-sizing: border-box;
+  background-color: #ffffff;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.itemMasterStickySectionGapBelowHeader {
+  z-index: 31;
+}
+
+.itemMasterStickySectionGapBelowToolbar {
+  z-index: 29;
 }
 
 .itemMasterTemplateBtn,
@@ -2623,7 +2645,7 @@ body {
 }
 
 .itemMasterTopScroll.tableTopScroll {
-  z-index: 30;
+  z-index: 33;
   margin-bottom: 0;
   flex-shrink: 0;
 }
