@@ -32,7 +32,7 @@ const ITEM_MASTER_TABLE_MIN_WIDTH_PX = 1180;
 const ITEM_MASTER_FLOW_TOOLBAR_BOTTOM_PAD_PX = 12;
 /** sticky 고정 시 — 스크롤 전보다 살짝 좁게 */
 const ITEM_MASTER_STICKY_TOOLBAR_TOP_GAP_PX = 14;
-const ITEM_MASTER_STICKY_TOOLBAR_BOTTOM_GAP_PX = 6;
+const ITEM_MASTER_STICKY_TOOLBAR_BOTTOM_GAP_PX = 14;
 const PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY = "(X) 단종";
 
 function SearchFieldIcon({ className, size = 16, strokeWidth = 2, ...rest }) {

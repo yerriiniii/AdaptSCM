@@ -26,6 +26,11 @@ const PURCHASE_ORDERS_LIST_TIMEOUT_MS = 45_000;
 /** 한국 재고 `.tableTopScroll`: 높이 14px + 테두리로 보통 offsetHeight ≈16, 아래 `margin-bottom` 6px */
 const INVENTORY_MATCH_TOP_SCROLL_STRIP_FALLBACK_PX = 16;
 const INVENTORY_MATCH_TOP_SCROLL_MARGIN_BELOW_PX = 6;
+/** sticky 고정 시 필터 ↔ 가로스크롤 ↔ 헤더 사이 (스크롤 전보다 살짝 좁게) */
+const PO_SAVED_STICKY_FILTER_TO_SCROLL_GAP_PX = 0;
+const PO_SAVED_STICKY_SCROLL_TO_HEADER_GAP_PX = 0;
+/** 스크롤 후 메인 탭(발주 기록) ↔ 하위 서브탭 사이 */
+const PO_STICKY_MAIN_TO_SUB_GAP_PX = 6;
 const DEFAULT_DATE_RANGE = "10d";
 const OVERSEAS_UPLOAD_COUNTRIES = ["US", "TW", "HK", "JP", "SG", "DE", "UK", "AU", "AE", "VN", "TH"];
 /** hydrate 시 해외 `/view` 동시 요청 수 — DB·연결 풀 부하 시 전체가 한꺼번에 막히는 것 완화 */
@@ -2376,15 +2381,22 @@ export default function App() {
   const activeTopScrollHeight = showTopScroll ? stickyHeights.topScroll : 0;
   const tableHeaderTop = activeFilterStickyTop + activeFilterHeight + activeTopScrollHeight;
 
-  const poStickySubTabsTop = stickyHeights.topbar;
-  const poStickySavedFilterTop = stickyHeights.topbar + poOrderStickyHeights.subTabs;
+  const poStickySubTabsTop = stickyHeights.topbar + PO_STICKY_MAIN_TO_SUB_GAP_PX;
+  const poStickySavedFilterTop = poStickySubTabsTop + poOrderStickyHeights.subTabs;
   const poSavedFilterBottomSticky = poStickySavedFilterTop + poOrderStickyHeights.savedFilter;
-  /** 상단 가로 띠 있음: 스티키 헤더 top = 필터 하단 + 띠 높이(띠·헤더 사이 6px 두면 스크롤 시 틈으로 본문이 비침). 띠 없음: 재고 탭과 같은 폴백 두께 */
+  const poSavedTopScrollStickyTop =
+    poSavedFilterBottomSticky + PO_SAVED_STICKY_FILTER_TO_SCROLL_GAP_PX;
+  /** 상단 가로 띠 있음: 스티키 헤더 top = 필터 하단 + 간격 + 띠 + 헤더 간격 */
   const poSavedTableHeaderStickyTop = useMemo(() => {
     if (poSavedShowTopScroll) {
       const stripH =
         poSavedTopStripHeight > 0 ? poSavedTopStripHeight : INVENTORY_MATCH_TOP_SCROLL_STRIP_FALLBACK_PX;
-      return poSavedFilterBottomSticky + stripH;
+      return (
+        poSavedFilterBottomSticky +
+        PO_SAVED_STICKY_FILTER_TO_SCROLL_GAP_PX +
+        stripH +
+        PO_SAVED_STICKY_SCROLL_TO_HEADER_GAP_PX
+      );
     }
     return (
       poSavedFilterBottomSticky +
@@ -7505,8 +7517,20 @@ export default function App() {
           {purchaseOrderSuccess ? <div className="purchaseOrderSuccess">{purchaseOrderSuccess}</div> : null}
 
           <div
+            className="poStickyMainSubGap"
+            style={{
+              top: stickyHeights.topbar,
+              height: PO_STICKY_MAIN_TO_SUB_GAP_PX,
+              marginBottom: -PO_STICKY_MAIN_TO_SUB_GAP_PX,
+            }}
+            aria-hidden="true"
+          />
+
+          <div
             ref={poSubTabsBarRef}
-            className={`poSubTabsBar${isPurchaseOrderScope ? " poOrderStickySubTabs" : ""}`}
+            className={`poSubTabsBar poOrderStickySubTabs${
+              purchaseOrderSubTab === "saved" ? " poSubTabsBarSaved" : ""
+            }`}
             role="tablist"
             aria-label="발주 하위 메뉴"
             style={isPurchaseOrderScope ? { top: poStickySubTabsTop } : undefined}
@@ -7794,7 +7818,7 @@ export default function App() {
           <div className="poFormCard poSavedOrdersPanel">
             <div
               ref={poSavedFilterBarRef}
-              className="filterBar poSavedFilterBar poOrderStickySavedFilter"
+              className="filterBar stickyFilterBar poSavedFilterBar poOrderStickySavedFilter"
               style={{ top: poStickySavedFilterTop }}
             >
               <div className="searchWrap">
@@ -7880,6 +7904,17 @@ export default function App() {
               <div className="searchEmptyState">검색·기간 조건에 맞는 발주가 없습니다.</div>
             ) : (
               <>
+              {poSavedShowTopScroll ? (
+                <div
+                  className="poSavedStickySectionGap poSavedStickySectionGapBelowFilter"
+                  style={{
+                    top: poSavedFilterBottomSticky,
+                    height: PO_SAVED_STICKY_FILTER_TO_SCROLL_GAP_PX,
+                    marginBottom: -PO_SAVED_STICKY_FILTER_TO_SCROLL_GAP_PX,
+                  }}
+                  aria-hidden="true"
+                />
+              ) : null}
               {!poSavedShowTopScroll ? (
                 <div
                   className="poSavedStickyFilterTableGap"
@@ -7898,11 +7933,26 @@ export default function App() {
                   <div
                     ref={poSavedTopScrollRef}
                     className="tableTopScroll poSavedTableTopScroll stickyTableTopScroll"
-                    style={{ top: poSavedFilterBottomSticky }}
+                    style={{ top: poSavedTopScrollStickyTop }}
                     onScroll={() => syncPoSavedScroll("top")}
                   >
                     <div style={{ width: poSavedTopScrollWidth || "100%" }} />
                   </div>
+                ) : null}
+                {poSavedShowTopScroll ? (
+                  <div
+                    className="poSavedStickySectionGap poSavedStickySectionGapBelowTopScroll"
+                    style={{
+                      top:
+                        poSavedTopScrollStickyTop +
+                        (poSavedTopStripHeight > 0
+                          ? poSavedTopStripHeight
+                          : INVENTORY_MATCH_TOP_SCROLL_STRIP_FALLBACK_PX),
+                      height: PO_SAVED_STICKY_SCROLL_TO_HEADER_GAP_PX,
+                      marginBottom: -PO_SAVED_STICKY_SCROLL_TO_HEADER_GAP_PX,
+                    }}
+                    aria-hidden="true"
+                  />
                 ) : null}
                 <div className="poSavedSpreadsheetWrap">
                   <div

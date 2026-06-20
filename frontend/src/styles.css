@@ -2643,6 +2643,7 @@ body {
 .itemMasterScrollPair {
   display: flex;
   flex-direction: column;
+  margin-top: 8px;
 }
 
 .itemMasterTableInnerHead,
@@ -5907,8 +5908,8 @@ th {
   flex-wrap: wrap;
   align-items: center;
   gap: 40px;
-  margin: 0 0 28px;
-  padding: 0 2px 0;
+  margin: 0;
+  padding: 0 2px 28px;
   border-bottom: none;
 }
 
@@ -5918,11 +5919,34 @@ th {
   background: #ffffff;
 }
 
+/* 저장된 발주: 서브탭 ↔ 검색 바 간격 (스크롤 전·후 공통) */
+.poSubTabsBar.poSubTabsBarSaved {
+  padding-bottom: 12px;
+}
+
+/* 스크롤 후 메인 탭(발주 기록) ↔ 서브탭 — 본문 비침 방지 */
+.poStickyMainSubGap {
+  position: sticky;
+  z-index: 27;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-sizing: border-box;
+  background-color: #ffffff;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
 .poOrderStickySavedFilter {
   position: sticky;
   z-index: 27;
   background: #ffffff;
   box-shadow: 0 1px 0 #eef2f7;
+}
+
+.poOrderStickySavedFilter.stickyFilterBar {
+  padding-top: 4px;
 }
 
 .poSubTab {
@@ -6187,6 +6211,10 @@ th {
   margin-bottom: 14px;
 }
 
+.poOrderStickySavedFilter.poSavedFilterBar {
+  margin-bottom: 10px;
+}
+
 .poSavedFilterBar .searchWrap {
   flex: 1 1 260px;
   min-width: 0;
@@ -6235,9 +6263,31 @@ th {
   flex-shrink: 0;
 }
 
-/* 재고 탭과 같이 필터 바로 아래에 붙는 상단 스크롤 띠 — 본문(z-index 낮음) 위로 덮음 */
-.poSavedTableTopScroll.stickyTableTopScroll {
+/* sticky 구간 틈 — 스크롤 시 표 본문이 비치지 않게 */
+.poSavedStickySectionGap {
+  position: sticky;
   z-index: 25;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-sizing: border-box;
+  background-color: #ffffff;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.poSavedStickySectionGapBelowFilter {
+  z-index: 26;
+}
+
+.poSavedStickySectionGapBelowTopScroll {
+  z-index: 24;
+}
+
+/* 재고 탭과 같이 필터 바로 아래에 붙는 상단 스크롤 띠 — 필터·헤더(z 27·26)보다 위 */
+.poSavedTableTopScroll.stickyTableTopScroll {
+  z-index: 30;
 }
 
 /* 헤더는 가로만 스크롤(재고 표와 동일). sticky는 th가 아니라 바깥 셸에 적용해 뷰포트 기준으로 맞춤 */
