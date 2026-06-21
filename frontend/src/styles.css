@@ -2822,13 +2822,15 @@ body {
 
 .itemMasterTableHead,
 .itemMasterTableRow {
-  grid-template-columns:
+  /* 상품마스터 기본 14열 너비 — 여기(--item-master-grid-columns)만 수정 */
+  --item-master-extra-col-width: minmax(72px, 0.5fr);
+  --item-master-grid-columns:
     minmax(60px, 0.6fr)
     minmax(49px, 0.51fr)
     minmax(25px, 0.3fr)
     minmax(45px, 0.45fr)
-    minmax(220px, 3fr)
-    minmax(50px, 0.5fr)
+    minmax(200px, 2.5fr)
+    minmax(46px, 0.48fr)
     minmax(46px, 0.48fr)
     minmax(46px, 0.48fr)
     minmax(46px, 0.48fr)
@@ -2837,6 +2839,7 @@ body {
     minmax(46px, 0.48fr)
     minmax(46px, 0.48fr)
     minmax(46px, 0.48fr);
+  grid-template-columns: var(--item-master-grid-columns);
   min-width: 1180px;
 }
 
@@ -2907,6 +2910,10 @@ body {
   background: #fff;
   box-shadow: none;
   width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .itemMasterTableWrap .skuProductEditInput:focus {
