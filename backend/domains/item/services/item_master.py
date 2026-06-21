@@ -148,6 +148,17 @@ def _normalize_code_registered_at(value: object) -> str | None:
     return raw[:CODE_REGISTERED_AT_MAX_LEN]
 
 
+def _serialize_code_registered_at(group: ProductGroup) -> str:
+    raw = _cell_text(group.code_registered_at)
+    if not raw:
+        return ""
+    if "T" in raw:
+        return raw.split("T", 1)[0]
+    if " " in raw and len(raw) >= 10 and raw[4:5] == "-" and raw[7:8] == "-":
+        return raw.split(" ", 1)[0]
+    return raw
+
+
 def _serialize_release_month(group: ProductGroup) -> str:
     if group.release_month:
         return str(group.release_month).strip()
@@ -287,7 +298,7 @@ def master_row_payload(group: ProductGroup, extra_field_keys: list[str] | None =
         "fcst_grade": group.fcst_grade or "",
         "stock_grade": group.stock_grade or "",
         "release_month": _serialize_release_month(group),
-        "code_registered_at": _cell_text(group.code_registered_at),
+        "code_registered_at": _serialize_code_registered_at(group),
         "us_grade": group.us_grade or "",
         "tw_grade": group.tw_grade or "",
         "hk_grade": group.hk_grade or "",

@@ -574,10 +574,11 @@ const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
   {
     code: "JP",
     fileLabel: "일본",
-    headers: ["일본 SKU", "일본 상품명"],
+    headers: ["일본 SKU", "일본 상품명", "한국 SKU"],
     headerNotes: {
       "일본 SKU":
         "DB 일본(jp_sku) 로케일에 저장됩니다. SKU 끝 `-옵션` 접미사는 매칭 시 자동으로 제거·재시도합니다.",
+      "한국 SKU": "연결할 기존 한국 상품의 SKU입니다. 이 값으로 item을 찾아 JP 로케일을 붙입니다.",
     },
   },
 ];

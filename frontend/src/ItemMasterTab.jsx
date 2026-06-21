@@ -31,10 +31,8 @@ const ITEM_MASTER_FIELDS = [
 
 const EMPTY_ITEM_MASTER_DRAFT = Object.fromEntries(ITEM_MASTER_FIELDS.map(({ key }) => [key, ""]));
 const ITEM_MASTER_TABLE_MIN_WIDTH_PX = 1180;
-/** CSS `.itemMasterTableHead` grid-template-columns 와 동기화 */
-const ITEM_MASTER_GRID_BASE =
-  "minmax(74px, 0.95fr) minmax(49px, 0.51fr) minmax(32px, 40px) minmax(53px, 0.55fr) minmax(220px, 3fr) minmax(50px, 0.5fr) minmax(50px, 0.5fr) minmax(50px, 0.5fr) minmax(50px, 0.5fr) minmax(62px, 0.62fr) minmax(46px, 0.48fr) minmax(46px, 0.48fr) minmax(46px, 0.48fr) minmax(46px, 0.48fr)";
-const ITEM_MASTER_EXTRA_COL_GRID = "minmax(72px, 0.5fr)";
+/** CSS `--item-master-extra-col-width` 와 동기화 (사용자 정의 열만 JS에서 추가) */
+const ITEM_MASTER_EXTRA_COL_GRID = "var(--item-master-extra-col-width)";
 const ITEM_MASTER_EXTRA_COL_MIN_WIDTH_PX = 72;
 /** 스크롤 전 툴바 아래 여백 — `.itemMasterStickyToolbar { padding-bottom }` */
 const ITEM_MASTER_FLOW_TOOLBAR_BOTTOM_PAD_PX = 12;
@@ -74,7 +72,11 @@ function productEditSegmentImpliesDiscontinued(raw) {
 function masterDraftFromRow(row, extraColumns = []) {
   const draft = { ...EMPTY_ITEM_MASTER_DRAFT, discontinued: false, extra_fields: {} };
   ITEM_MASTER_FIELDS.forEach(({ key }) => {
-    draft[key] = row?.[key] == null ? "" : String(row[key]);
+    let val = row?.[key] == null ? "" : String(row[key]);
+    if (key === "code_registered_at") {
+      val = formatCodeRegisteredAtDisplay(val);
+    }
+    draft[key] = val;
   });
   const ef = row?.extra_fields && typeof row.extra_fields === "object" ? row.extra_fields : {};
   extraColumns.forEach(({ field_key }) => {
@@ -88,11 +90,43 @@ function masterDraftFromRow(row, extraColumns = []) {
   return draft;
 }
 
-function masterCellDisplayValue(key, draft) {
+function formatCodeRegisteredAtDisplay(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  if (s.includes("T")) return s.split("T", 1)[0];
+  if (s.includes(" ") && /^\d{4}-\d{2}-\d{2}/.test(s)) return s.split(" ", 1)[0];
+  return s;
+}
+
+function itemMasterTooltipText(value) {
+  const text = String(value ?? "").trim();
+  return text || undefined;
+}
+
+function masterCellTooltip(key, draft, row = null) {
+  let raw = masterCellRawValue(key, draft);
+  if (row && row[key] != null && String(row[key]).trim()) {
+    raw = String(row[key]);
+  }
+  return itemMasterTooltipText(raw);
+}
+
+function masterCellRawValue(key, draft) {
   if (key === "segment" && draft.discontinued) {
     return PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY;
   }
   return draft[key] ?? "";
+}
+
+function masterCellDisplayValue(key, draft) {
+  const raw = masterCellRawValue(key, draft);
+  if (key === "code_registered_at") {
+    return formatCodeRegisteredAtDisplay(raw);
+  }
+  if (key === "segment" && draft.discontinued) {
+    return PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY;
+  }
+  return raw;
 }
 
 function buildItemMasterSavePayload(groupId, draft, extraColumns = []) {
@@ -215,11 +249,13 @@ function rowNeedsSave(row, draft, extraColumns = []) {
   return JSON.stringify(nextPayload) !== JSON.stringify(prevPayload);
 }
 
-function buildItemMasterGridTemplate(extraColumns) {
+/** 사용자 정의 열이 있을 때만 CSS 기본 14열 뒤에 열 정의를 붙임 */
+function buildItemMasterGridStyle(extraColumns) {
   const extras = (extraColumns || [])
     .map(() => ITEM_MASTER_EXTRA_COL_GRID)
     .join(" ");
-  return extras ? `${ITEM_MASTER_GRID_BASE} ${extras}` : ITEM_MASTER_GRID_BASE;
+  if (!extras) return undefined;
+  return { gridTemplateColumns: `var(--item-master-grid-columns) ${extras}` };
 }
 
 function formatInt(n) {
@@ -336,7 +372,7 @@ export default function ItemMasterTab({
   const masterToolbarBottomGapStickyTop =
     masterToolbarStickyTop + masterToolbarHeight - ITEM_MASTER_FLOW_TOOLBAR_BOTTOM_PAD_PX;
 
-  const masterGridTemplate = buildItemMasterGridTemplate(masterExtraColumns);
+  const masterGridStyle = buildItemMasterGridStyle(masterExtraColumns);
   const masterTableMinWidthPx =
     ITEM_MASTER_TABLE_MIN_WIDTH_PX + masterExtraColumns.length * ITEM_MASTER_EXTRA_COL_MIN_WIDTH_PX;
 
@@ -762,7 +798,7 @@ export default function ItemMasterTab({
                   <div className="itemMasterTableInner itemMasterTableInnerHead">
                     <div
                       className="skuProductEditTableHead itemMasterTableHead"
-                      style={{ gridTemplateColumns: masterGridTemplate }}
+                      style={masterGridStyle}
                     >
                       {ITEM_MASTER_FIELDS.map(({ key, label }) => (
                         <div key={key} className="skuProductEditHeadCell itemMasterHeadCell">
@@ -815,9 +851,13 @@ export default function ItemMasterTab({
                       <div
                         key={gid || `master-${idx}`}
                         className="skuProductEditRow itemMasterTableRow"
-                        style={{ gridTemplateColumns: masterGridTemplate }}
+                        style={masterGridStyle}
                       >
-                        {ITEM_MASTER_FIELDS.map(({ key, label }) => (
+                        {ITEM_MASTER_FIELDS.map(({ key, label }) => {
+                          const cellRaw = masterCellRawValue(key, d);
+                          const cellDisplay = masterCellDisplayValue(key, d);
+                          const cellTitle = masterCellTooltip(key, d, row);
+                          return (
                           <div key={key} className="skuProductEditCell itemMasterCell">
                             {isEditing ? (
                               key === "segment" ? (
@@ -830,6 +870,7 @@ export default function ItemMasterTab({
                                   }`}
                                   value={d.segment ?? ""}
                                   disabled={settingsMutating || masterSavingAll || !gid}
+                                  title={cellTitle}
                                   onChange={(e) => {
                                     const v = e.target.value;
                                     setMasterDraftById((prev) => ({
@@ -848,8 +889,9 @@ export default function ItemMasterTab({
                                 <input
                                   type="text"
                                   className="skuProductEditInput"
-                                  value={d[key] ?? ""}
+                                  value={key === "code_registered_at" ? cellDisplay : (d[key] ?? "")}
                                   disabled={settingsMutating || masterSavingAll || !gid}
+                                  title={cellTitle}
                                   onChange={(e) =>
                                     setMasterDraftById((prev) => ({
                                       ...prev,
@@ -867,20 +909,26 @@ export default function ItemMasterTab({
                                     ? " itemMasterCellReadonlyDiscontinued"
                                     : ""
                                 }`}
+                                title={cellTitle}
                               >
-                                {masterCellDisplayValue(key, d)}
+                                {cellDisplay}
                               </span>
                             )}
                           </div>
-                        ))}
-                        {masterExtraColumns.map(({ field_key, label }) => (
+                          );
+                        })}
+                        {masterExtraColumns.map(({ field_key, label }) => {
+                          const extraRaw = String(d.extra_fields?.[field_key] ?? "");
+                          const extraTitle = itemMasterTooltipText(extraRaw);
+                          return (
                           <div key={field_key} className="skuProductEditCell itemMasterCell itemMasterExtraCell">
                             {isEditing ? (
                               <input
                                 type="text"
                                 className="skuProductEditInput"
-                                value={d.extra_fields?.[field_key] ?? ""}
+                                value={extraRaw}
                                 disabled={settingsMutating || masterSavingAll || !gid}
+                                title={extraTitle}
                                 onChange={(e) =>
                                   setMasterDraftById((prev) => ({
                                     ...prev,
@@ -897,12 +945,13 @@ export default function ItemMasterTab({
                                 aria-label={label}
                               />
                             ) : (
-                              <span className="itemMasterCellReadonly">
-                                {d.extra_fields?.[field_key] ?? ""}
+                              <span className="itemMasterCellReadonly" title={extraTitle}>
+                                {extraRaw}
                               </span>
                             )}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     );
                   })}
