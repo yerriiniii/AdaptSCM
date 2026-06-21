@@ -64,7 +64,8 @@ axios.interceptors.request.use((config) => {
 function isAuthPublicRequestUrl(url) {
   const u = String(url || "");
   return (
-    u.includes("/api/auth/login")
+    u.includes("/api/auth/access-code")
+    || u.includes("/api/auth/login")
     || u.includes("/api/auth/register")
     || u.includes("/api/auth/signup-email/")
     || u.includes("/api/auth/account-status")

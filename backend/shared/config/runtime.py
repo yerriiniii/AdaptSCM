@@ -33,6 +33,8 @@ class RuntimeSettings:
     jwt_secret: str
     jwt_algorithm: str
     jwt_expire_minutes: int
+    # 관리자 진입용 고유 인증번호 (.env ADMIN_ACCESS_CODE)
+    admin_access_code: str | None
     # 최초 기동 시 1회 생성(이메일이 없을 때만). 이후엔 env 제거·변경해도 기존 계정은 유지.
     initial_admin_email: str | None
     initial_admin_password: str | None
@@ -82,6 +84,7 @@ def get_runtime_settings() -> RuntimeSettings:
         jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256").strip() or "HS256",
         # 기본 3시간. 운영은 JWT_EXPIRE_MINUTES 로 조정.
         jwt_expire_minutes=max(1, _read_int(os.getenv("JWT_EXPIRE_MINUTES"), 60 * 3)),
+        admin_access_code=(os.getenv("ADMIN_ACCESS_CODE") or "").strip() or None,
         initial_admin_email=(os.getenv("INITIAL_ADMIN_EMAIL") or "").strip() or None,
         initial_admin_password=os.getenv("INITIAL_ADMIN_PASSWORD") or None,
         public_app_url=(os.getenv("PUBLIC_APP_URL") or "http://localhost:5173").rstrip("/"),

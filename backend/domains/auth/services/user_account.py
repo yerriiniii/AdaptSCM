@@ -1,4 +1,5 @@
 import logging
+import secrets
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -10,6 +11,8 @@ from domains.auth.services.password_hashing import hash_password, verify_passwor
 from shared.config import get_runtime_settings
 
 _log = logging.getLogger(__name__)
+
+GATE_ACCESS_USER_EMAIL = "__access_gate__@system.local"
 
 
 def get_user_by_email(db: Session, email: str) -> UserAccount | None:
@@ -34,6 +37,32 @@ def change_user_password(
     db.add(user)
     db.commit()
     db.refresh(user)
+
+
+def ensure_gate_access_user(db: Session) -> UserAccount:
+    email = GATE_ACCESS_USER_EMAIL
+    existing = get_user_by_email(db, email)
+    if existing is not None:
+        if existing.status != UserAccountStatus.ACTIVE.value:
+            existing.status = UserAccountStatus.ACTIVE.value
+            existing.is_admin = True
+            existing.email_verified = True
+            db.add(existing)
+            db.commit()
+            db.refresh(existing)
+        return existing
+    u = UserAccount(
+        email=email,
+        password_hash=hash_password(secrets.token_urlsafe(48)),
+        status=UserAccountStatus.ACTIVE.value,
+        is_admin=True,
+        email_verified=True,
+    )
+    db.add(u)
+    db.commit()
+    db.refresh(u)
+    _log.info("관리자 인증번호 접근용 시스템 계정을 생성했습니다.")
+    return u
 
 
 def ensure_initial_admin_user(db: Session) -> None:

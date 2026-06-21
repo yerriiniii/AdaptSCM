@@ -15,9 +15,7 @@ import {
   Package,
   Search,
   Truck,
-  UserRound,
 } from "lucide-react";
-import MyPage from "./MyPage.jsx";
 import ItemMasterTab from "./ItemMasterTab.jsx";
 import * as XLSX from "xlsx";
 
@@ -2029,7 +2027,6 @@ export default function App() {
   const [selectedOverseasTrendRowKey, setSelectedOverseasTrendRowKey] = useState("");
   const [compareSelectedDate, setCompareSelectedDate] = useState("");
   const [showCautionModal, setShowCautionModal] = useState(false);
-  const [mypageView, setMypageView] = useState(false);
   const [settingsMutating, setSettingsMutating] = useState(false);
   const [mappingSearchKeyword, setMappingSearchKeyword] = useState("");
   const [mappingRows, setMappingRows] = useState([]);
@@ -5965,16 +5962,7 @@ export default function App() {
 
   return (
     <div className="pageSplit">
-    {mypageView && (
-      <div className="mypageOverlayShell">
-        <MyPage onBack={() => { setMypageView(false); }} />
-      </div>
-    )}
-    <div
-      className="dashboard"
-      style={mypageView ? { display: "none" } : undefined}
-      aria-hidden={mypageView ? "true" : undefined}
-    >
+    <div className="dashboard">
       <div className="dashboardHeroBand">
         <div className="headerArea">
         <section className="hero">
@@ -5992,23 +5980,14 @@ export default function App() {
               <button
                 type="button"
                 className="ghost heroHeadAccountBtn"
-                onClick={() => { setMypageView(true); }}
-                title="마이페이지"
-              >
-                <UserRound className="tabIcon" size={18} strokeWidth={2} aria-hidden />
-                마이페이지
-              </button>
-              <button
-                type="button"
-                className="ghost heroHeadAccountBtn"
-                title="로그아웃 후 로그인 화면으로 이동합니다."
+                title="세션을 종료하고 인증 화면으로 이동합니다."
                 onClick={() => {
                   clearAccessToken();
                   window.location.reload();
                 }}
               >
                 <LogOut className="tabIcon" size={18} strokeWidth={2} aria-hidden />
-                로그아웃
+                나가기
               </button>
             </div>
           </div>

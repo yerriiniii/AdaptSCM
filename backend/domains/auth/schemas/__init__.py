@@ -1,5 +1,6 @@
 from .auth import (
     AccountStatusResponse,
+    AdminAccessCodeRequest,
     ChangePasswordRequest,
     LoginRequest,
     MeResponse,
@@ -16,6 +17,7 @@ from .auth import (
 
 __all__ = [
     "AccountStatusResponse",
+    "AdminAccessCodeRequest",
     "ChangePasswordRequest",
     "LoginRequest",
     "MeResponse",

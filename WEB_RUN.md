@@ -53,6 +53,12 @@
 
 `FRONTEND_ORIGINS`
 
+`ADMIN_ACCESS_CODE` (관리자 진입용 인증번호, 필수)
+
+`JWT_SECRET` (운영 환경에서 긴 무작위 문자열 권장)
+
+`JWT_EXPIRE_MINUTES` (선택, 기본 180 = 3시간)
+
 예시:
 
 `FRONTEND_ORIGINS=http://13.124.10.10,https://your-domain.com`
