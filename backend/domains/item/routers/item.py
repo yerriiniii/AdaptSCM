@@ -12,6 +12,7 @@ from domains.item.schemas import (
     InventorySkuMappingUpsertRequest,
     ItemMasterExtraColumnCreateRequest,
     ItemMasterExtraColumnResponse,
+    ItemMasterRowDetailResponse,
     ItemMasterRowListResponse,
     ItemMasterRowPatchRequest,
     ItemMasterRowResponse,
@@ -31,6 +32,7 @@ from domains.item.services.item_master import (
     MASTER_COLUMN_ORDER,
     add_item_master_extra_column,
     delete_item_master_extra_column,
+    get_item_master_row_by_group_id,
     list_item_master_rows,
     merge_item_master_uploads,
     patch_item_master_row,
@@ -115,6 +117,15 @@ def inventory_master_rows(
         columns=[MASTER_COLUMN_LABELS[key] for key in MASTER_COLUMN_ORDER],
         extra_columns=extra_columns,
     )
+
+
+@router.get("/mappings/master-rows/{group_id}", response_model=ItemMasterRowDetailResponse)
+def inventory_master_row_detail(
+    group_id: str,
+    db: Session = Depends(get_db_session),
+) -> ItemMasterRowDetailResponse:
+    row, extra_columns = get_item_master_row_by_group_id(db=db, group_id=group_id)
+    return ItemMasterRowDetailResponse(row=ItemMasterRowResponse(**row), extra_columns=extra_columns)
 
 
 @router.post("/mappings/master-rows/extra-columns", response_model=ItemMasterExtraColumnResponse)

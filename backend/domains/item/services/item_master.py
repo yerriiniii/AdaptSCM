@@ -297,6 +297,29 @@ def master_row_payload(group: ProductGroup, extra_field_keys: list[str] | None =
     }
 
 
+def get_item_master_row_by_group_id(db: Session, group_id: str) -> tuple[dict, list[dict]]:
+    settings = get_runtime_settings()
+    if not settings.database_enabled:
+        raise HTTPException(status_code=500, detail="DATABASE_URL이 설정되지 않았습니다.")
+    gid_raw = str(group_id or "").strip()
+    if not gid_raw:
+        raise HTTPException(status_code=400, detail="group_id가 필요합니다.")
+    try:
+        gid = uuid.UUID(gid_raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="유효하지 않은 group_id입니다.") from exc
+    extra_cols = list_item_master_extra_columns(db)
+    extra_keys = [str(c["field_key"]) for c in extra_cols]
+    group = db.execute(
+        select(ProductGroup)
+        .where(ProductGroup.id == gid)
+        .options(selectinload(ProductGroup.locales))
+    ).scalar_one_or_none()
+    if group is None:
+        raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
+    return master_row_payload(group, extra_keys), extra_cols
+
+
 def list_item_master_rows(
     db: Session,
     query: str | None = None,
@@ -993,6 +1016,7 @@ def patch_item_master_row(db: Session, payload: dict[str, object]) -> dict:
 __all__ = [
     "MASTER_COLUMN_LABELS",
     "MASTER_COLUMN_ORDER",
+    "get_item_master_row_by_group_id",
     "list_item_master_rows",
     "list_item_master_extra_columns",
     "add_item_master_extra_column",

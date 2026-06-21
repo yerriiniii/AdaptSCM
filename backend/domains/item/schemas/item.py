@@ -137,6 +137,11 @@ class ItemMasterRowListResponse(BaseModel):
     extra_columns: list[ItemMasterExtraColumnResponse] = Field(default_factory=list)
 
 
+class ItemMasterRowDetailResponse(BaseModel):
+    row: ItemMasterRowResponse
+    extra_columns: list[ItemMasterExtraColumnResponse] = Field(default_factory=list)
+
+
 class ItemMasterUploadResponse(BaseModel):
     processed_file_count: int = 0
     processed_row_count: int = 0

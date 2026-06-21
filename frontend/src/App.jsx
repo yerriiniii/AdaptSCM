@@ -1354,6 +1354,75 @@ function mappingRowKrSku(row = {}) {
   return String(kr?.sku ?? "").trim();
 }
 
+/** 상품 검색 상세 패널 — 행별 필드 id (4열 그리드) */
+const PRODUCT_SEARCH_DETAIL_ROW_SPECS = [
+  ["kr_sku", "barcode", "version", "segment"],
+  ["stock_category", "mkt_priority", "fcst_grade", "stock_grade"],
+  ["release_month", "code_registered_at"],
+  ["us_grade", "tw_grade", "hk_grade", "jp_grade"],
+];
+
+const PRODUCT_SEARCH_DETAIL_FIELD_LABELS = {
+  kr_sku: "대표코드",
+  barcode: "바코드",
+  version: "Ver.",
+  segment: "구분",
+  stock_category: "재고구분",
+  mkt_priority: "MKT 우선순위",
+  fcst_grade: "FCST등급",
+  stock_grade: "재고등급",
+  release_month: "출시월",
+  code_registered_at: "코드 등록 일자",
+  us_grade: "미국 등급",
+  tw_grade: "대만 등급",
+  hk_grade: "홍콩 등급",
+  jp_grade: "일본 등급",
+};
+
+function formatProductSearchDetailValue(value) {
+  const text = String(value ?? "").trim();
+  return text || "–";
+}
+
+function resolveProductSearchDetailFieldValue(id, mappingRow = {}, master = {}) {
+  if (id === "kr_sku") {
+    return formatProductSearchDetailValue(mappingRowKrSku(mappingRow) || master.kr_sku);
+  }
+  if (id === "barcode") {
+    return formatProductSearchDetailValue(mappingRow.barcode);
+  }
+  if (id === "segment") {
+    return formatProductSearchDetailValue(
+      mappingRow.segment_display || mappingRow.segment || master.segment
+    );
+  }
+  if (id === "mkt_priority") {
+    return formatProductSearchDetailValue(mappingRow.mkt_priority);
+  }
+  return formatProductSearchDetailValue(master[id]);
+}
+
+function buildProductSearchDetailRowGroups(mappingRow = {}, detailPayload = null) {
+  const master = detailPayload?.row || {};
+  const extraCols = Array.isArray(detailPayload?.extra_columns) ? detailPayload.extra_columns : [];
+  const rows = PRODUCT_SEARCH_DETAIL_ROW_SPECS.map((ids) =>
+    ids.map((id) => ({
+      id,
+      label: PRODUCT_SEARCH_DETAIL_FIELD_LABELS[id] || id,
+      value: resolveProductSearchDetailFieldValue(id, mappingRow, master),
+    }))
+  );
+  const extraRow = extraCols.map(({ field_key, label }) => {
+    const ef = master.extra_fields && typeof master.extra_fields === "object" ? master.extra_fields : {};
+    return {
+      id: `extra:${field_key}`,
+      label: label || field_key,
+      value: formatProductSearchDetailValue(ef[field_key]),
+    };
+  });
+  return { rows, extraRow };
+}
+
 /** DB·화면 구분: 단종 저장값은 `단종`, 구분 칸 표시는 `(X) 단종` */
 const PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY = "(X) 단종";
 
@@ -1966,6 +2035,9 @@ export default function App() {
   const [mappingRows, setMappingRows] = useState([]);
   const [mappingRowsLoading, setMappingRowsLoading] = useState(false);
   const [mappingRowsError, setMappingRowsError] = useState("");
+  const [productSearchDetailOpenId, setProductSearchDetailOpenId] = useState("");
+  const [productSearchDetailById, setProductSearchDetailById] = useState({});
+  const [productSearchDetailLoadingId, setProductSearchDetailLoadingId] = useState("");
   const [mappingSummary, setMappingSummary] = useState({
     total_count: 0,
     updated_at: "",
@@ -5489,6 +5561,35 @@ export default function App() {
     };
     run();
   }, [isProductSearchScope, mappingSearchKeyword]);
+
+  useEffect(() => {
+    setProductSearchDetailOpenId("");
+  }, [mappingSearchKeyword]);
+
+  async function toggleProductSearchDetail(groupId) {
+    const id = String(groupId || "").trim();
+    if (!id) return;
+    if (productSearchDetailOpenId === id) {
+      setProductSearchDetailOpenId("");
+      return;
+    }
+    setProductSearchDetailOpenId(id);
+    if (productSearchDetailById[id]) return;
+    try {
+      setProductSearchDetailLoadingId(id);
+      const res = await axios.get(
+        `${API_BASE}/api/inventory/mappings/master-rows/${encodeURIComponent(id)}`
+      );
+      setProductSearchDetailById((prev) => ({ ...prev, [id]: res?.data || null }));
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "상품 상세 조회 중 오류";
+      window.alert(msg);
+      setProductSearchDetailOpenId("");
+    } finally {
+      setProductSearchDetailLoadingId("");
+    }
+  }
 
   function openSkuMappingInput() {
     document.getElementById("sku-mapping-input")?.click();
@@ -9958,7 +10059,12 @@ export default function App() {
                   <div className="skuManualSection skuManualSectionKr">
                     <div className="skuManualBlock">
                       <p className="skuManualNoticeHint">
-                        한국&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;브랜드, SKU, 상품명 필수
+                        <span className="skuManualNoticeHintLead">
+                          한국&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;브랜드, SKU, 상품명 필수
+                        </span>
+                        <span className="skuManualNoticeHintSub">
+                          *MKT 등급, FCST 등급 등 상품의 상세 정보는 후에 상품마스터 탭에서 수정할 수 있습니다.
+                        </span>
                       </p>
                       <div className="skuManualKrGrid">
                       <label className="skuManualKrField">
@@ -10163,6 +10269,9 @@ export default function App() {
                 {productMappingCards.map((row) => {
                   const mappingItemDiscontinued =
                     String(row.segment || "").trim() === "단종" || row.segment_display === "단종";
+                  const detailGroupId = String(row.group_id || row._id || "").trim();
+                  const detailOpen = productSearchDetailOpenId === detailGroupId;
+                  const detailPayload = productSearchDetailById[detailGroupId];
                   return (
                   <article key={row._id} className="productMappingItemCard">
                     <div
@@ -10179,16 +10288,77 @@ export default function App() {
                         <div className="productMappingItemNamePart productMappingGridHeadName">
                           {row.kr_name || "상품명 없음"}
                         </div>
-                        {mappingItemDiscontinued ? (
-                          <div
-                            className="productMappingGridHeadMeta productMappingDiscontinuedBadge"
-                            title="DB 구분: 단종"
+                        <div className="productMappingGridHeadActions">
+                          {mappingItemDiscontinued ? (
+                            <div
+                              className="productMappingGridHeadMeta productMappingDiscontinuedBadge"
+                              title="DB 구분: 단종"
+                            >
+                              <Ban className="productMappingDiscontinuedIcon" size={18} strokeWidth={2} aria-hidden />
+                              <span>단종</span>
+                            </div>
+                          ) : null}
+                          <button
+                            type="button"
+                            className={`productMappingDetailBtn${detailOpen ? " isOpen" : ""}`}
+                            disabled={!detailGroupId || productSearchDetailLoadingId === detailGroupId}
+                            onClick={() => void toggleProductSearchDetail(detailGroupId)}
+                            aria-expanded={detailOpen}
+                            aria-controls={detailGroupId ? `product-search-detail-${detailGroupId}` : undefined}
                           >
-                            <Ban className="productMappingDiscontinuedIcon" size={18} strokeWidth={2} aria-hidden />
-                            <span>단종</span>
-                          </div>
-                        ) : null}
+                            {productSearchDetailLoadingId === detailGroupId
+                              ? "불러오는 중…"
+                              : detailOpen
+                                ? "접기"
+                                : "상세보기"}
+                          </button>
+                        </div>
                       </div>
+                      {detailOpen ? (
+                        <div
+                          id={`product-search-detail-${detailGroupId}`}
+                          className="productMappingItemDetailBand"
+                        >
+                          {productSearchDetailLoadingId === detailGroupId ? (
+                            <div className="productMappingDetailLoading">DB에서 상품 정보를 불러오는 중…</div>
+                          ) : detailPayload ? (
+                            (() => {
+                              const { rows, extraRow } = buildProductSearchDetailRowGroups(row, detailPayload);
+                              return (
+                                <div className="productMappingDetailRows">
+                                  {rows.map((rowItems, rowIdx) => (
+                                    <dl
+                                      key={`detail-row-${rowIdx}`}
+                                      className={`productMappingDetailGrid${
+                                        rowItems.length === 4 ? " isFourCol" : " isTwoCol"
+                                      }${rowIdx === rows.length - 1 ? " isGradeRow" : ""}`}
+                                    >
+                                      {rowItems.map((item) => (
+                                        <div key={item.id} className="productMappingDetailPair">
+                                          <dt>{item.label}</dt>
+                                          <dd>{item.value}</dd>
+                                        </div>
+                                      ))}
+                                    </dl>
+                                  ))}
+                                  {extraRow.length ? (
+                                    <dl className="productMappingDetailGrid isFourCol">
+                                      {extraRow.map((item) => (
+                                        <div key={item.id} className="productMappingDetailPair">
+                                          <dt>{item.label}</dt>
+                                          <dd>{item.value}</dd>
+                                        </div>
+                                      ))}
+                                    </dl>
+                                  ) : null}
+                                </div>
+                              );
+                            })()
+                          ) : (
+                            <div className="productMappingDetailLoading">상세 정보를 불러오지 못했습니다.</div>
+                          )}
+                        </div>
+                      ) : null}
                       {row._countries.map((country, countryIdx) => (
                         <Fragment key={`${row._id}-${country.code}`}>
                           {countryIdx > 0 ? (
