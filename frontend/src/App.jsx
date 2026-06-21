@@ -36,6 +36,7 @@ const OVERSEAS_UPLOAD_COUNTRIES = ["US", "TW", "HK", "JP", "SG", "DE", "UK", "AU
 /** hydrate 시 해외 `/view` 동시 요청 수 — DB·연결 풀 부하 시 전체가 한꺼번에 막히는 것 완화 */
 const HYDRATE_OVERSEAS_VIEW_CONCURRENCY = 3;
 const SETTINGS_COUNTRY_ORDER = [
+  "ITEM_MASTER",
   "KR",
   "US",
   "TW",
@@ -53,6 +54,8 @@ const SETTINGS_COUNTRY_ORDER = [
 ];
 const PO_UPLOADED_FILES_STORAGE_KEY = "inventory_po_uploaded_file_entries";
 const PO_FILE_COUNTRY = "PURCHASE_ORDERS";
+const ITEM_MASTER_UPLOADED_FILES_STORAGE_KEY = "inventory_item_master_uploaded_file_entries";
+const ITEM_MASTER_FILE_COUNTRY = "ITEM_MASTER";
 
 function loadPoUploadedFileEntries() {
   try {
@@ -69,6 +72,26 @@ function loadPoUploadedFileEntries() {
 function persistPoUploadedFileEntries(entries) {
   try {
     localStorage.setItem(PO_UPLOADED_FILES_STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    /* storage quota 등 — 무시 */
+  }
+}
+
+function loadItemMasterUploadedFileEntries() {
+  try {
+    const raw = localStorage.getItem(ITEM_MASTER_UPLOADED_FILES_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((entry) => ({ ...entry, country: ITEM_MASTER_FILE_COUNTRY }));
+  } catch {
+    return [];
+  }
+}
+
+function persistItemMasterUploadedFileEntries(entries) {
+  try {
+    localStorage.setItem(ITEM_MASTER_UPLOADED_FILES_STORAGE_KEY, JSON.stringify(entries));
   } catch {
     /* storage quota 등 — 무시 */
   }
@@ -97,6 +120,7 @@ const SETTINGS_VISIBLE_FILE_COUNTRIES = (() => {
   if (MAIN_TAB_VISIBILITY.OVERSEAS) OVERSEAS_UPLOAD_COUNTRIES.forEach((c) => codes.add(c));
   if (MAIN_TAB_VISIBILITY.SHIPMENT) codes.add("SHIPMENT");
   if (MAIN_TAB_VISIBILITY.PURCHASE_ORDERS) codes.add(PO_FILE_COUNTRY);
+  if (MAIN_TAB_VISIBILITY.SKU_MAPPING) codes.add(ITEM_MASTER_FILE_COUNTRY);
   return codes;
 })();
 /** 출고 현황 칩 = 엑셀 시트 이름(백엔드 SHIPMENT_MATRIX_SHEET_NAMES와 동일 순서) */
@@ -1282,6 +1306,7 @@ function metaLabelFromCompareIdentityKey(compareKey) {
 function settingsFileGroupLabel(code = "KR") {
   if (code === "SHIPMENT") return "출고 파일";
   if (code === PO_FILE_COUNTRY) return "발주 파일";
+  if (code === ITEM_MASTER_FILE_COUNTRY) return "상품마스터 파일";
   return countryLabel(code);
 }
 
@@ -1894,6 +1919,7 @@ export default function App() {
   const [uploadInputKey, setUploadInputKey] = useState(0);
   const [shipmentFileEntries, setShipmentFileEntries] = useState([]);
   const [purchaseOrderFileEntries, setPurchaseOrderFileEntries] = useState(() => loadPoUploadedFileEntries());
+  const [itemMasterFileEntries, setItemMasterFileEntries] = useState(() => loadItemMasterUploadedFileEntries());
   const [shipmentUploadInputKey, setShipmentUploadInputKey] = useState(0);
   const [shipmentLoading, setShipmentLoading] = useState(false);
   /** 출고 통합 재시도: 미매핑 판매처 선택 모달 */
@@ -2895,6 +2921,7 @@ export default function App() {
     }
     groups.SHIPMENT = [...shipmentFileEntries];
     groups[PO_FILE_COUNTRY] = [...purchaseOrderFileEntries];
+    groups[ITEM_MASTER_FILE_COUNTRY] = [...itemMasterFileEntries];
     for (const key of Object.keys(groups)) {
       groups[key].sort((a, b) => {
         const ad = String(a.date || "").trim();
@@ -2906,14 +2933,16 @@ export default function App() {
       });
     }
     return groups;
-  }, [fileEntries, shipmentFileEntries, purchaseOrderFileEntries]);
+  }, [fileEntries, shipmentFileEntries, purchaseOrderFileEntries, itemMasterFileEntries]);
 
   const settingsVisibleFileGroups = useMemo(
     () =>
       Object.entries(groupedFileEntries).filter(
         ([country, entries]) =>
           SETTINGS_VISIBLE_FILE_COUNTRIES.has(country) &&
-          (entries.length > 0 || country === PO_FILE_COUNTRY)
+          (entries.length > 0 ||
+            country === PO_FILE_COUNTRY ||
+            country === ITEM_MASTER_FILE_COUNTRY)
       ),
     [groupedFileEntries]
   );
@@ -5584,6 +5613,26 @@ export default function App() {
     }
   }
 
+  function recordItemMasterUploadedFiles(files) {
+    const list = Array.from(files || []).filter(Boolean);
+    if (!list.length) return;
+    setItemMasterFileEntries((prev) => {
+      const stamp = Date.now();
+      const next = [
+        ...prev,
+        ...list.map((f, i) => ({
+          id: `im-${stamp}-${i}-${f.name}`,
+          name: f.name,
+          size: f.size,
+          country: ITEM_MASTER_FILE_COUNTRY,
+          uploadedAt: new Date().toISOString(),
+        })),
+      ];
+      persistItemMasterUploadedFileEntries(next);
+      return next;
+    });
+  }
+
   function resetManualSkuMappingForm() {
     setManualMappingForm({ ...EMPTY_SKU_MAPPING_FORM });
     setManualSkuFormKey((k) => k + 1);
@@ -5594,6 +5643,7 @@ export default function App() {
     const label = String(entry.name || "").trim() || "이 파일";
     const entryCountry = String(entry.country || "").toUpperCase();
     const isPoUploadedFile = entryCountry === PO_FILE_COUNTRY;
+    const isItemMasterUploadedFile = entryCountry === ITEM_MASTER_FILE_COUNTRY;
     const isShipmentPersistedFile = entryCountry === "SHIPMENT";
     if (isPoUploadedFile) {
       if (
@@ -5608,6 +5658,26 @@ export default function App() {
         setPurchaseOrderFileEntries((prev) => {
           const next = prev.filter((x) => x.id !== entry.id);
           persistPoUploadedFileEntries(next);
+          return next;
+        });
+      } finally {
+        setSettingsMutating(false);
+      }
+      return;
+    }
+    if (isItemMasterUploadedFile) {
+      if (
+        !window.confirm(
+          `「${label}」 업로드 기록을 목록에서 제거할까요?\n(상품마스터 DB 데이터는 삭제되지 않습니다.)`
+        )
+      ) {
+        return;
+      }
+      try {
+        setSettingsMutating(true);
+        setItemMasterFileEntries((prev) => {
+          const next = prev.filter((x) => x.id !== entry.id);
+          persistItemMasterUploadedFileEntries(next);
           return next;
         });
       } finally {
@@ -5702,6 +5772,23 @@ export default function App() {
       }
       return;
     }
+    if (country === ITEM_MASTER_FILE_COUNTRY) {
+      if (
+        !window.confirm(
+          `「${label}」 업로드 기록 ${formatInt(entries.length)}건을 목록에서 모두 제거할까요?\n(상품마스터 DB 데이터는 삭제되지 않습니다.)`
+        )
+      ) {
+        return;
+      }
+      try {
+        setSettingsMutating(true);
+        setItemMasterFileEntries([]);
+        persistItemMasterUploadedFileEntries([]);
+      } finally {
+        setSettingsMutating(false);
+      }
+      return;
+    }
     if (
       !window.confirm(
         `「${label}」에 저장된 파일과 재고 데이터를 모두 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`
@@ -5726,7 +5813,7 @@ export default function App() {
   async function clearAllFiles() {
     if (
       !window.confirm(
-        "모든 국가·출고·발주에 저장된 업로드 파일과 재고·출고 데이터를 모두 삭제할까요?\n(발주 파일 목록만 제거되며 발주 DB 데이터는 유지됩니다.)\n이 작업은 되돌릴 수 없습니다."
+        "모든 국가·출고·발주·상품마스터에 저장된 업로드 파일과 재고·출고 데이터를 모두 삭제할까요?\n(발주·상품마스터 파일 목록만 제거되며 해당 DB 데이터는 유지됩니다.)\n이 작업은 되돌릴 수 없습니다."
       )
     ) {
       return;
@@ -5736,6 +5823,8 @@ export default function App() {
       await axios.delete(`${API_BASE}/api/inventory/files`);
       setPurchaseOrderFileEntries([]);
       persistPoUploadedFileEntries([]);
+      setItemMasterFileEntries([]);
+      persistItemMasterUploadedFileEntries([]);
       await hydratePersistedState({ preserveLocalOnly: false });
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -9714,6 +9803,10 @@ export default function App() {
                         <div className="fileControl fileControlMuted">
                           <span>발주 엑셀(업로드 이력)</span>
                         </div>
+                      ) : country === ITEM_MASTER_FILE_COUNTRY ? (
+                        <div className="fileControl fileControlMuted">
+                          <span>상품마스터 엑셀(업로드 이력)</span>
+                        </div>
                       ) : (
                         <div className="fileControl">
                           <span>날짜</span>
@@ -9803,6 +9896,7 @@ export default function App() {
                   settingsMutating={settingsMutating}
                   setSettingsMutating={setSettingsMutating}
                   stickyBaseTop={itemMasterStickyBaseTop}
+                  onFilesUploaded={recordItemMasterUploadedFiles}
                 />
               ) : skuManageMode === "UPLOAD" ? (
                 <div className="skuUploadStage skuManageSinglePanel poOrderFileUploadStage">

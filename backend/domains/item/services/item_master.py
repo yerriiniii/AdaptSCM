@@ -9,7 +9,9 @@ from datetime import date, datetime, timezone
 
 import pandas as pd
 from fastapi import HTTPException, UploadFile
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from domains.item.models import ProductGroup, ProductLocale
@@ -58,7 +60,6 @@ MASTER_HEADER_ALIASES: dict[str, frozenset[str]] = {
     "brand": frozenset({"brand", "브랜드"}),
     "segment": frozenset({"segment", "구분", "상품구분", "분류", "상품분류"}),
     "version": frozenset({"ver", "ver.", "version", "버전", "옵션", "option", "options"}),
-    "kr_sku": frozenset({"krsku", "kr_sku", "상품코드", "코드", "sku", "itemno", "item_no"}),
     "kr_name": frozenset({"krname", "kr_name", "상품명", "품명", "description", "name"}),
     "stock_category": frozenset({"stockcategory", "stock_category", "재고구분", "재고분류"}),
     "fcst_grade": frozenset({"fcstgrade", "fcst_grade", "fcst등급", "fcst"}),
@@ -100,6 +101,13 @@ def _normalize_master_header(value: object) -> str:
     return re.sub(r"[\s_\-·]+", "", raw)
 
 
+# 상품코드 열: 이 헤더만 인식 (우선순위 — 앞일수록 우선)
+KR_SKU_HEADER_LABELS: tuple[str, ...] = ("상품코드", "어드민코드", "대표코드")
+KR_SKU_HEADER_NORMS: frozenset[str] = frozenset(
+    _normalize_master_header(label) for label in KR_SKU_HEADER_LABELS
+)
+
+
 def _build_master_header_map() -> dict[str, str]:
     out: dict[str, str] = {}
     for canonical, aliases in MASTER_HEADER_ALIASES.items():
@@ -117,60 +125,24 @@ def _cell_text(value: object) -> str:
     return str(value).strip()
 
 
-def _parse_optional_date(value: object, field_label: str, row_label: str) -> date | None:
+RELEASE_MONTH_MAX_LEN = 64
+CODE_REGISTERED_AT_MAX_LEN = 64
+
+
+def _normalize_release_month(value: object) -> str | None:
+    """출시월 — YYYYMM 고정이 아니라 자유 텍스트."""
     raw = _cell_text(value)
     if not raw:
         return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    digits = re.sub(r"[^0-9]", "", raw)
-    if len(digits) == 8:
-        try:
-            return date(int(digits[0:4]), int(digits[4:6]), int(digits[6:8]))
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{row_label}: {field_label} 날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)",
-            ) from exc
-    parsed = pd.to_datetime(raw, errors="coerce")
-    if pd.isna(parsed):
-        raise HTTPException(
-            status_code=400,
-            detail=f"{row_label}: {field_label} 날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)",
-        )
-    return parsed.date()
+    return raw[:RELEASE_MONTH_MAX_LEN]
 
 
-def _parse_release_month(value: object, row_label: str) -> str | None:
+def _normalize_code_registered_at(value: object) -> str | None:
+    """코드 등록 일자 — 날짜 파싱 없이 자유 텍스트."""
     raw = _cell_text(value)
     if not raw:
         return None
-    if isinstance(value, datetime):
-        return value.strftime("%Y%m")
-    if isinstance(value, date):
-        return value.strftime("%Y%m")
-    digits = re.sub(r"[^0-9]", "", raw)
-    if len(digits) == 6:
-        year, month = int(digits[0:4]), int(digits[4:6])
-        if 1 <= month <= 12:
-            return f"{year:04d}{month:02d}"
-    if len(digits) == 8:
-        year, month = int(digits[0:4]), int(digits[4:6])
-        if 1 <= month <= 12:
-            return f"{year:04d}{month:02d}"
-    parsed = pd.to_datetime(raw, errors="coerce")
-    if not pd.isna(parsed):
-        return parsed.strftime("%Y%m")
-    raise HTTPException(
-        status_code=400,
-        detail=f"{row_label}: 출시월 형식이 올바르지 않습니다. (YYYYMM)",
-    )
-
-
-def _serialize_optional_date(value: date | None) -> str | None:
-    return value.isoformat() if value else None
+    return raw[:CODE_REGISTERED_AT_MAX_LEN]
 
 
 def _serialize_release_month(group: ProductGroup) -> str:
@@ -202,7 +174,7 @@ def master_row_payload(group: ProductGroup) -> dict:
         "fcst_grade": group.fcst_grade or "",
         "stock_grade": group.stock_grade or "",
         "release_month": _serialize_release_month(group),
-        "code_registered_at": _serialize_optional_date(group.code_registered_at),
+        "code_registered_at": _cell_text(group.code_registered_at),
         "us_grade": group.us_grade or "",
         "tw_grade": group.tw_grade or "",
         "hk_grade": group.hk_grade or "",
@@ -236,24 +208,156 @@ def list_item_master_rows(db: Session, query: str | None = None, limit: int = 10
     return rows
 
 
+def _kr_sku_source_columns(df: pd.DataFrame) -> list[str]:
+    """원본 시트 열 중 상품코드 후보 (KR_SKU_HEADER_LABELS 순)."""
+    col_by_norm: dict[str, str] = {}
+    for col in df.columns:
+        norm = _normalize_master_header(col)
+        if norm in KR_SKU_HEADER_NORMS and norm not in col_by_norm:
+            col_by_norm[norm] = col
+    return [col_by_norm[n] for n in (_normalize_master_header(l) for l in KR_SKU_HEADER_LABELS) if n in col_by_norm]
+
+
+def _merge_kr_sku_series(df: pd.DataFrame) -> pd.Series:
+    """상품코드 > 어드민코드 > 대표코드 — 첫 번째 비어 있지 않은 값."""
+    col_by_norm: dict[str, str] = {}
+    for col in df.columns:
+        norm = _normalize_master_header(col)
+        if norm in KR_SKU_HEADER_NORMS and norm not in col_by_norm:
+            col_by_norm[norm] = col
+    priority_norms = [_normalize_master_header(label) for label in KR_SKU_HEADER_LABELS]
+
+    def pick(row: pd.Series) -> str:
+        for norm in priority_norms:
+            col = col_by_norm.get(norm)
+            if col is None:
+                continue
+            sku = _normalize_mapping_sku(row[col])
+            if sku:
+                return sku
+        return ""
+
+    return df.apply(pick, axis=1)
+
+
 def _coerce_master_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
     rename_map: dict[str, str] = {}
     for col in df.columns:
-        canonical = _MASTER_HEADER_MAP.get(_normalize_master_header(col))
+        norm = _normalize_master_header(col)
+        if norm in KR_SKU_HEADER_NORMS:
+            continue
+        canonical = _MASTER_HEADER_MAP.get(norm)
         if canonical:
             rename_map[col] = canonical
-    if not rename_map:
+    if not rename_map and not _kr_sku_source_columns(df):
         raise HTTPException(
             status_code=400,
             detail=f"{filename}: 인식 가능한 헤더가 없습니다. 필수 열: 상품코드, 상품명, 브랜드",
         )
     out = df.rename(columns=rename_map)
+    sku_sources = _kr_sku_source_columns(df)
+    if sku_sources:
+        out["kr_sku"] = _merge_kr_sku_series(df)
     if "kr_sku" not in out.columns or "kr_name" not in out.columns:
         raise HTTPException(
             status_code=400,
-            detail=f"{filename}: 상품코드·상품명 열이 필요합니다.",
+            detail=(
+                f"{filename}: 상품코드·상품명 열이 필요합니다. "
+                f"상품코드는 「{'」「'.join(KR_SKU_HEADER_LABELS)}」 헤더만 사용합니다."
+            ),
         )
     return out
+
+
+def _master_header_matches_in_row(row_values: list[object]) -> set[str]:
+    matched: set[str] = set()
+    for cell in row_values:
+        norm = _normalize_master_header(cell)
+        if norm in KR_SKU_HEADER_NORMS:
+            matched.add("kr_sku")
+            continue
+        canonical = _MASTER_HEADER_MAP.get(norm)
+        if canonical:
+            matched.add(canonical)
+    return matched
+
+
+def _find_master_header_row(raw_df: pd.DataFrame) -> int:
+    """시트 상단에 빈 행이 있어도 헤더 행(상품코드·상품명 포함)을 찾는다."""
+    if raw_df.empty:
+        return -1
+    best_row = -1
+    best_score = 0
+    max_rows = min(40, len(raw_df))
+    for row_idx in range(max_rows):
+        matched = _master_header_matches_in_row(raw_df.iloc[row_idx].tolist())
+        if "kr_sku" not in matched or "kr_name" not in matched:
+            continue
+        score = len(matched)
+        if score > best_score:
+            best_score = score
+            best_row = row_idx
+    return best_row
+
+
+def _dataframe_from_master_header_row(raw_df: pd.DataFrame, header_row: int) -> pd.DataFrame:
+    """헤더 행 이후를 본문으로 쓰고, 왼쪽 빈 열은 제거한다."""
+    ncols = raw_df.shape[1]
+    headers: list[str] = []
+    for i, val in enumerate(raw_df.iloc[header_row, :ncols].tolist()):
+        text = _cell_text(val)
+        headers.append(text if text else f"__empty_{i}")
+
+    body = raw_df.iloc[header_row + 1 :, :ncols].copy()
+    body.columns = headers
+    body = body.reset_index(drop=True)
+
+    keep: list[str] = []
+    for col in body.columns:
+        if str(col).startswith("__empty_"):
+            series = body[col]
+            if series.map(lambda v: not _cell_text(v)).all():
+                continue
+        keep.append(col)
+    if keep:
+        body = body[keep]
+    return body
+
+
+def _read_master_dataframe(raw: bytes, filename: str) -> tuple[pd.DataFrame, int]:
+    """엑셀 → (정규화된 DataFrame, 헤더 행 0-based 인덱스)."""
+    last_header_error: HTTPException | None = None
+    try:
+        raw_df = pd.read_excel(io.BytesIO(raw), sheet_name=0, dtype=object, header=None)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"{filename}: 엑셀을 읽을 수 없습니다. ({exc})") from exc
+
+    header_row = _find_master_header_row(raw_df)
+    if header_row >= 0:
+        try:
+            df = _dataframe_from_master_header_row(raw_df, header_row)
+            return _coerce_master_dataframe(df, filename), header_row
+        except HTTPException as exc:
+            last_header_error = exc
+
+    for fallback_header in (0, 1):
+        if fallback_header >= len(raw_df):
+            continue
+        try:
+            df = _dataframe_from_master_header_row(raw_df, fallback_header)
+            return _coerce_master_dataframe(df, filename), fallback_header
+        except HTTPException as exc:
+            if exc.status_code == 400:
+                last_header_error = exc
+                continue
+            raise
+
+    if last_header_error is not None:
+        raise last_header_error
+    raise HTTPException(
+        status_code=400,
+        detail=f"{filename}: 인식 가능한 헤더가 없습니다. 필수 열: 상품코드, 상품명, 브랜드",
+    )
 
 
 def _read_master_records(upload_files: list[UploadFile]) -> list[dict]:
@@ -267,13 +371,9 @@ def _read_master_records(upload_files: list[UploadFile]) -> list[dict]:
         upload_file.file.seek(0)
         if len(raw) > MAX_MASTER_FILE_SIZE_BYTES:
             raise HTTPException(status_code=400, detail=f"{filename}: 파일 크기는 5MB 이하여야 합니다.")
-        try:
-            df = pd.read_excel(io.BytesIO(raw), sheet_name=0, dtype=object)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"{filename}: 엑셀을 읽을 수 없습니다. ({exc})") from exc
-        df = _coerce_master_dataframe(df, filename)
+        df, header_row = _read_master_dataframe(raw, filename)
         for idx, row in df.iterrows():
-            row_label = f"{filename} {int(idx) + 2}행"
+            row_label = f"{filename} {header_row + int(idx) + 2}행"
             kr_sku = _normalize_mapping_sku(row.get("kr_sku"))
             kr_name = _cell_text(row.get("kr_name"))
             if not kr_sku and not kr_name:
@@ -298,12 +398,10 @@ def _read_master_records(upload_files: list[UploadFile]) -> list[dict]:
                     else "",
                     "fcst_grade": _cell_text(row.get("fcst_grade"))[:32] if "fcst_grade" in df.columns else "",
                     "stock_grade": _cell_text(row.get("stock_grade"))[:32] if "stock_grade" in df.columns else "",
-                    "release_month": _parse_release_month(row.get("release_month"), row_label)
+                    "release_month": _normalize_release_month(row.get("release_month"))
                     if "release_month" in df.columns
                     else None,
-                    "code_registered_at": _parse_optional_date(
-                        row.get("code_registered_at"), "코드 등록 일자", row_label
-                    )
+                    "code_registered_at": _normalize_code_registered_at(row.get("code_registered_at"))
                     if "code_registered_at" in df.columns
                     else None,
                     "us_grade": _cell_text(row.get("us_grade"))[:32] if "us_grade" in df.columns else "",
@@ -317,19 +415,203 @@ def _read_master_records(upload_files: list[UploadFile]) -> list[dict]:
     return records
 
 
-def _find_group_by_kr_sku(db: Session, kr_sku_norm: str) -> ProductGroup | None:
-    locales = (
+def _load_kr_locale_pairs(db: Session) -> list[tuple[ProductLocale, ProductGroup]]:
+    return list(
         db.execute(
-            select(ProductLocale)
-            .options(selectinload(ProductLocale.product_group).selectinload(ProductGroup.locales))
+            select(ProductLocale, ProductGroup)
+            .join(ProductGroup, ProductLocale.item_id == ProductGroup.id)
             .where(ProductLocale.country_code == "KR")
-        )
-        .scalars()
-        .all()
+        ).all()
     )
-    for loc in locales:
+
+
+def _locale_is_active(loc: ProductLocale) -> bool:
+    return not sa_inspect(loc).deleted
+
+
+def _prune_deleted_kr_pairs(pairs: list[tuple[ProductLocale, ProductGroup]]) -> None:
+    pairs[:] = [(loc, group) for loc, group in pairs if _locale_is_active(loc)]
+
+
+def _build_kr_sku_group_map(pairs: list[tuple[ProductLocale, ProductGroup]]) -> dict[str, ProductGroup]:
+    """정규화 SKU → ProductGroup (업로드 시 행마다 전체 조회하지 않도록 1회 인덱스)."""
+    out: dict[str, ProductGroup] = {}
+    for loc, group in pairs:
+        if not _locale_is_active(loc):
+            continue
+        norm = _normalize_mapping_sku(loc.sku)
+        if norm and norm not in out:
+            out[norm] = group
+    return out
+
+
+def _find_existing_for_master_upload(
+    pairs: list[tuple[ProductLocale, ProductGroup]],
+    kr_sku_norm: str,
+) -> tuple[ProductGroup | None, ProductLocale | None]:
+    """업로드 상품코드(정규화)와 일치하는 기존 행 — raw 일치 우선, 없으면 정규화 일치."""
+    normalized_hit: tuple[ProductGroup, ProductLocale] | None = None
+    for loc, group in pairs:
+        if not _locale_is_active(loc):
+            continue
+        if loc.sku == kr_sku_norm:
+            return group, loc
+        if normalized_hit is None and _normalize_mapping_sku(loc.sku) == kr_sku_norm:
+            normalized_hit = (group, loc)
+    if normalized_hit is not None:
+        return normalized_hit
+    return None, None
+
+
+def _clear_conflicting_kr_duplicates(
+    db: Session,
+    pairs: list[tuple[ProductLocale, ProductGroup]],
+    sku_group_map: dict[str, ProductGroup],
+    *,
+    owner_group_id: uuid.UUID,
+    kr_sku_norm: str,
+) -> None:
+    """동일 상품코드(정규화)가 다른 상품에 중복 등록된 KR locale 제거 — 갱신 대상만 남김."""
+    remove_at: list[int] = []
+    for idx, (loc, group) in enumerate(pairs):
+        if group.id == owner_group_id:
+            continue
+        if loc.sku != kr_sku_norm and _normalize_mapping_sku(loc.sku) != kr_sku_norm:
+            continue
+        db.delete(loc)
+        if loc in group.locales:
+            group.locales.remove(loc)
+        remove_at.append(idx)
+        for key, mapped in list(sku_group_map.items()):
+            if mapped.id == group.id:
+                del sku_group_map[key]
+    for idx in reversed(remove_at):
+        pairs.pop(idx)
+    _prune_deleted_kr_pairs(pairs)
+
+
+def _format_master_sku_conflict(
+    row_label: str,
+    upload_sku: str,
+    *,
+    upload_name: str = "",
+    conflict_loc: ProductLocale,
+    conflict_group: ProductGroup,
+    reason: str,
+) -> str:
+    existing_name = (conflict_group.kr_name or conflict_loc.name or "").strip() or "(이름 없음)"
+    existing_brand = (conflict_group.brand or "").strip() or "-"
+    lines = [
+        f"{row_label}: {reason}",
+        f"  · 업로드: 코드 {upload_sku!r}" + (f", 상품명 {upload_name!r}" if upload_name else ""),
+        f"  · DB 기존: 코드 {conflict_loc.sku!r}, 상품명 {existing_name!r}, 브랜드 {existing_brand!r}",
+    ]
+    if conflict_loc.sku != upload_sku:
+        lines.append(f"  · 참고: 표기는 다르지만 동일 코드로 처리됩니다 ({conflict_loc.sku!r} ↔ {upload_sku!r})")
+    return "\n".join(lines)
+
+
+def _find_kr_sku_conflicts(
+    pairs: list[tuple[ProductLocale, ProductGroup]],
+    new_sku: str,
+    *,
+    owner_group_id: uuid.UUID | None,
+) -> list[tuple[ProductLocale, ProductGroup]]:
+    new_norm = _normalize_mapping_sku(new_sku)
+    hits: list[tuple[ProductLocale, ProductGroup]] = []
+    for loc, group in pairs:
+        if not _locale_is_active(loc):
+            continue
+        if owner_group_id is not None and group.id == owner_group_id:
+            continue
+        if loc.sku == new_sku or _normalize_mapping_sku(loc.sku) == new_norm:
+            hits.append((loc, group))
+    return hits
+
+
+def _master_upload_integrity_detail(
+    exc: IntegrityError,
+    *,
+    row_label: str,
+    kr_sku: str,
+    kr_name: str,
+    kr_pairs: list[tuple[ProductLocale, ProductGroup]],
+) -> str:
+    raw = str(getattr(exc, "orig", None) or exc)
+    sku_match = re.search(r"\(country_code,\s*sku\)=\([^,]+,\s*([^)]+)\)", raw, re.IGNORECASE)
+    conflict_sku = (sku_match.group(1).strip() if sku_match else kr_sku).strip("'\"")
+    conflicts = _find_kr_sku_conflicts(kr_pairs, conflict_sku, owner_group_id=None)
+
+    lines = [
+        f"{row_label}: 상품코드 {kr_sku!r} 처리 중 DB 중복 오류가 발생했습니다.",
+    ]
+    if kr_name:
+        lines.append(f"  · 업로드 상품명: {kr_name!r}")
+    if conflict_sku != kr_sku:
+        lines.append(
+            f"  · DB 제약 위반 코드: {conflict_sku!r} "
+            f"(현재 행과 다르면 같은 파일의 다른 행·열 매핑을 확인하세요)"
+        )
+    if conflicts:
+        for loc, group in conflicts[:5]:
+            existing_name = (group.kr_name or loc.name or "").strip() or "(이름 없음)"
+            lines.append(
+                f"  · 충돌 DB 행: 코드 {loc.sku!r}, 상품명 {existing_name!r}, 브랜드 {(group.brand or '-')!r}"
+            )
+        if len(conflicts) > 5:
+            lines.append(f"  · … 외 {len(conflicts) - 5}건")
+    else:
+        lines.append(f"  · DB에 이미 한국(KR) 상품코드 {conflict_sku!r} 가 등록되어 있습니다.")
+    lines.append(
+        f"  · 상품코드 열은 「{'」「'.join(KR_SKU_HEADER_LABELS)}」만 사용합니다 (최종코드 등은 무시)."
+    )
+    return "\n".join(lines)
+
+
+def _assert_kr_sku_not_taken_by_other_product(
+    pairs: list[tuple[ProductLocale, ProductGroup]],
+    *,
+    owner_group_id: uuid.UUID | None,
+    new_sku: str,
+    row_label: str,
+    upload_name: str = "",
+) -> None:
+    """서로 다른 상품이 동일 상품코드를 쓰는 경우만 거부 (갱신·중복 정리 후에도 남은 충돌)."""
+    conflicts = _find_kr_sku_conflicts(pairs, new_sku, owner_group_id=owner_group_id)
+    if not conflicts:
+        return
+    loc, group = conflicts[0]
+    raise HTTPException(
+        status_code=400,
+        detail=_format_master_sku_conflict(
+            row_label,
+            new_sku,
+            upload_name=upload_name,
+            conflict_loc=loc,
+            conflict_group=group,
+            reason="다른 상품이 이미 같은 한국 상품코드를 사용 중입니다",
+        ),
+    )
+
+
+def _upsert_kr_pair(
+    pairs: list[tuple[ProductLocale, ProductGroup]],
+    kr_locale: ProductLocale,
+    group: ProductGroup,
+) -> None:
+    for idx, (loc, g) in enumerate(pairs):
+        if g.id == group.id:
+            pairs[idx] = (kr_locale, group)
+            return
+    pairs.append((kr_locale, group))
+
+
+def _find_group_by_kr_sku(db: Session, kr_sku_norm: str) -> ProductGroup | None:
+    if not kr_sku_norm:
+        return None
+    for loc, group in _load_kr_locale_pairs(db):
         if _normalize_mapping_sku(loc.sku) == kr_sku_norm:
-            return loc.product_group
+            return group
     return None
 
 
@@ -365,26 +647,60 @@ def merge_item_master_uploads(db: Session, upload_files: list[UploadFile]) -> di
     now = datetime.now(timezone.utc)
     touched = 0
     created = 0
+    kr_pairs = _load_kr_locale_pairs(db)
+    sku_group_map = _build_kr_sku_group_map(kr_pairs)
+    last_row_label = ""
+    last_kr_sku = ""
+    last_kr_name = ""
     try:
         for record in records:
-            existing = _find_group_by_kr_sku(db, record["kr_sku"])
+            last_row_label = record["row_label"]
+            last_kr_sku = record["kr_sku"]
+            last_kr_name = record["kr_name"]
+            _prune_deleted_kr_pairs(kr_pairs)
+            kr_sku = record["kr_sku"]
+            existing, existing_kr = _find_existing_for_master_upload(kr_pairs, kr_sku)
             if existing is not None:
-                kr = _kr_locale(existing)
+                _clear_conflicting_kr_duplicates(
+                    db,
+                    kr_pairs,
+                    sku_group_map,
+                    owner_group_id=existing.id,
+                    kr_sku_norm=kr_sku,
+                )
+                _assert_kr_sku_not_taken_by_other_product(
+                    kr_pairs,
+                    owner_group_id=existing.id,
+                    new_sku=kr_sku,
+                    row_label=record["row_label"],
+                    upload_name=record["kr_name"],
+                )
+                kr = existing_kr or _kr_locale(existing)
                 if kr is None:
                     kr = ProductLocale(
                         id=uuid.uuid4(),
                         item_id=existing.id,
                         country_code="KR",
                         name=record["kr_name"],
-                        sku=record["kr_sku"],
+                        sku=kr_sku,
                         updated_at=now,
                     )
                     existing.locales.append(kr)
                     db.add(kr)
                 _apply_master_fields(existing, kr, record, now)
+                _upsert_kr_pair(kr_pairs, kr, existing)
+                sku_group_map[kr_sku] = existing
                 touched += 1
+                _prune_deleted_kr_pairs(kr_pairs)
                 continue
 
+            _assert_kr_sku_not_taken_by_other_product(
+                kr_pairs,
+                owner_group_id=None,
+                new_sku=kr_sku,
+                row_label=record["row_label"],
+                upload_name=record["kr_name"],
+            )
             group = ProductGroup(
                 id=uuid.uuid4(),
                 kr_name=record["kr_name"],
@@ -414,8 +730,29 @@ def merge_item_master_uploads(db: Session, upload_files: list[UploadFile]) -> di
             group.locales = [kr]
             db.add(group)
             db.add(kr)
+            sku_group_map[kr_sku] = group
+            kr_pairs.append((kr, group))
             created += 1
+            _prune_deleted_kr_pairs(kr_pairs)
         db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        err = str(exc).lower()
+        if "ix_item_mapping_country_sku" in err or "unique" in err:
+            raise HTTPException(
+                status_code=400,
+                detail=_master_upload_integrity_detail(
+                    exc,
+                    row_label=last_row_label or "(알 수 없는 행)",
+                    kr_sku=last_kr_sku,
+                    kr_name=last_kr_name,
+                    kr_pairs=kr_pairs,
+                ),
+            ) from exc
+        raise
     except Exception:
         db.rollback()
         raise
@@ -488,10 +825,8 @@ def patch_item_master_row(db: Session, payload: dict[str, object]) -> dict:
         "stock_category": str(payload.get("stock_category") or "").strip()[:64],
         "fcst_grade": str(payload.get("fcst_grade") or "").strip()[:32],
         "stock_grade": str(payload.get("stock_grade") or "").strip()[:32],
-        "release_month": _parse_release_month(release_month_in, "수정") if release_month_in else None,
-        "code_registered_at": _parse_optional_date(
-            payload.get("code_registered_at"), "코드 등록 일자", "수정"
-        )
+        "release_month": _normalize_release_month(release_month_in) if release_month_in else None,
+        "code_registered_at": _normalize_code_registered_at(payload.get("code_registered_at"))
         if str(payload.get("code_registered_at") or "").strip()
         else None,
         "us_grade": str(payload.get("us_grade") or "").strip()[:32],

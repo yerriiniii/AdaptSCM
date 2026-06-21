@@ -142,7 +142,7 @@ async function buildItemMasterTemplateWorkbookBuffer() {
     "예: 일반",
     "예: 정기발주",
     "예: C",
-    "예: 202601",
+    "예: 2026년 1월",
     "",
     "",
     "",
@@ -206,6 +206,7 @@ export default function ItemMasterTab({
   settingsMutating,
   setSettingsMutating,
   stickyBaseTop = 0,
+  onFilesUploaded,
 }) {
   const [masterRows, setMasterRows] = useState([]);
   const [masterLoading, setMasterLoading] = useState(false);
@@ -213,6 +214,7 @@ export default function ItemMasterTab({
   const [masterQuery, setMasterQuery] = useState("");
   const [masterDraftById, setMasterDraftById] = useState({});
   const [masterSavingAll, setMasterSavingAll] = useState(false);
+  const [masterUploadBusy, setMasterUploadBusy] = useState(false);
   const [masterEditMode, setMasterEditMode] = useState(false);
   const [masterInputKey, setMasterInputKey] = useState(0);
   const masterToolbarRef = useRef(null);
@@ -455,29 +457,44 @@ export default function ItemMasterTab({
     const files = Array.from(fileList || []).filter(Boolean);
     if (!files.length) return;
     try {
+      setMasterUploadBusy(true);
       setSettingsMutating(true);
       setMasterError("");
       const form = new FormData();
       files.forEach((file) => form.append("files", file));
-      const res = await axios.post(ITEM_MASTER_API.upload, form);
+      const res = await axios.post(ITEM_MASTER_API.upload, form, { timeout: 600_000 });
       const result = res?.data || {};
+      onFilesUploaded?.(files);
       setMasterInputKey((k) => k + 1);
       setMasterEditMode(false);
-      const listRes = await axios.get(ITEM_MASTER_API.rows, {
-        params: { query: masterQuery || "" },
-      });
-      const items = Array.isArray(listRes?.data?.items) ? listRes.data.items : [];
-      setMasterRows(items);
-      setMasterDraftById(Object.fromEntries(items.map((r) => [r.group_id, masterDraftFromRow(r)])));
+      try {
+        const listRes = await axios.get(ITEM_MASTER_API.rows, {
+          params: { query: masterQuery || "" },
+          timeout: 120_000,
+        });
+        const items = Array.isArray(listRes?.data?.items) ? listRes.data.items : [];
+        setMasterRows(items);
+        setMasterDraftById(Object.fromEntries(items.map((r) => [r.group_id, masterDraftFromRow(r)])));
+      } catch (listErr) {
+        console.warn("item master list refresh after upload", listErr);
+        setMasterError("업로드는 완료되었으나 목록 새로고침에 실패했습니다. 페이지를 새로고침해 주세요.");
+      }
       window.alert(
         `${formatInt(result.processed_file_count)}개 파일, ${formatInt(result.processed_row_count)}행 처리`
       );
     } catch (err) {
       const detail = err?.response?.data?.detail;
-      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "로우데이터 업로드 중 오류";
+      const msg = detail
+        ? Array.isArray(detail)
+          ? detail.join("\n")
+          : String(detail)
+        : err?.code === "ECONNABORTED"
+          ? "업로드 시간이 초과되었습니다. 파일 행 수가 많으면 잠시 후 다시 시도해 주세요."
+          : err?.message || "로우데이터 업로드 중 오류";
       setMasterError(msg);
       window.alert(msg);
     } finally {
+      setMasterUploadBusy(false);
       setSettingsMutating(false);
     }
   }
@@ -525,11 +542,11 @@ export default function ItemMasterTab({
           <button
             type="button"
             className="poOrderFileTemplateBtn itemMasterTemplateBtn itemMasterUploadBtn"
-            disabled={settingsMutating || masterEditMode}
+            disabled={settingsMutating || masterEditMode || masterUploadBusy}
             onClick={() => document.getElementById("item-master-input")?.click()}
           >
             <Upload size={16} strokeWidth={2} aria-hidden="true" />
-            엑셀 파일 업로드
+            {masterUploadBusy ? "업로드 중…" : "엑셀 파일 업로드"}
           </button>
           <div className="searchWrap skuProductEditSearchWrap itemMasterToolbarSearch">
             <SearchFieldIcon className="searchIcon" size={16} strokeWidth={2} />
@@ -563,7 +580,9 @@ export default function ItemMasterTab({
           aria-hidden="true"
         />
         {masterError ? <pre className="error skuProductEditError">{masterError}</pre> : null}
-        {masterLoading ? (
+        {masterUploadBusy ? (
+          <div className="searchEmptyState">엑셀 업로드 처리 중…</div>
+        ) : masterLoading ? (
           <div className="searchEmptyState">불러오는 중...</div>
         ) : !masterRows.length ? (
           <div className="skuProductEditEmpty">등록된 상품이 없습니다. 엑셀을 업로드해 주세요.</div>

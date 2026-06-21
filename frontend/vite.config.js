@@ -22,6 +22,9 @@ export default defineConfig(({ mode }) => {
         "/api": {
           target: apiTarget,
           changeOrigin: true,
+          // 상품마스터 대량 업로드 등 장시간 요청
+          timeout: 300_000,
+          proxyTimeout: 300_000,
         },
       },
     },
