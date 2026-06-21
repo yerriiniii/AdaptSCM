@@ -10,6 +10,13 @@ from domains.item.schemas import (
     InventorySkuMappingSummaryResponse,
     InventorySkuMappingUploadResponse,
     InventorySkuMappingUpsertRequest,
+    ItemMasterExtraColumnCreateRequest,
+    ItemMasterExtraColumnResponse,
+    ItemMasterRowDetailResponse,
+    ItemMasterRowListResponse,
+    ItemMasterRowPatchRequest,
+    ItemMasterRowResponse,
+    ItemMasterUploadResponse,
 )
 from domains.item.services.item_mapping import (
     clear_item_sku_mappings,
@@ -19,6 +26,16 @@ from domains.item.services.item_mapping import (
     patch_item_sku_mapping_item,
     patch_item_sku_mapping_segment,
     upsert_item_sku_mapping,
+)
+from domains.item.services.item_master import (
+    MASTER_COLUMN_LABELS,
+    MASTER_COLUMN_ORDER,
+    add_item_master_extra_column,
+    delete_item_master_extra_column,
+    get_item_master_row_by_group_id,
+    list_item_master_rows,
+    merge_item_master_uploads,
+    patch_item_master_row,
 )
 from shared.db import get_db_session
 
@@ -86,5 +103,62 @@ def inventory_mapping_patch_segment(
 @router.delete("/mappings")
 def inventory_mappings_clear(db: Session = Depends(get_db_session)) -> dict:
     return clear_item_sku_mappings(db=db)
+
+
+@router.get("/mappings/master-rows", response_model=ItemMasterRowListResponse)
+def inventory_master_rows(
+    query: str | None = Query(default=None),
+    limit: int = Query(default=10000, ge=1, le=20000),
+    db: Session = Depends(get_db_session),
+) -> ItemMasterRowListResponse:
+    items, extra_columns = list_item_master_rows(db=db, query=query, limit=limit)
+    return ItemMasterRowListResponse(
+        items=items,
+        columns=[MASTER_COLUMN_LABELS[key] for key in MASTER_COLUMN_ORDER],
+        extra_columns=extra_columns,
+    )
+
+
+@router.get("/mappings/master-rows/{group_id}", response_model=ItemMasterRowDetailResponse)
+def inventory_master_row_detail(
+    group_id: str,
+    db: Session = Depends(get_db_session),
+) -> ItemMasterRowDetailResponse:
+    row, extra_columns = get_item_master_row_by_group_id(db=db, group_id=group_id)
+    return ItemMasterRowDetailResponse(row=ItemMasterRowResponse(**row), extra_columns=extra_columns)
+
+
+@router.post("/mappings/master-rows/extra-columns", response_model=ItemMasterExtraColumnResponse)
+def inventory_master_extra_column_add(
+    payload: ItemMasterExtraColumnCreateRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> ItemMasterExtraColumnResponse:
+    return ItemMasterExtraColumnResponse(**add_item_master_extra_column(db=db, label=payload.label))
+
+
+@router.delete("/mappings/master-rows/extra-columns/{field_key}")
+def inventory_master_extra_column_delete(
+    field_key: str,
+    db: Session = Depends(get_db_session),
+) -> dict:
+    return delete_item_master_extra_column(db=db, field_key=field_key)
+
+
+@router.post("/mappings/master-rows/upload", response_model=ItemMasterUploadResponse)
+def inventory_master_rows_upload(
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db_session),
+) -> ItemMasterUploadResponse:
+    result = merge_item_master_uploads(db=db, upload_files=files)
+    return ItemMasterUploadResponse(**result)
+
+
+@router.patch("/mappings/master-rows", response_model=ItemMasterRowResponse)
+def inventory_master_row_patch(
+    payload: ItemMasterRowPatchRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> ItemMasterRowResponse:
+    return ItemMasterRowResponse(**patch_item_master_row(db=db, payload=payload.model_dump()))
+
 
 __all__ = ["router"]

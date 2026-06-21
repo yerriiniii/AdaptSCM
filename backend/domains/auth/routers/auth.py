@@ -6,6 +6,7 @@ from domains.auth.dependencies import require_active_user
 from domains.auth.models.user_models import UserAccount, UserAccountStatus
 from domains.auth.schemas.auth import (
     AccountStatusResponse,
+    AdminAccessCodeRequest,
     ChangePasswordRequest,
     LoginRequest,
     MeResponse,
@@ -17,6 +18,7 @@ from domains.auth.schemas.auth import (
     SignupTokenCheckResponse,
     TokenResponse,
 )
+from domains.auth.services.admin_access import verify_admin_access_code
 from domains.auth.services.jwt_tokens import create_access_token
 from domains.auth.services.password_hashing import verify_password
 from domains.auth.services.signup_email_proof import (
@@ -25,7 +27,13 @@ from domains.auth.services.signup_email_proof import (
     register_user_with_proof,
 )
 from domains.auth.services.signup_email_send_rate import count_sends_24h, is_rate_limited, log_send
-from domains.auth.services.user_account import change_user_password, delete_own_account, get_user_by_email
+from domains.auth.services.user_account import (
+    GATE_ACCESS_USER_EMAIL,
+    change_user_password,
+    delete_own_account,
+    ensure_gate_access_user,
+    get_user_by_email,
+)
 from shared.db import get_db_session
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -138,6 +146,17 @@ def account_status(
     return AccountStatusResponse(status="none")
 
 
+@router.post("/access-code", response_model=TokenResponse)
+def access_code_login(
+    body: AdminAccessCodeRequest,
+    db: Session = Depends(get_db_session),
+) -> TokenResponse:
+    verify_admin_access_code(body.code)
+    user = ensure_gate_access_user(db)
+    token, expires_in = create_access_token(user_id=user.id, email=user.email, is_admin=True)
+    return TokenResponse(access_token=token, expires_in=expires_in)
+
+
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db_session)) -> TokenResponse:
     email = str(body.email).strip().lower()
@@ -170,9 +189,10 @@ def login(body: LoginRequest, db: Session = Depends(get_db_session)) -> TokenRes
 
 @router.get("/me", response_model=MeResponse)
 def me(user: UserAccount = Depends(require_active_user)) -> MeResponse:
+    display_email = "관리자" if user.email == GATE_ACCESS_USER_EMAIL else user.email
     return MeResponse(
         id=user.id,
-        email=user.email,
+        email=display_email,
         status=user.status,
         is_admin=user.is_admin,
         email_verified=user.email_verified,

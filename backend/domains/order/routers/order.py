@@ -19,6 +19,7 @@ from domains.order.schemas import (
 from domains.order.models import PurchaseOrder as PurchaseOrderModel
 from domains.order.services.purchase_order import (
     add_inbound_line,
+    clear_all_purchase_orders,
     create_purchase_order,
     delete_inbound_line,
     delete_purchase_order,
@@ -105,6 +106,13 @@ def purchase_orders_import(
     _require_db_configured()
     created = import_purchase_orders_from_sheet(db, [r.model_dump() for r in payload.rows])
     return PurchaseOrderImportResponse(created_count=created)
+
+
+@router.delete("/all")
+def purchase_orders_clear_all(db: Session = Depends(get_db_session)) -> dict:
+    _require_db_configured()
+    deleted = clear_all_purchase_orders(db)
+    return {"deleted_count": deleted}
 
 
 @router.delete("/{order_id}")
