@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, String
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, JSON, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -36,6 +36,7 @@ class ProductGroup(Base):
     tw_grade: Mapped[str | None] = mapped_column(String(32), nullable=True)
     hk_grade: Mapped[str | None] = mapped_column(String(32), nullable=True)
     jp_grade: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    extra_fields: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     upload_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     manual_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(
@@ -77,4 +78,18 @@ class ProductLocale(Base):
     )
 
 
-__all__ = ["ProductGroup", "ProductLocale"]
+class ItemMasterExtraColumn(Base):
+    """상품마스터 사용자 정의 열 정의(헤더). 값은 item.extra_fields JSON에 저장."""
+
+    __tablename__ = "item_master_extra_column"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid_value)
+    field_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    label: Mapped[str] = mapped_column(String(64), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utc_now
+    )
+
+
+__all__ = ["ProductGroup", "ProductLocale", "ItemMasterExtraColumn"]

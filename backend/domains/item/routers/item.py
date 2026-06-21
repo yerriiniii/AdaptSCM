@@ -10,6 +10,8 @@ from domains.item.schemas import (
     InventorySkuMappingSummaryResponse,
     InventorySkuMappingUploadResponse,
     InventorySkuMappingUpsertRequest,
+    ItemMasterExtraColumnCreateRequest,
+    ItemMasterExtraColumnResponse,
     ItemMasterRowListResponse,
     ItemMasterRowPatchRequest,
     ItemMasterRowResponse,
@@ -27,6 +29,8 @@ from domains.item.services.item_mapping import (
 from domains.item.services.item_master import (
     MASTER_COLUMN_LABELS,
     MASTER_COLUMN_ORDER,
+    add_item_master_extra_column,
+    delete_item_master_extra_column,
     list_item_master_rows,
     merge_item_master_uploads,
     patch_item_master_row,
@@ -105,11 +109,28 @@ def inventory_master_rows(
     limit: int = Query(default=10000, ge=1, le=20000),
     db: Session = Depends(get_db_session),
 ) -> ItemMasterRowListResponse:
-    items = list_item_master_rows(db=db, query=query, limit=limit)
+    items, extra_columns = list_item_master_rows(db=db, query=query, limit=limit)
     return ItemMasterRowListResponse(
         items=items,
         columns=[MASTER_COLUMN_LABELS[key] for key in MASTER_COLUMN_ORDER],
+        extra_columns=extra_columns,
     )
+
+
+@router.post("/mappings/master-rows/extra-columns", response_model=ItemMasterExtraColumnResponse)
+def inventory_master_extra_column_add(
+    payload: ItemMasterExtraColumnCreateRequest = Body(...),
+    db: Session = Depends(get_db_session),
+) -> ItemMasterExtraColumnResponse:
+    return ItemMasterExtraColumnResponse(**add_item_master_extra_column(db=db, label=payload.label))
+
+
+@router.delete("/mappings/master-rows/extra-columns/{field_key}")
+def inventory_master_extra_column_delete(
+    field_key: str,
+    db: Session = Depends(get_db_session),
+) -> dict:
+    return delete_item_master_extra_column(db=db, field_key=field_key)
 
 
 @router.post("/mappings/master-rows/upload", response_model=ItemMasterUploadResponse)

@@ -101,6 +101,16 @@ class SkuLookupForPurchaseResponse(BaseModel):
     message: str = ""
 
 
+class ItemMasterExtraColumnResponse(BaseModel):
+    field_key: str
+    label: str
+    sort_order: int = 0
+
+
+class ItemMasterExtraColumnCreateRequest(BaseModel):
+    label: str = Field(..., min_length=1, max_length=64)
+
+
 class ItemMasterRowResponse(BaseModel):
     group_id: str
     brand: str = ""
@@ -117,12 +127,14 @@ class ItemMasterRowResponse(BaseModel):
     tw_grade: str = ""
     hk_grade: str = ""
     jp_grade: str = ""
+    extra_fields: dict[str, str] = Field(default_factory=dict)
     updated_at: str | None = None
 
 
 class ItemMasterRowListResponse(BaseModel):
     items: list[ItemMasterRowResponse] = Field(default_factory=list)
     columns: list[str] = Field(default_factory=list)
+    extra_columns: list[ItemMasterExtraColumnResponse] = Field(default_factory=list)
 
 
 class ItemMasterUploadResponse(BaseModel):
@@ -149,6 +161,7 @@ class ItemMasterRowPatchRequest(BaseModel):
     tw_grade: str | None = None
     hk_grade: str | None = None
     jp_grade: str | None = None
+    extra_fields: dict[str, str | None] | None = None
 
     @field_validator("brand")
     @classmethod
@@ -170,6 +183,8 @@ __all__ = [
     "SkuLookupForPurchaseResponse",
     "ItemMasterRowResponse",
     "ItemMasterRowListResponse",
+    "ItemMasterExtraColumnResponse",
+    "ItemMasterExtraColumnCreateRequest",
     "ItemMasterUploadResponse",
     "ItemMasterRowPatchRequest",
 ]

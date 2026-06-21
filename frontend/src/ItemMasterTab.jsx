@@ -1,12 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import axios from "axios";
 import { API_BASE } from "./apiClient";
-import { Download, Upload } from "lucide-react";
+import { Download, Minus, Plus, Upload } from "lucide-react";
 
 /** 백엔드 `domains/item/routers/item.py` master-rows 엔드포인트와 동기화 */
 const ITEM_MASTER_API = {
   rows: `${API_BASE}/api/inventory/mappings/master-rows`,
   upload: `${API_BASE}/api/inventory/mappings/master-rows/upload`,
+  extraColumns: `${API_BASE}/api/inventory/mappings/master-rows/extra-columns`,
+  extraColumn: (fieldKey) =>
+    `${API_BASE}/api/inventory/mappings/master-rows/extra-columns/${encodeURIComponent(fieldKey)}`,
 };
 
 const ITEM_MASTER_FIELDS = [
@@ -28,6 +31,11 @@ const ITEM_MASTER_FIELDS = [
 
 const EMPTY_ITEM_MASTER_DRAFT = Object.fromEntries(ITEM_MASTER_FIELDS.map(({ key }) => [key, ""]));
 const ITEM_MASTER_TABLE_MIN_WIDTH_PX = 1180;
+/** CSS `.itemMasterTableHead` grid-template-columns 와 동기화 */
+const ITEM_MASTER_GRID_BASE =
+  "minmax(74px, 0.95fr) minmax(49px, 0.51fr) minmax(32px, 40px) minmax(53px, 0.55fr) minmax(220px, 3fr) minmax(50px, 0.5fr) minmax(50px, 0.5fr) minmax(50px, 0.5fr) minmax(50px, 0.5fr) minmax(62px, 0.62fr) minmax(46px, 0.48fr) minmax(46px, 0.48fr) minmax(46px, 0.48fr) minmax(46px, 0.48fr)";
+const ITEM_MASTER_EXTRA_COL_GRID = "minmax(72px, 0.5fr)";
+const ITEM_MASTER_EXTRA_COL_MIN_WIDTH_PX = 72;
 /** 스크롤 전 툴바 아래 여백 — `.itemMasterStickyToolbar { padding-bottom }` */
 const ITEM_MASTER_FLOW_TOOLBAR_BOTTOM_PAD_PX = 12;
 /** sticky 고정 시 — 스크롤 전보다 살짝 좁게 */
@@ -63,10 +71,14 @@ function productEditSegmentImpliesDiscontinued(raw) {
   return s === "단종";
 }
 
-function masterDraftFromRow(row) {
-  const draft = { ...EMPTY_ITEM_MASTER_DRAFT, discontinued: false };
+function masterDraftFromRow(row, extraColumns = []) {
+  const draft = { ...EMPTY_ITEM_MASTER_DRAFT, discontinued: false, extra_fields: {} };
   ITEM_MASTER_FIELDS.forEach(({ key }) => {
     draft[key] = row?.[key] == null ? "" : String(row[key]);
+  });
+  const ef = row?.extra_fields && typeof row.extra_fields === "object" ? row.extra_fields : {};
+  extraColumns.forEach(({ field_key }) => {
+    draft.extra_fields[field_key] = ef[field_key] == null ? "" : String(ef[field_key]);
   });
   const seg = String(row?.segment ?? draft.segment ?? "").trim();
   draft.discontinued = productEditSegmentImpliesDiscontinued(seg);
@@ -83,7 +95,7 @@ function masterCellDisplayValue(key, draft) {
   return draft[key] ?? "";
 }
 
-function buildItemMasterSavePayload(groupId, draft) {
+function buildItemMasterSavePayload(groupId, draft, extraColumns = []) {
   const segRaw = String(draft.segment || "").trim();
   const isDiscontinued = Boolean(draft.discontinued) || productEditSegmentImpliesDiscontinued(segRaw);
   const segmentOut = isDiscontinued
@@ -104,6 +116,13 @@ function buildItemMasterSavePayload(groupId, draft) {
   payload.brand = String(draft.brand || "").trim();
   payload.kr_sku = String(draft.kr_sku || "").trim();
   payload.kr_name = String(draft.kr_name || "").trim();
+  if (extraColumns.length) {
+    payload.extra_fields = {};
+    extraColumns.forEach(({ field_key }) => {
+      const v = String(draft.extra_fields?.[field_key] ?? "").trim();
+      payload.extra_fields[field_key] = v || null;
+    });
+  }
   return payload;
 }
 
@@ -188,12 +207,19 @@ async function downloadItemMasterTemplateWorkbook() {
   URL.revokeObjectURL(a.href);
 }
 
-function rowNeedsSave(row, draft) {
+function rowNeedsSave(row, draft, extraColumns = []) {
   const gid = row?.group_id;
   if (!gid || !draft) return false;
-  const nextPayload = buildItemMasterSavePayload(gid, draft);
-  const prevPayload = buildItemMasterSavePayload(gid, masterDraftFromRow(row));
+  const nextPayload = buildItemMasterSavePayload(gid, draft, extraColumns);
+  const prevPayload = buildItemMasterSavePayload(gid, masterDraftFromRow(row, extraColumns), extraColumns);
   return JSON.stringify(nextPayload) !== JSON.stringify(prevPayload);
+}
+
+function buildItemMasterGridTemplate(extraColumns) {
+  const extras = (extraColumns || [])
+    .map(() => ITEM_MASTER_EXTRA_COL_GRID)
+    .join(" ");
+  return extras ? `${ITEM_MASTER_GRID_BASE} ${extras}` : ITEM_MASTER_GRID_BASE;
 }
 
 function formatInt(n) {
@@ -209,6 +235,9 @@ export default function ItemMasterTab({
   onFilesUploaded,
 }) {
   const [masterRows, setMasterRows] = useState([]);
+  const [masterExtraColumns, setMasterExtraColumns] = useState([]);
+  const [masterAddingColumn, setMasterAddingColumn] = useState(false);
+  const [masterDeletingColumnKey, setMasterDeletingColumnKey] = useState("");
   const [masterLoading, setMasterLoading] = useState(false);
   const [masterError, setMasterError] = useState("");
   const [masterQuery, setMasterQuery] = useState("");
@@ -240,8 +269,10 @@ export default function ItemMasterTab({
           params: { query: masterQuery || "" },
         });
         const items = Array.isArray(res?.data?.items) ? res.data.items : [];
+        const extraCols = Array.isArray(res?.data?.extra_columns) ? res.data.extra_columns : [];
+        setMasterExtraColumns(extraCols);
         setMasterRows(items);
-        setMasterDraftById(Object.fromEntries(items.map((r) => [r.group_id, masterDraftFromRow(r)])));
+        setMasterDraftById(Object.fromEntries(items.map((r) => [r.group_id, masterDraftFromRow(r, extraCols)])));
       } catch (err) {
         const detail = err?.response?.data?.detail;
         setMasterError(Array.isArray(detail) ? detail.join("\n") : detail || "로우데이터를 불러오지 못했습니다.");
@@ -305,6 +336,10 @@ export default function ItemMasterTab({
   const masterToolbarBottomGapStickyTop =
     masterToolbarStickyTop + masterToolbarHeight - ITEM_MASTER_FLOW_TOOLBAR_BOTTOM_PAD_PX;
 
+  const masterGridTemplate = buildItemMasterGridTemplate(masterExtraColumns);
+  const masterTableMinWidthPx =
+    ITEM_MASTER_TABLE_MIN_WIDTH_PX + masterExtraColumns.length * ITEM_MASTER_EXTRA_COL_MIN_WIDTH_PX;
+
   useLayoutEffect(() => {
     if (!active || masterLoading || !masterRows.length) {
       setMasterShowTopScroll(false);
@@ -327,7 +362,7 @@ export default function ItemMasterTab({
         headInner.style.minWidth = "";
       }
       const layoutW = Math.max(
-        ITEM_MASTER_TABLE_MIN_WIDTH_PX,
+        masterTableMinWidthPx,
         headInner?.scrollWidth ?? 0,
         bodyInner.scrollWidth,
         headInner?.offsetWidth ?? 0,
@@ -336,7 +371,7 @@ export default function ItemMasterTab({
       if (layoutW > masterTableLayoutWidthRef.current) {
         masterTableLayoutWidthRef.current = layoutW;
       }
-      const w = Math.max(ITEM_MASTER_TABLE_MIN_WIDTH_PX, cw, masterTableLayoutWidthRef.current);
+      const w = Math.max(masterTableMinWidthPx, cw, masterTableLayoutWidthRef.current);
       bodyInner.style.width = `${w}px`;
       bodyInner.style.minWidth = `${w}px`;
       if (headInner) {
@@ -351,7 +386,7 @@ export default function ItemMasterTab({
       }
     };
     const onResize = () => {
-      masterTableLayoutWidthRef.current = ITEM_MASTER_TABLE_MIN_WIDTH_PX;
+      masterTableLayoutWidthRef.current = masterTableMinWidthPx;
       measure();
     };
     measure();
@@ -390,7 +425,7 @@ export default function ItemMasterTab({
         headInner.style.minWidth = "";
       }
     };
-  }, [active, masterLoading, masterRows, masterEditMode]);
+  }, [active, masterLoading, masterRows, masterEditMode, masterExtraColumns.length, masterTableMinWidthPx]);
 
   function syncMasterTableScroll(source) {
     if (masterScrollSyncingRef.current) return;
@@ -417,12 +452,94 @@ export default function ItemMasterTab({
   }
 
   function enterMasterEditMode() {
-    setMasterDraftById(Object.fromEntries(masterRows.map((r) => [r.group_id, masterDraftFromRow(r)])));
+    setMasterDraftById(
+      Object.fromEntries(masterRows.map((r) => [r.group_id, masterDraftFromRow(r, masterExtraColumns)]))
+    );
     setMasterEditMode(true);
   }
 
+  async function addMasterExtraColumn() {
+    const label = window.prompt("추가할 열 이름을 입력하세요.", "");
+    if (label == null) return;
+    const trimmed = String(label).trim();
+    if (!trimmed) return;
+    try {
+      setMasterAddingColumn(true);
+      setMasterError("");
+      const res = await axios.post(ITEM_MASTER_API.extraColumns, { label: trimmed });
+      const col = res?.data;
+      if (!col?.field_key) throw new Error("invalid column");
+      setMasterExtraColumns((prev) => [...prev, col]);
+      setMasterDraftById((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((gid) => {
+          next[gid] = {
+            ...next[gid],
+            extra_fields: { ...(next[gid]?.extra_fields || {}), [col.field_key]: "" },
+          };
+        });
+        return next;
+      });
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "열 추가 중 오류";
+      setMasterError(msg);
+      window.alert(msg);
+    } finally {
+      setMasterAddingColumn(false);
+    }
+  }
+
+  async function deleteMasterExtraColumn(fieldKey, label) {
+    const key = String(fieldKey || "").trim();
+    if (!key) return;
+    if (
+      !window.confirm(
+        `「${label}」 열을 삭제할까요?\n해당 열에 저장된 모든 상품 값도 함께 삭제됩니다.`
+      )
+    ) {
+      return;
+    }
+    try {
+      setMasterDeletingColumnKey(key);
+      setMasterError("");
+      await axios.delete(ITEM_MASTER_API.extraColumn(key));
+      setMasterExtraColumns((prev) => prev.filter((c) => c.field_key !== key));
+      setMasterRows((prev) =>
+        prev.map((row) => {
+          const ef = { ...(row.extra_fields || {}) };
+          delete ef[key];
+          return { ...row, extra_fields: ef };
+        })
+      );
+      setMasterDraftById((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((gid) => {
+          const ef = { ...(next[gid]?.extra_fields || {}) };
+          delete ef[key];
+          next[gid] = { ...next[gid], extra_fields: ef };
+        });
+        return next;
+      });
+      masterTableLayoutWidthRef.current = Math.max(
+        ITEM_MASTER_TABLE_MIN_WIDTH_PX,
+        ITEM_MASTER_TABLE_MIN_WIDTH_PX +
+          Math.max(0, masterExtraColumns.length - 1) * ITEM_MASTER_EXTRA_COL_MIN_WIDTH_PX
+      );
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "열 삭제 중 오류";
+      setMasterError(msg);
+      window.alert(msg);
+    } finally {
+      setMasterDeletingColumnKey("");
+    }
+  }
+
   async function saveAllMasterEdits() {
-    const dirtyRows = masterRows.filter((row) => rowNeedsSave(row, masterDraftById[row.group_id]));
+    const dirtyRows = masterRows.filter((row) =>
+      rowNeedsSave(row, masterDraftById[row.group_id], masterExtraColumns)
+    );
     if (!dirtyRows.length) {
       setMasterEditMode(false);
       return;
@@ -436,10 +553,13 @@ export default function ItemMasterTab({
         const gid = row.group_id;
         const draft = masterDraftById[gid];
         if (!gid || !draft) continue;
-        const res = await axios.patch(ITEM_MASTER_API.rows, buildItemMasterSavePayload(gid, draft));
+        const res = await axios.patch(
+          ITEM_MASTER_API.rows,
+          buildItemMasterSavePayload(gid, draft, masterExtraColumns)
+        );
         const saved = res?.data;
         nextRows = nextRows.map((r) => (r.group_id === gid ? saved : r));
-        nextDrafts = { ...nextDrafts, [gid]: masterDraftFromRow(saved) };
+        nextDrafts = { ...nextDrafts, [gid]: masterDraftFromRow(saved, masterExtraColumns) };
       }
       setMasterRows(nextRows);
       setMasterDraftById(nextDrafts);
@@ -482,8 +602,10 @@ export default function ItemMasterTab({
           timeout: 120_000,
         });
         const items = Array.isArray(listRes?.data?.items) ? listRes.data.items : [];
+        const extraCols = Array.isArray(listRes?.data?.extra_columns) ? listRes.data.extra_columns : [];
+        setMasterExtraColumns(extraCols);
         setMasterRows(items);
-        setMasterDraftById(Object.fromEntries(items.map((r) => [r.group_id, masterDraftFromRow(r)])));
+        setMasterDraftById(Object.fromEntries(items.map((r) => [r.group_id, masterDraftFromRow(r, extraCols)])));
       } catch (listErr) {
         console.warn("item master list refresh after upload", listErr);
         setMasterError("업로드는 완료되었으나 목록 새로고침에 실패했습니다. 페이지를 새로고침해 주세요.");
@@ -578,6 +700,17 @@ export default function ItemMasterTab({
           >
             {masterSavingAll ? "저장 중…" : masterEditMode ? "저장" : "수정"}
           </button>
+          {masterEditMode ? (
+            <button
+              type="button"
+              className="itemMasterAddColumnBtn"
+              disabled={settingsMutating || masterSavingAll || masterAddingColumn}
+              onClick={() => void addMasterExtraColumn()}
+            >
+              <Plus size={16} strokeWidth={2} aria-hidden="true" />
+              {masterAddingColumn ? "열 추가 중…" : "열 추가"}
+            </button>
+          ) : null}
         </div>
         <div
           className="itemMasterStickySectionGap itemMasterStickySectionGapBelowToolbar"
@@ -627,10 +760,41 @@ export default function ItemMasterTab({
                   onScroll={() => syncMasterTableScroll("header")}
                 >
                   <div className="itemMasterTableInner itemMasterTableInnerHead">
-                    <div className="skuProductEditTableHead itemMasterTableHead">
+                    <div
+                      className="skuProductEditTableHead itemMasterTableHead"
+                      style={{ gridTemplateColumns: masterGridTemplate }}
+                    >
                       {ITEM_MASTER_FIELDS.map(({ key, label }) => (
                         <div key={key} className="skuProductEditHeadCell itemMasterHeadCell">
                           {label}
+                        </div>
+                      ))}
+                      {masterExtraColumns.map(({ field_key, label }) => (
+                        <div
+                          key={field_key}
+                          className="skuProductEditHeadCell itemMasterHeadCell itemMasterExtraHeadCell"
+                        >
+                          {masterEditMode ? (
+                            <div className="itemMasterExtraHeadInner">
+                              <button
+                                type="button"
+                                className="itemMasterExtraColDeleteBtn"
+                                disabled={
+                                  settingsMutating ||
+                                  masterSavingAll ||
+                                  masterDeletingColumnKey === field_key
+                                }
+                                onClick={() => void deleteMasterExtraColumn(field_key, label)}
+                                aria-label={`${label} 열 삭제`}
+                                title={`${label} 열 삭제`}
+                              >
+                                <Minus size={14} strokeWidth={2.5} aria-hidden="true" />
+                              </button>
+                              <span className="itemMasterExtraHeadLabel">{label}</span>
+                            </div>
+                          ) : (
+                            label
+                          )}
                         </div>
                       ))}
                     </div>
@@ -648,7 +812,11 @@ export default function ItemMasterTab({
                     const d = masterDraftById[gid] || masterDraftFromRow(row);
                     const isEditing = masterEditMode;
                     return (
-                      <div key={gid || `master-${idx}`} className="skuProductEditRow itemMasterTableRow">
+                      <div
+                        key={gid || `master-${idx}`}
+                        className="skuProductEditRow itemMasterTableRow"
+                        style={{ gridTemplateColumns: masterGridTemplate }}
+                      >
                         {ITEM_MASTER_FIELDS.map(({ key, label }) => (
                           <div key={key} className="skuProductEditCell itemMasterCell">
                             {isEditing ? (
@@ -701,6 +869,36 @@ export default function ItemMasterTab({
                                 }`}
                               >
                                 {masterCellDisplayValue(key, d)}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                        {masterExtraColumns.map(({ field_key, label }) => (
+                          <div key={field_key} className="skuProductEditCell itemMasterCell itemMasterExtraCell">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                className="skuProductEditInput"
+                                value={d.extra_fields?.[field_key] ?? ""}
+                                disabled={settingsMutating || masterSavingAll || !gid}
+                                onChange={(e) =>
+                                  setMasterDraftById((prev) => ({
+                                    ...prev,
+                                    [gid]: {
+                                      ...d,
+                                      extra_fields: {
+                                        ...(d.extra_fields || {}),
+                                        [field_key]: e.target.value,
+                                      },
+                                    },
+                                  }))
+                                }
+                                autoComplete="off"
+                                aria-label={label}
+                              />
+                            ) : (
+                              <span className="itemMasterCellReadonly">
+                                {d.extra_fields?.[field_key] ?? ""}
                               </span>
                             )}
                           </div>

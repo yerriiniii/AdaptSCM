@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from domains.item.models import ProductGroup, ProductLocale
+from domains.item.models import ItemMasterExtraColumn, ProductGroup, ProductLocale
 from domains.item.services.item_mapping import (
     _normalize_brand_cell,
     _normalize_mapping_sku,
@@ -94,6 +94,9 @@ MASTER_HEADER_ALIASES: dict[str, frozenset[str]] = {
 }
 
 MAX_MASTER_FILE_SIZE_BYTES = 5 * 1024 * 1024
+MAX_EXTRA_COLUMNS = 40
+EXTRA_COLUMN_LABEL_MAX_LEN = 64
+EXTRA_FIELD_VALUE_MAX_LEN = 255
 
 
 def _normalize_master_header(value: object) -> str:
@@ -160,7 +163,117 @@ def _kr_locale(group: ProductGroup) -> ProductLocale | None:
     )
 
 
-def master_row_payload(group: ProductGroup) -> dict:
+def _extra_fields_dict(raw: object) -> dict:
+    if not isinstance(raw, dict):
+        return {}
+    return raw
+
+
+def list_item_master_extra_columns(db: Session) -> list[dict]:
+    rows = (
+        db.execute(
+            select(ItemMasterExtraColumn).order_by(
+                ItemMasterExtraColumn.sort_order.asc(),
+                ItemMasterExtraColumn.created_at.asc(),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "field_key": row.field_key,
+            "label": row.label,
+            "sort_order": row.sort_order,
+        }
+        for row in rows
+    ]
+
+
+def _slug_extra_field_key(label: str) -> str:
+    raw = re.sub(r"\s+", "_", str(label or "").strip())[:48]
+    raw = re.sub(r"[^\w가-힣]", "", raw, flags=re.UNICODE)
+    if not raw:
+        raw = "col"
+    return f"x_{raw}"[:64]
+
+
+def add_item_master_extra_column(db: Session, label: str) -> dict:
+    settings = get_runtime_settings()
+    if not settings.database_enabled:
+        raise HTTPException(status_code=500, detail="DATABASE_URL이 설정되지 않았습니다.")
+    label_in = str(label or "").strip()[:EXTRA_COLUMN_LABEL_MAX_LEN]
+    if not label_in:
+        raise HTTPException(status_code=400, detail="열 이름을 입력해 주세요.")
+    existing = list_item_master_extra_columns(db)
+    if len(existing) >= MAX_EXTRA_COLUMNS:
+        raise HTTPException(status_code=400, detail=f"사용자 정의 열은 최대 {MAX_EXTRA_COLUMNS}개까지 추가할 수 있습니다.")
+    if any(str(c["label"]).strip() == label_in for c in existing):
+        raise HTTPException(status_code=400, detail=f"이미 같은 이름의 열이 있습니다: {label_in}")
+    base_key = _slug_extra_field_key(label_in)
+    field_key = base_key
+    used = {c["field_key"] for c in existing}
+    n = 2
+    while field_key in used:
+        suffix = f"_{n}"
+        field_key = f"{base_key[: 64 - len(suffix)]}{suffix}"
+        n += 1
+    sort_order = max((int(c["sort_order"]) for c in existing), default=-1) + 1
+    row = ItemMasterExtraColumn(
+        id=uuid.uuid4(),
+        field_key=field_key,
+        label=label_in,
+        sort_order=sort_order,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(row)
+    try:
+        db.commit()
+        db.refresh(row)
+    except Exception:
+        db.rollback()
+        raise
+    return {"field_key": row.field_key, "label": row.label, "sort_order": row.sort_order}
+
+
+def delete_item_master_extra_column(db: Session, field_key: str) -> dict:
+    settings = get_runtime_settings()
+    if not settings.database_enabled:
+        raise HTTPException(status_code=500, detail="DATABASE_URL이 설정되지 않았습니다.")
+    key = str(field_key or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="field_key가 필요합니다.")
+    row = db.execute(
+        select(ItemMasterExtraColumn).where(ItemMasterExtraColumn.field_key == key)
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="삭제할 열을 찾을 수 없습니다.")
+    label = row.label
+    groups = (
+        db.execute(select(ProductGroup).where(ProductGroup.extra_fields.isnot(None))).scalars().all()
+    )
+    for group in groups:
+        raw = _extra_fields_dict(group.extra_fields)
+        if key not in raw:
+            continue
+        merged = dict(raw)
+        del merged[key]
+        group.extra_fields = merged or None
+    db.delete(row)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"field_key": key, "label": label, "deleted": True}
+
+
+def _extra_fields_payload(group: ProductGroup, field_keys: list[str]) -> dict[str, str]:
+    raw = _extra_fields_dict(group.extra_fields)
+    return {key: _cell_text(raw.get(key))[:EXTRA_FIELD_VALUE_MAX_LEN] for key in field_keys}
+
+
+def master_row_payload(group: ProductGroup, extra_field_keys: list[str] | None = None) -> dict:
     kr = _kr_locale(group)
     seg_norm = normalize_item_segment(group.segment)
     return {
@@ -179,11 +292,19 @@ def master_row_payload(group: ProductGroup) -> dict:
         "tw_grade": group.tw_grade or "",
         "hk_grade": group.hk_grade or "",
         "jp_grade": group.jp_grade or "",
+        "extra_fields": _extra_fields_payload(group, extra_field_keys or []),
         "updated_at": group.updated_at.isoformat() if group.updated_at else None,
     }
 
 
-def list_item_master_rows(db: Session, query: str | None = None, limit: int = 10000) -> list[dict]:
+def list_item_master_rows(
+    db: Session,
+    query: str | None = None,
+    limit: int = 10000,
+    extra_columns: list[dict] | None = None,
+) -> tuple[list[dict], list[dict]]:
+    extra_cols = extra_columns if extra_columns is not None else list_item_master_extra_columns(db)
+    extra_keys = [str(c["field_key"]) for c in extra_cols]
     groups = (
         db.execute(
             select(ProductGroup)
@@ -197,15 +318,17 @@ def list_item_master_rows(db: Session, query: str | None = None, limit: int = 10
     cap = max(1, min(limit, 20000))
     rows: list[dict] = []
     for group in groups:
-        payload = master_row_payload(group)
+        payload = master_row_payload(group, extra_keys)
         if needle:
-            hay = " ".join(str(payload.get(key) or "") for key in MASTER_COLUMN_ORDER).casefold()
+            hay_parts = [str(payload.get(key) or "") for key in MASTER_COLUMN_ORDER]
+            hay_parts.extend(str(payload.get("extra_fields", {}).get(key) or "") for key in extra_keys)
+            hay = " ".join(hay_parts).casefold()
             if needle not in hay:
                 continue
         rows.append(payload)
         if len(rows) >= cap:
             break
-    return rows
+    return rows, extra_cols
 
 
 def _kr_sku_source_columns(df: pd.DataFrame) -> list[str]:
@@ -838,6 +961,24 @@ def patch_item_master_row(db: Session, payload: dict[str, object]) -> dict:
     _apply_master_fields(group, kr, record, now)
     group.manual_updated_at = now
 
+    extra_cols = list_item_master_extra_columns(db)
+    allowed_keys = {c["field_key"] for c in extra_cols}
+    if "extra_fields" in payload and allowed_keys:
+        incoming = payload.get("extra_fields")
+        if incoming is not None and not isinstance(incoming, dict):
+            raise HTTPException(status_code=400, detail="extra_fields 형식이 올바르지 않습니다.")
+        merged = dict(_extra_fields_dict(group.extra_fields))
+        if isinstance(incoming, dict):
+            for key in allowed_keys:
+                if key not in incoming:
+                    continue
+                val = incoming.get(key)
+                if val is None or str(val).strip() == "":
+                    merged.pop(key, None)
+                else:
+                    merged[key] = _cell_text(val)[:EXTRA_FIELD_VALUE_MAX_LEN]
+        group.extra_fields = merged or None
+
     try:
         db.commit()
         fresh = db.execute(
@@ -846,13 +987,16 @@ def patch_item_master_row(db: Session, payload: dict[str, object]) -> dict:
     except Exception:
         db.rollback()
         raise
-    return master_row_payload(fresh)
+    return master_row_payload(fresh, [c["field_key"] for c in extra_cols])
 
 
 __all__ = [
     "MASTER_COLUMN_LABELS",
     "MASTER_COLUMN_ORDER",
     "list_item_master_rows",
+    "list_item_master_extra_columns",
+    "add_item_master_extra_column",
+    "delete_item_master_extra_column",
     "merge_item_master_uploads",
     "master_row_payload",
     "patch_item_master_row",

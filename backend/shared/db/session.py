@@ -515,6 +515,22 @@ def _ensure_item_master_text_columns(engine: Engine) -> None:
             conn.execute(text("ALTER TABLE item MODIFY COLUMN code_registered_at VARCHAR(64) NULL"))
 
 
+def _ensure_item_master_extra_fields(engine: Engine) -> None:
+    """상품마스터: item.extra_fields JSON(사용자 정의 열 값)."""
+    inspector = inspect(engine)
+    if "item" not in inspector.get_table_names():
+        return
+    cols = {c["name"] for c in inspector.get_columns("item")}
+    if "extra_fields" in cols:
+        return
+    dialect = engine.dialect.name
+    with engine.begin() as conn:
+        if dialect == "postgresql":
+            conn.execute(text("ALTER TABLE item ADD COLUMN extra_fields JSONB"))
+        elif dialect == "mysql":
+            conn.execute(text("ALTER TABLE item ADD COLUMN extra_fields JSON NULL"))
+
+
 def _ensure_purchase_orders_schema(engine: Engine) -> None:
     """발주 예정(날짜 없음) 대응: order_date_note 추가, order_date NULL 허용(PostgreSQL/MySQL)."""
     inspector = inspect(engine)
@@ -712,6 +728,9 @@ def _run_schema_init_if_needed(engine: Engine) -> None:
         t7 = time.perf_counter()
         _ensure_item_master_text_columns(engine)
         _log.info("item 마스터 텍스트 컬럼 보정 완료 (%.2fs)", time.perf_counter() - t7)
+        t8 = time.perf_counter()
+        _ensure_item_master_extra_fields(engine)
+        _log.info("item 마스터 extra_fields 컬럼 보정 완료 (%.2fs)", time.perf_counter() - t8)
         _schema_initialized = True
         _log.info("DB 스키마 초기화 전체 완료 (총 %.2fs)", time.perf_counter() - t0)
 

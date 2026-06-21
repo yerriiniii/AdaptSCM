@@ -10,6 +10,8 @@ from .item import (
     SkuLookupForPurchaseResponse,
     ItemMasterRowResponse,
     ItemMasterRowListResponse,
+    ItemMasterExtraColumnResponse,
+    ItemMasterExtraColumnCreateRequest,
     ItemMasterUploadResponse,
     ItemMasterRowPatchRequest,
 )
@@ -26,6 +28,8 @@ __all__ = [
     "SkuLookupForPurchaseResponse",
     "ItemMasterRowResponse",
     "ItemMasterRowListResponse",
+    "ItemMasterExtraColumnResponse",
+    "ItemMasterExtraColumnCreateRequest",
     "ItemMasterUploadResponse",
     "ItemMasterRowPatchRequest",
 ]
