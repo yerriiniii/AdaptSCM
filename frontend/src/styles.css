@@ -2758,15 +2758,15 @@ body {
 .itemMasterTableHead,
 .itemMasterTableRow {
   grid-template-columns:
-    minmax(82px, 1.05fr)
-    minmax(52px, 0.55fr)
-    minmax(32px, 40px)
-    minmax(56px, 0.58fr)
+    minmax(60px, 0.6fr)
+    minmax(49px, 0.51fr)
+    minmax(25px, 0.3fr)
+    minmax(45px, 0.45fr)
     minmax(220px, 3fr)
     minmax(50px, 0.5fr)
-    minmax(50px, 0.5fr)
-    minmax(50px, 0.5fr)
-    minmax(50px, 0.5fr)
+    minmax(46px, 0.48fr)
+    minmax(46px, 0.48fr)
+    minmax(46px, 0.48fr)
     minmax(62px, 0.62fr)
     minmax(46px, 0.48fr)
     minmax(46px, 0.48fr)

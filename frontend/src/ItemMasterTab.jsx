@@ -222,6 +222,8 @@ export default function ItemMasterTab({
   const masterHeaderScrollRef = useRef(null);
   const masterTopScrollRef = useRef(null);
   const masterScrollSyncingRef = useRef(false);
+  /** 행 수·검색 필터와 무관하게 유지할 표 레이아웃 너비(한 번 넓게 잡히면 줄이지 않음) */
+  const masterTableLayoutWidthRef = useRef(ITEM_MASTER_TABLE_MIN_WIDTH_PX);
   const [masterShowTopScroll, setMasterShowTopScroll] = useState(false);
   const [masterTopScrollWidth, setMasterTopScrollWidth] = useState(ITEM_MASTER_TABLE_MIN_WIDTH_PX);
   const [masterToolbarHeight, setMasterToolbarHeight] = useState(0);
@@ -324,14 +326,17 @@ export default function ItemMasterTab({
         headInner.style.width = "";
         headInner.style.minWidth = "";
       }
-      const w = Math.max(
+      const layoutW = Math.max(
         ITEM_MASTER_TABLE_MIN_WIDTH_PX,
-        cw,
-        bodyInner.scrollWidth,
-        bodyInner.offsetWidth,
         headInner?.scrollWidth ?? 0,
-        headInner?.offsetWidth ?? 0
+        bodyInner.scrollWidth,
+        headInner?.offsetWidth ?? 0,
+        bodyInner.offsetWidth
       );
+      if (layoutW > masterTableLayoutWidthRef.current) {
+        masterTableLayoutWidthRef.current = layoutW;
+      }
+      const w = Math.max(ITEM_MASTER_TABLE_MIN_WIDTH_PX, cw, masterTableLayoutWidthRef.current);
       bodyInner.style.width = `${w}px`;
       bodyInner.style.minWidth = `${w}px`;
       if (headInner) {
@@ -344,6 +349,10 @@ export default function ItemMasterTab({
         const scrollbarPad = Math.max(0, body.offsetWidth - body.clientWidth);
         head.style.paddingRight = scrollbarPad ? `${scrollbarPad}px` : "";
       }
+    };
+    const onResize = () => {
+      masterTableLayoutWidthRef.current = ITEM_MASTER_TABLE_MIN_WIDTH_PX;
+      measure();
     };
     measure();
     const t1 = requestAnimationFrame(measure);
@@ -360,13 +369,13 @@ export default function ItemMasterTab({
       }
       if (head) ro.observe(head);
     }
-    window.addEventListener("resize", measure);
+    window.addEventListener("resize", onResize);
     return () => {
       cancelled = true;
       cancelAnimationFrame(t1);
       cancelAnimationFrame(t2);
       ro?.disconnect();
-      window.removeEventListener("resize", measure);
+      window.removeEventListener("resize", onResize);
       if (masterHeaderScrollRef.current) {
         masterHeaderScrollRef.current.style.paddingRight = "";
       }
