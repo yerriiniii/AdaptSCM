@@ -54,6 +54,10 @@ BRAND_COLUMN_CANONICAL = "brand"
 BRAND_HEADER_ALIASES = frozenset({"brand", "브랜드"})
 BARCODE_COLUMN_CANONICAL = "barcode"
 BARCODE_HEADER_ALIASES = frozenset({"barcode", "바코드", "bar_code", "ean", "gtin"})
+REPRESENTATIVE_CODE_COLUMN_CANONICAL = "representative_code"
+REPRESENTATIVE_CODE_HEADER_ALIASES = frozenset(
+    {"representative_code", "representativecode", "대표코드", "rep_code", "repcode"}
+)
 SEGMENT_COLUMN_CANONICAL = "segment"
 SEGMENT_HEADER_ALIASES = frozenset({"segment", "구분", "상품구분", "분류", "상품분류"})
 MKT_PRIORITY_COLUMN_CANONICAL = "mkt_priority"
@@ -71,6 +75,7 @@ OPTIONAL_MAPPING_COLUMNS = [
     OPTION_COLUMN_CANONICAL,
     BRAND_COLUMN_CANONICAL,
     BARCODE_COLUMN_CANONICAL,
+    REPRESENTATIVE_CODE_COLUMN_CANONICAL,
     SEGMENT_COLUMN_CANONICAL,
     MKT_PRIORITY_COLUMN_CANONICAL,
 ]
@@ -318,6 +323,7 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
     option_header_keys = frozenset(_normalize_mapping_header(a) for a in OPTION_HEADER_ALIASES)
     brand_header_keys = frozenset(_normalize_mapping_header(a) for a in BRAND_HEADER_ALIASES)
     barcode_header_keys = frozenset(_normalize_mapping_header(a) for a in BARCODE_HEADER_ALIASES)
+    rep_code_header_keys = frozenset(_normalize_mapping_header(a) for a in REPRESENTATIVE_CODE_HEADER_ALIASES)
     segment_header_keys = frozenset(_normalize_mapping_header(a) for a in SEGMENT_HEADER_ALIASES)
     mkt_header_keys = frozenset(_normalize_mapping_header(a) for a in MKT_PRIORITY_HEADER_ALIASES)
 
@@ -329,6 +335,8 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
     brand_matched_raw = ""
     barcode_series: pd.Series | None = None
     barcode_matched_raw = ""
+    rep_code_series: pd.Series | None = None
+    rep_code_matched_raw = ""
     segment_series: pd.Series | None = None
     segment_matched_raw = ""
     mkt_series: pd.Series | None = None
@@ -372,6 +380,24 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
                 )
             barcode_series = col_slice.copy()
             barcode_matched_raw = raw_label
+            continue
+        if norm in rep_code_header_keys:
+            if rep_code_series is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{filename}: 대표코드 열이 두 개 이상입니다 "
+                        f"(`{rep_code_matched_raw}` 와 `{raw_label}`)."
+                    ),
+                )
+            col_slice = df[col]
+            if isinstance(col_slice, pd.DataFrame):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{filename}: 헤더 `{raw_label}` 열이 엑셀에서 중복되어 있습니다.",
+                )
+            rep_code_series = col_slice.copy()
+            rep_code_matched_raw = raw_label
             continue
         if norm in segment_header_keys:
             if segment_series is not None:
@@ -472,6 +498,9 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
     )
     aligned[BARCODE_COLUMN_CANONICAL] = (
         barcode_series if barcode_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
+    )
+    aligned[REPRESENTATIVE_CODE_COLUMN_CANONICAL] = (
+        rep_code_series if rep_code_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
     )
     aligned[SEGMENT_COLUMN_CANONICAL] = (
         segment_series if segment_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
@@ -583,15 +612,26 @@ def format_item_segment_display(raw: str | None) -> str:
     return str(raw).strip()
 
 
+def _resolve_representative_code_for_mapping(explicit: object, kr_sku: str) -> str:
+    raw = _normalize_mapping_sku(explicit)
+    if raw:
+        return raw
+    return kr_sku
+
+
 def _mapping_item_payload(group: ProductGroup) -> dict:
     locales = sorted(group.locales, key=lambda locale: COUNTRY_ORDER.get(locale.country_code, 999))
     seg_norm = normalize_item_segment(group.segment)
     mkt_norm = normalize_mkt_priority_cell(group.mkt_priority)
+    kr_locale = next((loc for loc in locales if str(loc.country_code or "").strip().upper() == "KR"), None)
+    kr_sku = str(kr_locale.sku if kr_locale and kr_locale.sku else "").strip()
+    rep = str(group.representative_code or "").strip() or kr_sku
     return {
         "group_id": str(group.id),
         "kr_name": group.kr_name,
         "brand": group.brand,
         "barcode": group.barcode,
+        "representative_code": rep,
         "segment": seg_norm,
         "segment_display": format_item_segment_display(seg_norm),
         "mkt_priority": mkt_norm,
@@ -638,11 +678,16 @@ def _build_mapping_group(source: dict[str, object], row_label: str) -> dict:
     barcode = _normalize_barcode_cell(source.get(BARCODE_COLUMN_CANONICAL))
     segment = normalize_item_segment(source.get(SEGMENT_COLUMN_CANONICAL))
     mkt = normalize_mkt_priority_cell(source.get(MKT_PRIORITY_COLUMN_CANONICAL))
+    rep = _resolve_representative_code_for_mapping(
+        source.get(REPRESENTATIVE_CODE_COLUMN_CANONICAL),
+        kr_locale["sku"],
+    )
     return {
         "kr_name": kr_locale["name"],
         "locales": locales,
         "brand": brand,
         "barcode": barcode,
+        "representative_code": rep,
         "segment": segment,
         "mkt_priority": mkt,
     }
@@ -699,6 +744,10 @@ def _merge_manual_mapping_locales(target: ProductGroup, payload: dict, now: date
     target.segment = normalize_item_segment(seg_raw) if str(seg_raw or "").strip() else None
     mkt_raw = payload.get(MKT_PRIORITY_COLUMN_CANONICAL)
     target.mkt_priority = normalize_mkt_priority_cell(mkt_raw) if str(mkt_raw or "").strip() else None
+    rep_raw = payload.get("representative_code")
+    kr_loc = next((loc for loc in payload["locales"] if loc["country_code"] == "KR"), None)
+    kr_sku_for_rep = str(kr_loc["sku"] if kr_loc else "").strip()
+    target.representative_code = _resolve_representative_code_for_mapping(rep_raw, kr_sku_for_rep)
     target.manual_updated_at = now
     target.updated_at = now
 
@@ -733,6 +782,7 @@ def _is_sku_mapping_template_hint_row(source: dict[str, object]) -> bool:
         "kr_sku",
         "kr_name",
         "brand",
+        "representative_code",
         "us_sku",
         "us_name",
         "tw_sku",
@@ -808,6 +858,14 @@ def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | Non
     barcode = _normalize_barcode_cell(source.get(BARCODE_COLUMN_CANONICAL))
     segment = _normalize_segment_cell(source.get(SEGMENT_COLUMN_CANONICAL))
     mkt_priority = _normalize_segment_cell(source.get(MKT_PRIORITY_COLUMN_CANONICAL))
+    kr_sku_val = next(
+        (str(locale.get("sku") or "").strip() for locale in sku_locales if locale.get("country_code") == "KR"),
+        anchor_kr_sku,
+    )
+    representative_code = _resolve_representative_code_for_mapping(
+        source.get(REPRESENTATIVE_CODE_COLUMN_CANONICAL),
+        kr_sku_val or first_sku,
+    )
 
     return {
         "row_label": row_label,
@@ -820,6 +878,7 @@ def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | Non
         "match_us_name": match_us_name,
         "brand": brand,
         "barcode": barcode,
+        "representative_code": representative_code,
         "segment": segment,
         "mkt_priority": mkt_priority,
     }
@@ -1325,6 +1384,16 @@ def _apply_merge_record(
     mkt_in = record.get("mkt_priority")
     if mkt_in is not None and str(mkt_in).strip():
         target.mkt_priority = normalize_mkt_priority_cell(mkt_in)
+    rep_in = record.get("representative_code")
+    if rep_in:
+        target.representative_code = str(rep_in).strip()
+    elif not str(target.representative_code or "").strip():
+        kr_loc = next(
+            (pl for pl in target.locales if str(pl.country_code or "").strip().upper() == "KR"),
+            None,
+        )
+        if kr_loc and kr_loc.sku:
+            target.representative_code = str(kr_loc.sku).strip()
     target.upload_updated_at = uploaded_at
     target.updated_at = uploaded_at
 
@@ -1398,6 +1467,18 @@ def merge_item_sku_mappings(db: Session, upload_files: list[UploadFile]) -> dict
                     id=uuid.uuid4(),
                     kr_name=str(record["kr_name"] or record["fallback_name"]),
                     brand=new_brand,
+                    representative_code=_resolve_representative_code_for_mapping(
+                        record.get("representative_code"),
+                        str(record.get("anchor_kr_sku") or "").strip()
+                        or next(
+                            (
+                                str(loc.get("sku") or "")
+                                for loc in record.get("sku_locales", [])
+                                if str(loc.get("country_code") or "").upper() == "KR"
+                            ),
+                            "",
+                        ),
+                    ),
                     barcode=new_barcode if new_barcode else None,
                     segment=new_segment,
                     mkt_priority=new_mkt,
@@ -1469,6 +1550,11 @@ def upsert_item_sku_mapping(db: Session, payload: dict[str, object]) -> dict:
             target = ProductGroup(
                 kr_name=record["kr_name"],
                 brand=record["brand"],
+                representative_code=record.get("representative_code")
+                or next(
+                    (loc["sku"] for loc in record["locales"] if loc["country_code"] == "KR"),
+                    None,
+                ),
                 barcode=bc0 if bc0 else None,
                 segment=seg0,
                 mkt_priority=mkt0,

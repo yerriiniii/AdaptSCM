@@ -132,6 +132,7 @@ def _ensure_inventory_columns(engine: Engine) -> None:
         },
         "item": {
             "brand": "VARCHAR(255)",
+            "representative_code": "VARCHAR(255)",
             "barcode": "VARCHAR(255)",
             "segment": "VARCHAR(255)",
             "mkt_priority": "VARCHAR(255)",
@@ -142,6 +143,7 @@ def _ensure_inventory_columns(engine: Engine) -> None:
             "release_date": "DATE",
             "release_month": "VARCHAR(64)",
             "code_registered_at": "VARCHAR(64)",
+            "kr_grade": "VARCHAR(32)",
             "us_grade": "VARCHAR(32)",
             "tw_grade": "VARCHAR(32)",
             "hk_grade": "VARCHAR(32)",
@@ -531,6 +533,31 @@ def _ensure_item_master_extra_fields(engine: Engine) -> None:
             conn.execute(text("ALTER TABLE item ADD COLUMN extra_fields JSON NULL"))
 
 
+def _ensure_item_representative_code_backfill(engine: Engine) -> None:
+    """기존 상품: representative_code 가 비어 있으면 한국 SKU와 동일하게 채운다."""
+    inspector = inspect(engine)
+    if "item" not in inspector.get_table_names() or "item_mapping" not in inspector.get_table_names():
+        return
+    cols = {c["name"] for c in inspector.get_columns("item")}
+    if "representative_code" not in cols:
+        return
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE item AS i
+                SET representative_code = m.sku
+                FROM item_mapping AS m
+                WHERE m.item_id = i.id
+                  AND UPPER(m.country_code) = 'KR'
+                  AND (i.representative_code IS NULL OR TRIM(i.representative_code) = '')
+                  AND m.sku IS NOT NULL
+                  AND TRIM(m.sku) <> ''
+                """
+            )
+        )
+
+
 def _ensure_purchase_orders_schema(engine: Engine) -> None:
     """발주 예정(날짜 없음) 대응: order_date_note 추가, order_date NULL 허용(PostgreSQL/MySQL)."""
     inspector = inspect(engine)
@@ -731,6 +758,9 @@ def _run_schema_init_if_needed(engine: Engine) -> None:
         t8 = time.perf_counter()
         _ensure_item_master_extra_fields(engine)
         _log.info("item 마스터 extra_fields 컬럼 보정 완료 (%.2fs)", time.perf_counter() - t8)
+        t9 = time.perf_counter()
+        _ensure_item_representative_code_backfill(engine)
+        _log.info("item representative_code 백필 완료 (%.2fs)", time.perf_counter() - t9)
         _schema_initialized = True
         _log.info("DB 스키마 초기화 전체 완료 (총 %.2fs)", time.perf_counter() - t0)
 
