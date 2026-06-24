@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 import { API_BASE } from "./apiClient";
 import { Download, Filter, Minus, Plus, Upload } from "lucide-react";
@@ -11,6 +12,8 @@ const ITEM_MASTER_API = {
   extraColumn: (fieldKey) =>
     `${API_BASE}/api/inventory/mappings/master-rows/extra-columns/${encodeURIComponent(fieldKey)}`,
 };
+
+const ITEM_MASTER_FILTER_POPOVER_WIDTH_PX = 320;
 
 const ITEM_MASTER_FIELDS = [
   { key: "brand", label: "브랜드" },
@@ -298,7 +301,10 @@ export default function ItemMasterTab({
   const [masterQuery, setMasterQuery] = useState("");
   const [masterFilters, setMasterFilters] = useState({ ...EMPTY_ITEM_MASTER_FILTERS });
   const [masterFilterOpen, setMasterFilterOpen] = useState(false);
+  const [filterPopoverStyle, setFilterPopoverStyle] = useState({ top: 0, left: 0 });
   const masterFilterMenuRef = useRef(null);
+  const masterFilterBtnRef = useRef(null);
+  const masterFilterPopoverRef = useRef(null);
   const [masterDraftById, setMasterDraftById] = useState({});
   const [masterSavingAll, setMasterSavingAll] = useState(false);
   const [masterUploadBusy, setMasterUploadBusy] = useState(false);
@@ -344,13 +350,39 @@ export default function ItemMasterTab({
   useEffect(() => {
     if (!masterFilterOpen) return;
     const onDocPointer = (e) => {
-      if (!masterFilterMenuRef.current?.contains(e.target)) {
-        setMasterFilterOpen(false);
-      }
+      const target = e.target;
+      if (masterFilterBtnRef.current?.contains(target)) return;
+      if (masterFilterPopoverRef.current?.contains(target)) return;
+      setMasterFilterOpen(false);
     };
     document.addEventListener("mousedown", onDocPointer);
     return () => document.removeEventListener("mousedown", onDocPointer);
   }, [masterFilterOpen]);
+
+  useLayoutEffect(() => {
+    if (!masterFilterOpen || !masterFilterBtnRef.current) return;
+    const updatePos = () => {
+      const btn = masterFilterBtnRef.current;
+      if (!btn) return;
+      const rect = btn.getBoundingClientRect();
+      const width = ITEM_MASTER_FILTER_POPOVER_WIDTH_PX;
+      const left = Math.min(
+        Math.max(8, rect.right - width),
+        window.innerWidth - width - 8
+      );
+      setFilterPopoverStyle({
+        top: rect.bottom + 8,
+        left,
+      });
+    };
+    updatePos();
+    window.addEventListener("resize", updatePos);
+    window.addEventListener("scroll", updatePos, true);
+    return () => {
+      window.removeEventListener("resize", updatePos);
+      window.removeEventListener("scroll", updatePos, true);
+    };
+  }, [masterFilterOpen, masterToolbarHeight]);
 
   useLayoutEffect(() => {
     if (!active) {
@@ -434,6 +466,9 @@ export default function ItemMasterTab({
   }, [masterRows, masterFilters]);
 
   const masterFiltersActive = Object.values(masterFilters).some((v) => String(v || "").trim());
+  const masterActiveFilterCount = Object.values(masterFilters).filter((v) =>
+    String(v || "").trim()
+  ).length;
 
   useLayoutEffect(() => {
     if (!active || masterLoading || !masterRows.length) {
@@ -789,8 +824,9 @@ export default function ItemMasterTab({
           </div>
           <div className="itemMasterFilterMenuWrap" ref={masterFilterMenuRef}>
             <button
+              ref={masterFilterBtnRef}
               type="button"
-              className={`itemMasterFilterToggleBtn${masterFiltersActive ? " isActive" : ""}${masterFilterOpen ? " isOpen" : ""}`}
+              className={`itemMasterFilterToggleBtn${masterFiltersActive ? " isActive" : ""}`}
               disabled={masterEditMode || masterLoading}
               aria-expanded={masterFilterOpen}
               aria-haspopup="dialog"
@@ -802,46 +838,69 @@ export default function ItemMasterTab({
                 <span className="itemMasterFilterActiveDot" aria-hidden="true" />
               ) : null}
             </button>
-            {masterFilterOpen ? (
-              <div className="itemMasterFilterPopover" role="dialog" aria-label="상품마스터 필터">
-                <div className="itemMasterFilterPopoverHead">필터</div>
-                <div className="itemMasterFilterPopoverBody">
-                  {ITEM_MASTER_FILTER_SPECS.map(({ key, label }) => (
-                    <label key={key} className="itemMasterFilterPopoverField">
-                      <span className="itemMasterFilterLabel">{label}</span>
-                      <select
-                        className="itemMasterFilterSelect"
-                        value={masterFilters[key]}
-                        onChange={(e) =>
-                          setMasterFilters((prev) => ({ ...prev, [key]: e.target.value }))
-                        }
-                        disabled={masterEditMode || masterLoading}
-                      >
-                        <option value="">전체</option>
-                        {(masterFilterOptions[key] || []).map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ))}
-                </div>
-                {masterFiltersActive ? (
-                  <div className="itemMasterFilterPopoverFoot">
-                    <button
-                      type="button"
-                      className="itemMasterFilterReset"
-                      disabled={masterEditMode}
-                      onClick={() => setMasterFilters({ ...EMPTY_ITEM_MASTER_FILTERS })}
-                    >
-                      필터 초기화
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
           </div>
+          {masterFilterOpen && typeof document !== "undefined"
+            ? createPortal(
+                <div
+                  ref={masterFilterPopoverRef}
+                  className="itemMasterFilterPopover itemMasterFilterPopoverFloating"
+                  role="dialog"
+                  aria-label="상품마스터 필터"
+                  style={{
+                    top: filterPopoverStyle.top,
+                    left: filterPopoverStyle.left,
+                    width: ITEM_MASTER_FILTER_POPOVER_WIDTH_PX,
+                  }}
+                >
+                  <div className="itemMasterFilterPopoverHead">
+                    <div className="itemMasterFilterPopoverHeadMain">
+                      <Filter size={16} strokeWidth={2} aria-hidden="true" />
+                      <span>상품 필터</span>
+                    </div>
+                    {masterFiltersActive ? (
+                      <span className="itemMasterFilterPopoverApplied">
+                        {masterActiveFilterCount}개 적용
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="itemMasterFilterPopoverBody">
+                    {ITEM_MASTER_FILTER_SPECS.map(({ key, label }) => (
+                      <label key={key} className="itemMasterFilterPopoverField">
+                        <span className="itemMasterFilterLabel">{label}</span>
+                        <select
+                          className="itemMasterFilterSelect"
+                          value={masterFilters[key]}
+                          onChange={(e) =>
+                            setMasterFilters((prev) => ({ ...prev, [key]: e.target.value }))
+                          }
+                          disabled={masterEditMode || masterLoading}
+                        >
+                          <option value="">전체</option>
+                          {(masterFilterOptions[key] || []).map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                  {masterFiltersActive ? (
+                    <div className="itemMasterFilterPopoverFoot">
+                      <button
+                        type="button"
+                        className="itemMasterFilterReset"
+                        disabled={masterEditMode}
+                        onClick={() => setMasterFilters({ ...EMPTY_ITEM_MASTER_FILTERS })}
+                      >
+                        필터 초기화
+                      </button>
+                    </div>
+                  ) : null}
+                </div>,
+                document.body
+              )
+            : null}
           <button
             type="button"
             className={`itemMasterToolbarEditBtn${masterEditMode ? " itemMasterToolbarEditBtnActive" : ""}`}
