@@ -27,6 +27,7 @@ class InventorySkuMappingUpsertRequest(BaseModel):
     kr_name: str
     kr_sku: str
     brand: str = Field(..., max_length=255)
+    representative_code: str | None = Field(None, max_length=255)
     barcode: str | None = Field(None, max_length=255)
     option: str | None = None
     us_name: str | None = None
@@ -82,6 +83,7 @@ class InventorySkuMappingItemResponse(BaseModel):
     group_id: str
     kr_name: str
     brand: str | None = None
+    representative_code: str | None = None
     barcode: str | None = None
     segment: str | None = None
     segment_display: str | None = None
@@ -114,6 +116,7 @@ class ItemMasterExtraColumnCreateRequest(BaseModel):
 class ItemMasterRowResponse(BaseModel):
     group_id: str
     brand: str = ""
+    representative_code: str = ""
     segment: str = ""
     version: str = ""
     kr_sku: str = ""
@@ -123,10 +126,12 @@ class ItemMasterRowResponse(BaseModel):
     stock_grade: str = ""
     release_month: str = ""
     code_registered_at: str | None = None
+    kr_grade: str = ""
     us_grade: str = ""
     tw_grade: str = ""
     hk_grade: str = ""
     jp_grade: str = ""
+    barcode: str = ""
     extra_fields: dict[str, str] = Field(default_factory=dict)
     updated_at: str | None = None
 
@@ -153,6 +158,7 @@ class ItemMasterUploadResponse(BaseModel):
 class ItemMasterRowPatchRequest(BaseModel):
     group_id: str = Field(..., min_length=1)
     brand: str = Field(..., min_length=1)
+    representative_code: str | None = None
     segment: str | None = None
     version: str | None = None
     kr_sku: str = Field(..., min_length=1)
@@ -162,10 +168,12 @@ class ItemMasterRowPatchRequest(BaseModel):
     stock_grade: str | None = None
     release_month: str | None = None
     code_registered_at: str | None = None
+    kr_grade: str | None = None
     us_grade: str | None = None
     tw_grade: str | None = None
     hk_grade: str | None = None
     jp_grade: str | None = None
+    barcode: str | None = Field(None, max_length=255)
     extra_fields: dict[str, str | None] | None = None
 
     @field_validator("brand")

@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { API_BASE } from "./apiClient";
-import { Download, Minus, Plus, Upload } from "lucide-react";
+import { Download, Filter, Minus, Plus, Upload } from "lucide-react";
 
 /** 백엔드 `domains/item/routers/item.py` master-rows 엔드포인트와 동기화 */
 const ITEM_MASTER_API = {
@@ -14,23 +14,38 @@ const ITEM_MASTER_API = {
 
 const ITEM_MASTER_FIELDS = [
   { key: "brand", label: "브랜드" },
-  { key: "segment", label: "구분" },
-  { key: "version", label: "Ver." },
+  { key: "representative_code", label: "대표코드" },
   { key: "kr_sku", label: "상품코드" },
+  { key: "version", label: "Ver." },
   { key: "kr_name", label: "상품명" },
+  { key: "segment", label: "구분" },
   { key: "stock_category", label: "재고구분" },
   { key: "fcst_grade", label: "FCST등급" },
   { key: "stock_grade", label: "재고등급" },
   { key: "release_month", label: "출시월" },
   { key: "code_registered_at", label: "코드 등록 일자" },
+  { key: "kr_grade", label: "한국 등급" },
   { key: "us_grade", label: "미국 등급" },
   { key: "tw_grade", label: "대만 등급" },
   { key: "hk_grade", label: "홍콩 등급" },
   { key: "jp_grade", label: "일본 등급" },
 ];
 
+const ITEM_MASTER_FILTER_SPECS = [
+  { key: "brand", label: "브랜드" },
+  { key: "segment", label: "구분" },
+  { key: "version", label: "Ver." },
+  { key: "stock_category", label: "재고구분" },
+  { key: "fcst_grade", label: "FCST등급" },
+  { key: "stock_grade", label: "재고등급" },
+];
+
+const EMPTY_ITEM_MASTER_FILTERS = Object.fromEntries(
+  ITEM_MASTER_FILTER_SPECS.map(({ key }) => [key, ""])
+);
+
 const EMPTY_ITEM_MASTER_DRAFT = Object.fromEntries(ITEM_MASTER_FIELDS.map(({ key }) => [key, ""]));
-const ITEM_MASTER_TABLE_MIN_WIDTH_PX = 1180;
+const ITEM_MASTER_TABLE_MIN_WIDTH_PX = 1320;
 /** CSS `--item-master-extra-col-width` 와 동기화 (사용자 정의 열만 JS에서 추가) */
 const ITEM_MASTER_EXTRA_COL_GRID = "var(--item-master-extra-col-width)";
 const ITEM_MASTER_EXTRA_COL_MIN_WIDTH_PX = 72;
@@ -172,15 +187,17 @@ async function buildItemMasterTemplateWorkbookBuffer() {
   const headers = ITEM_MASTER_FIELDS.map(({ label }) => label);
   const columnWidthsPx = {
     브랜드: 100,
-    구분: 120,
-    "Ver.": 56,
+    대표코드: 88,
     상품코드: 88,
+    "Ver.": 56,
     상품명: 240,
+    구분: 120,
     재고구분: 80,
     FCST등급: 72,
     재고등급: 72,
     출시월: 72,
     "코드 등록 일자": 100,
+    "한국 등급": 72,
     "미국 등급": 72,
     "대만 등급": 72,
     "홍콩 등급": 72,
@@ -188,14 +205,16 @@ async function buildItemMasterTemplateWorkbookBuffer() {
   };
   const exampleHintRow = [
     "예: 95PROBLEM",
-    "예: (X) 단종",
-    "예: V0",
     "예: 06231",
+    "예: 06231",
+    "예: V0",
     "예: 95PROBLEM 알패치(R) (4매입 - 파우치)",
+    "예: (X) 단종",
     "예: 일반",
     "예: 정기발주",
     "예: C",
     "예: 2026년 1월",
+    "",
     "",
     "",
     "",
@@ -277,6 +296,9 @@ export default function ItemMasterTab({
   const [masterLoading, setMasterLoading] = useState(false);
   const [masterError, setMasterError] = useState("");
   const [masterQuery, setMasterQuery] = useState("");
+  const [masterFilters, setMasterFilters] = useState({ ...EMPTY_ITEM_MASTER_FILTERS });
+  const [masterFilterOpen, setMasterFilterOpen] = useState(false);
+  const masterFilterMenuRef = useRef(null);
   const [masterDraftById, setMasterDraftById] = useState({});
   const [masterSavingAll, setMasterSavingAll] = useState(false);
   const [masterUploadBusy, setMasterUploadBusy] = useState(false);
@@ -319,6 +341,17 @@ export default function ItemMasterTab({
     void run();
   }, [active, masterQuery]);
 
+  useEffect(() => {
+    if (!masterFilterOpen) return;
+    const onDocPointer = (e) => {
+      if (!masterFilterMenuRef.current?.contains(e.target)) {
+        setMasterFilterOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocPointer);
+    return () => document.removeEventListener("mousedown", onDocPointer);
+  }, [masterFilterOpen]);
+
   useLayoutEffect(() => {
     if (!active) {
       setMasterToolbarHeight(0);
@@ -338,7 +371,7 @@ export default function ItemMasterTab({
       window.removeEventListener("resize", measure);
       ro?.disconnect();
     };
-  }, [active, masterEditMode, masterError]);
+  }, [active, masterEditMode, masterError, masterFilters]);
 
   useLayoutEffect(() => {
     if (!active || !masterShowTopScroll) {
@@ -375,6 +408,32 @@ export default function ItemMasterTab({
   const masterGridStyle = buildItemMasterGridStyle(masterExtraColumns);
   const masterTableMinWidthPx =
     ITEM_MASTER_TABLE_MIN_WIDTH_PX + masterExtraColumns.length * ITEM_MASTER_EXTRA_COL_MIN_WIDTH_PX;
+
+  const masterFilterOptions = useMemo(() => {
+    const out = {};
+    ITEM_MASTER_FILTER_SPECS.forEach(({ key }) => {
+      const vals = new Set();
+      masterRows.forEach((row) => {
+        const v = String(row[key] ?? "").trim();
+        if (v) vals.add(v);
+      });
+      out[key] = [...vals].sort((a, b) => a.localeCompare(b, "ko"));
+    });
+    return out;
+  }, [masterRows]);
+
+  const displayedMasterRows = useMemo(() => {
+    return masterRows.filter((row) => {
+      for (const { key } of ITEM_MASTER_FILTER_SPECS) {
+        const selected = String(masterFilters[key] || "").trim();
+        if (!selected) continue;
+        if (String(row[key] ?? "").trim() !== selected) return false;
+      }
+      return true;
+    });
+  }, [masterRows, masterFilters]);
+
+  const masterFiltersActive = Object.values(masterFilters).some((v) => String(v || "").trim());
 
   useLayoutEffect(() => {
     if (!active || masterLoading || !masterRows.length) {
@@ -722,19 +781,75 @@ export default function ItemMasterTab({
               type="text"
               value={masterQuery}
               onChange={(e) => setMasterQuery(e.target.value)}
-              placeholder="브랜드·상품코드·상품명 검색"
+              placeholder="브랜드·대표코드·상품코드·상품명 검색"
               autoComplete="off"
               aria-label="상품마스터 검색"
               disabled={masterEditMode}
             />
+          </div>
+          <div className="itemMasterFilterMenuWrap" ref={masterFilterMenuRef}>
+            <button
+              type="button"
+              className={`itemMasterFilterToggleBtn${masterFiltersActive ? " isActive" : ""}${masterFilterOpen ? " isOpen" : ""}`}
+              disabled={masterEditMode || masterLoading}
+              aria-expanded={masterFilterOpen}
+              aria-haspopup="dialog"
+              onClick={() => setMasterFilterOpen((open) => !open)}
+            >
+              <Filter size={16} strokeWidth={2} aria-hidden="true" />
+              필터
+              {masterFiltersActive ? (
+                <span className="itemMasterFilterActiveDot" aria-hidden="true" />
+              ) : null}
+            </button>
+            {masterFilterOpen ? (
+              <div className="itemMasterFilterPopover" role="dialog" aria-label="상품마스터 필터">
+                <div className="itemMasterFilterPopoverHead">필터</div>
+                <div className="itemMasterFilterPopoverBody">
+                  {ITEM_MASTER_FILTER_SPECS.map(({ key, label }) => (
+                    <label key={key} className="itemMasterFilterPopoverField">
+                      <span className="itemMasterFilterLabel">{label}</span>
+                      <select
+                        className="itemMasterFilterSelect"
+                        value={masterFilters[key]}
+                        onChange={(e) =>
+                          setMasterFilters((prev) => ({ ...prev, [key]: e.target.value }))
+                        }
+                        disabled={masterEditMode || masterLoading}
+                      >
+                        <option value="">전체</option>
+                        {(masterFilterOptions[key] || []).map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+                {masterFiltersActive ? (
+                  <div className="itemMasterFilterPopoverFoot">
+                    <button
+                      type="button"
+                      className="itemMasterFilterReset"
+                      disabled={masterEditMode}
+                      onClick={() => setMasterFilters({ ...EMPTY_ITEM_MASTER_FILTERS })}
+                    >
+                      필터 초기화
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <button
             type="button"
             className={`itemMasterToolbarEditBtn${masterEditMode ? " itemMasterToolbarEditBtnActive" : ""}`}
             disabled={settingsMutating || masterLoading || !masterRows.length || masterSavingAll}
             onClick={handleToolbarEditSaveClick}
+            title={masterEditMode ? "변경 사항을 DB에 저장합니다" : "스프레드에서 수정 후 저장하면 DB에 반영됩니다"}
           >
-            {masterSavingAll ? "저장 중…" : masterEditMode ? "저장" : "수정"}
+            {masterSavingAll ? "DB 저장 중…" : masterEditMode ? "저장" : "수정"}
           </button>
           {masterEditMode ? (
             <button
@@ -764,6 +879,8 @@ export default function ItemMasterTab({
           <div className="searchEmptyState">불러오는 중...</div>
         ) : !masterRows.length ? (
           <div className="skuProductEditEmpty">등록된 상품이 없습니다. 엑셀을 업로드해 주세요.</div>
+        ) : !displayedMasterRows.length ? (
+          <div className="skuProductEditEmpty">필터 조건에 맞는 상품이 없습니다.</div>
         ) : (
           <div
             className={`skuProductEditTableWrap itemMasterTableWrap${
@@ -843,7 +960,7 @@ export default function ItemMasterTab({
                 onScroll={() => syncMasterTableScroll("body")}
               >
                 <div className="itemMasterTableInner itemMasterTableInnerBody">
-                  {masterRows.map((row, idx) => {
+                  {displayedMasterRows.map((row, idx) => {
                     const gid = row.group_id;
                     const d = masterDraftById[gid] || masterDraftFromRow(row);
                     const isEditing = masterEditMode;

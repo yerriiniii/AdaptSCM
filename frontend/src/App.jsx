@@ -13,8 +13,10 @@ import {
   Home,
   LogOut,
   Package,
+  Pencil,
   Search,
   Truck,
+  X,
 } from "lucide-react";
 import ItemMasterTab from "./ItemMasterTab.jsx";
 import * as XLSX from "xlsx";
@@ -223,8 +225,8 @@ const EMPTY_SKU_MAPPING_FORM = Object.fromEntries([
     [skuKey, ""],
   ]),
   ["brand", ""],
+  ["representative_code", ""],
   ["barcode", ""],
-  ["mkt_priority", ""],
   ["segment", ""],
 ]);
 
@@ -539,26 +541,25 @@ const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
   {
     code: "KR",
     fileLabel: "한국",
-    headers: ["한국 SKU", "바코드", "브랜드", "한국 상품명", "마케팅 우선순위", "구분"],
+    headers: ["브랜드", "구분", "한국 SKU", "대표코드", "한국 상품명"],
     columnWidthsPx: {
       "한국 상품명": 200,
       구분: 180,
-      "마케팅 우선순위": 132,
+      브랜드: 100,
+      "대표코드": 88,
     },
     exampleHintRow: [
-      "예: 05803",
-      "예: X0041I3ECT",
       "예: 푸드올로지",
+      "예: (상시) 유통기획",
+      "예: 05803",
+      "예: 05803",
       "예: 푸드올로지 보틀 500ml 레드",
-      "예: A 등급 (필수 입력 X)",
-      "예: (상시) 유통기획 (필수 입력 X)",
     ],
     headerNotes: {
-      "마케팅 우선순위":
-        "선택. item.mkt_priority 로 저장됩니다. 엑셀 헤더는 마케팅 등급·mkt_priority 등도 인식됩니다.",
+      "대표코드":
+        "선택. 비우면 한국 SKU와 동일하게 저장됩니다. 여러 옵션 SKU가 같은 대표 상품을 가리킬 때 사용합니다.",
       구분:
         "선택. item.segment 로 저장. 값은 그대로 저장하되, 앞의 (X) / （X） 수식어만 제거합니다. 예: (X) 단종 → 단종.",
-      바코드: "선택. 있으면 상품(item)의 바코드로 저장되며, 업로드 시 값이 있을 때만 갱신됩니다.",
     },
   },
   {
@@ -1353,30 +1354,116 @@ function mappingRowKrSku(row = {}) {
   return String(kr?.sku ?? "").trim();
 }
 
-/** 상품 검색 상세 패널 — 행별 필드 id (4열 그리드) */
-const PRODUCT_SEARCH_DETAIL_ROW_SPECS = [
-  ["kr_sku", "barcode", "version", "segment"],
-  ["stock_category", "mkt_priority", "fcst_grade", "stock_grade"],
-  ["release_month", "code_registered_at"],
-  ["us_grade", "tw_grade", "hk_grade", "jp_grade"],
-];
+const ITEM_MASTER_ROWS_PATCH_API = `${API_BASE}/api/inventory/mappings/master-rows`;
 
-const PRODUCT_SEARCH_DETAIL_FIELD_LABELS = {
-  kr_sku: "대표코드",
-  barcode: "바코드",
-  version: "Ver.",
-  segment: "구분",
-  stock_category: "재고구분",
-  mkt_priority: "MKT 우선순위",
-  fcst_grade: "FCST등급",
-  stock_grade: "재고등급",
-  release_month: "출시월",
-  code_registered_at: "코드 등록 일자",
-  us_grade: "미국 등급",
-  tw_grade: "대만 등급",
-  hk_grade: "홍콩 등급",
-  jp_grade: "일본 등급",
-};
+/** 상품 검색 상세 — 팝업에서 DB 저장 가능한 필드 */
+const PRODUCT_SEARCH_DETAIL_EDITABLE_IDS = new Set([
+  "barcode",
+  "representative_code",
+  "version",
+  "kr_name",
+  "segment",
+  "stock_category",
+  "fcst_grade",
+  "stock_grade",
+  "release_month",
+  "code_registered_at",
+  "kr_grade",
+  "us_grade",
+  "tw_grade",
+  "hk_grade",
+  "jp_grade",
+]);
+
+function productSearchDetailRawValue(id, mappingRow = {}, master = {}) {
+  if (id === "barcode") {
+    return String(mappingRow.barcode ?? master.barcode ?? "").trim();
+  }
+  if (id === "representative_code") {
+    return String(
+      master.representative_code || mappingRow.representative_code || mappingRowKrSku(mappingRow) || master.kr_sku || ""
+    ).trim();
+  }
+  if (id === "kr_name") {
+    return String(mappingRow.kr_name || master.kr_name || "").trim();
+  }
+  if (id === "segment") {
+    return String(mappingRow.segment || master.segment || "").trim();
+  }
+  if (id.startsWith("extra:")) {
+    const key = id.slice("extra:".length);
+    const ef = master.extra_fields && typeof master.extra_fields === "object" ? master.extra_fields : {};
+    return String(ef[key] ?? "").trim();
+  }
+  return String(master[id] ?? "").trim();
+}
+
+function buildMasterPatchPayloadFromDetail(master = {}, mappingRow = {}, extraColumns = []) {
+  const groupId = String(master.group_id || mappingRow.group_id || "").trim();
+  const brand = String(master.brand || mappingRow.brand || "").trim();
+  const krSku = String(master.kr_sku || mappingRowKrSku(mappingRow) || "").trim();
+  const krName = String(master.kr_name || mappingRow.kr_name || "").trim();
+  const payload = {
+    group_id: groupId,
+    brand,
+    representative_code: productSearchDetailRawValue("representative_code", mappingRow, master) || null,
+    version: productSearchDetailRawValue("version", mappingRow, master) || null,
+    kr_sku: krSku,
+    kr_name: krName,
+    segment: productSearchDetailRawValue("segment", mappingRow, master) || null,
+    stock_category: productSearchDetailRawValue("stock_category", mappingRow, master) || null,
+    fcst_grade: productSearchDetailRawValue("fcst_grade", mappingRow, master) || null,
+    stock_grade: productSearchDetailRawValue("stock_grade", mappingRow, master) || null,
+    release_month: productSearchDetailRawValue("release_month", mappingRow, master) || null,
+    code_registered_at: productSearchDetailRawValue("code_registered_at", mappingRow, master) || null,
+    kr_grade: productSearchDetailRawValue("kr_grade", mappingRow, master) || null,
+    us_grade: productSearchDetailRawValue("us_grade", mappingRow, master) || null,
+    tw_grade: productSearchDetailRawValue("tw_grade", mappingRow, master) || null,
+    hk_grade: productSearchDetailRawValue("hk_grade", mappingRow, master) || null,
+    jp_grade: productSearchDetailRawValue("jp_grade", mappingRow, master) || null,
+    barcode: productSearchDetailRawValue("barcode", mappingRow, master) || null,
+  };
+  if (extraColumns.length) {
+    const ef =
+      master.extra_fields && typeof master.extra_fields === "object" ? { ...master.extra_fields } : {};
+    payload.extra_fields = ef;
+  }
+  return payload;
+}
+
+function applyProductSearchDetailFieldToPayload(payload, fieldId, rawValue) {
+  const next = { ...payload };
+  const val = String(rawValue ?? "").trim();
+  if (fieldId.startsWith("extra:")) {
+    const key = fieldId.slice("extra:".length);
+    const ef = { ...(next.extra_fields && typeof next.extra_fields === "object" ? next.extra_fields : {}) };
+    if (!val) delete ef[key];
+    else ef[key] = val;
+    next.extra_fields = ef;
+    return next;
+  }
+  next[fieldId] = val || null;
+  return next;
+}
+
+/** 상품 검색 상세 — 팝업 리스트 필드 순서 */
+const PRODUCT_SEARCH_DETAIL_FIELDS = [
+  { id: "barcode", label: "바코드" },
+  { id: "representative_code", label: "대표코드" },
+  { id: "version", label: "ver" },
+  { id: "kr_name", label: "상품명" },
+  { id: "segment", label: "구분" },
+  { id: "stock_category", label: "재고구분" },
+  { id: "fcst_grade", label: "FCST 등급" },
+  { id: "stock_grade", label: "재고 등급" },
+  { id: "release_month", label: "출시월" },
+  { id: "code_registered_at", label: "코드등록일자" },
+  { id: "kr_grade", label: "한국 등급" },
+  { id: "us_grade", label: "미국 등급" },
+  { id: "tw_grade", label: "대만 등급" },
+  { id: "hk_grade", label: "홍콩 등급" },
+  { id: "jp_grade", label: "일본 등급" },
+];
 
 function formatProductSearchDetailValue(value) {
   const text = String(value ?? "").trim();
@@ -1384,42 +1471,54 @@ function formatProductSearchDetailValue(value) {
 }
 
 function resolveProductSearchDetailFieldValue(id, mappingRow = {}, master = {}) {
-  if (id === "kr_sku") {
-    return formatProductSearchDetailValue(mappingRowKrSku(mappingRow) || master.kr_sku);
+  if (id === "representative_code") {
+    return formatProductSearchDetailValue(
+      master.representative_code || mappingRow.representative_code || mappingRowKrSku(mappingRow) || master.kr_sku
+    );
+  }
+  if (id === "kr_name") {
+    return formatProductSearchDetailValue(mappingRow.kr_name || master.kr_name);
   }
   if (id === "barcode") {
-    return formatProductSearchDetailValue(mappingRow.barcode);
+    return formatProductSearchDetailValue(mappingRow.barcode ?? master.barcode);
   }
   if (id === "segment") {
     return formatProductSearchDetailValue(
       mappingRow.segment_display || mappingRow.segment || master.segment
     );
   }
-  if (id === "mkt_priority") {
-    return formatProductSearchDetailValue(mappingRow.mkt_priority);
+  if (id === "code_registered_at") {
+    const raw = String(master[id] ?? "").trim();
+    if (!raw) return "–";
+    if (raw.includes("T")) return raw.split("T", 1)[0];
+    if (raw.includes(" ") && /^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.split(" ", 1)[0];
+    return formatProductSearchDetailValue(raw);
   }
   return formatProductSearchDetailValue(master[id]);
 }
 
-function buildProductSearchDetailRowGroups(mappingRow = {}, detailPayload = null) {
+function buildProductSearchDetailList(mappingRow = {}, detailPayload = null) {
   const master = detailPayload?.row || {};
   const extraCols = Array.isArray(detailPayload?.extra_columns) ? detailPayload.extra_columns : [];
-  const rows = PRODUCT_SEARCH_DETAIL_ROW_SPECS.map((ids) =>
-    ids.map((id) => ({
-      id,
-      label: PRODUCT_SEARCH_DETAIL_FIELD_LABELS[id] || id,
-      value: resolveProductSearchDetailFieldValue(id, mappingRow, master),
-    }))
-  );
-  const extraRow = extraCols.map(({ field_key, label }) => {
+  const items = PRODUCT_SEARCH_DETAIL_FIELDS.map(({ id, label }) => ({
+    id,
+    label,
+    value: resolveProductSearchDetailFieldValue(id, mappingRow, master),
+    editable: PRODUCT_SEARCH_DETAIL_EDITABLE_IDS.has(id),
+    raw: productSearchDetailRawValue(id, mappingRow, master),
+  }));
+  extraCols.forEach(({ field_key, label }) => {
     const ef = master.extra_fields && typeof master.extra_fields === "object" ? master.extra_fields : {};
-    return {
+    const raw = String(ef[field_key] ?? "").trim();
+    items.push({
       id: `extra:${field_key}`,
       label: label || field_key,
-      value: formatProductSearchDetailValue(ef[field_key]),
-    };
+      value: formatProductSearchDetailValue(raw),
+      editable: true,
+      raw,
+    });
   });
-  return { rows, extraRow };
+  return items;
 }
 
 /** DB·화면 구분: 단종 저장값은 `단종`, 구분 칸 표시는 `(X) 단종` */
@@ -2036,6 +2135,9 @@ export default function App() {
   const [productSearchDetailOpenId, setProductSearchDetailOpenId] = useState("");
   const [productSearchDetailById, setProductSearchDetailById] = useState({});
   const [productSearchDetailLoadingId, setProductSearchDetailLoadingId] = useState("");
+  const [productSearchDetailEditingFieldId, setProductSearchDetailEditingFieldId] = useState("");
+  const [productSearchDetailEditDraft, setProductSearchDetailEditDraft] = useState("");
+  const [productSearchDetailFieldSavingId, setProductSearchDetailFieldSavingId] = useState("");
   const [mappingSummary, setMappingSummary] = useState({
     total_count: 0,
     updated_at: "",
@@ -5569,9 +5671,13 @@ export default function App() {
     if (!id) return;
     if (productSearchDetailOpenId === id) {
       setProductSearchDetailOpenId("");
+      setProductSearchDetailEditingFieldId("");
+      setProductSearchDetailEditDraft("");
       return;
     }
     setProductSearchDetailOpenId(id);
+    setProductSearchDetailEditingFieldId("");
+    setProductSearchDetailEditDraft("");
     if (productSearchDetailById[id]) return;
     try {
       setProductSearchDetailLoadingId(id);
@@ -5586,6 +5692,71 @@ export default function App() {
       setProductSearchDetailOpenId("");
     } finally {
       setProductSearchDetailLoadingId("");
+    }
+  }
+
+  function beginProductSearchDetailFieldEdit(item) {
+    if (!item?.id) return;
+    setProductSearchDetailEditingFieldId(item.id);
+    setProductSearchDetailEditDraft(String(item.raw ?? "").trim());
+  }
+
+  function cancelProductSearchDetailFieldEdit() {
+    setProductSearchDetailEditingFieldId("");
+    setProductSearchDetailEditDraft("");
+  }
+
+  async function saveProductSearchDetailFieldEdit(groupId, mappingRow, detailPayload) {
+    const gid = String(groupId || "").trim();
+    const fieldId = String(productSearchDetailEditingFieldId || "").trim();
+    if (!gid || !fieldId || !detailPayload) return;
+    const master = detailPayload?.row || {};
+    const extraCols = Array.isArray(detailPayload?.extra_columns) ? detailPayload.extra_columns : [];
+    const basePayload = buildMasterPatchPayloadFromDetail(master, mappingRow, extraCols);
+    if (!basePayload.brand || !basePayload.kr_sku || !basePayload.kr_name) {
+      window.alert("브랜드·상품코드·상품명이 없어 저장할 수 없습니다.");
+      return;
+    }
+    const patchBody = applyProductSearchDetailFieldToPayload(
+      basePayload,
+      fieldId,
+      productSearchDetailEditDraft
+    );
+    try {
+      setProductSearchDetailFieldSavingId(fieldId);
+      const res = await axios.patch(ITEM_MASTER_ROWS_PATCH_API, patchBody);
+      const saved = res?.data || {};
+      setProductSearchDetailById((prev) => ({
+        ...prev,
+        [gid]: {
+          ...detailPayload,
+          row: { ...(detailPayload.row || {}), ...saved },
+        },
+      }));
+      setMappingRows((prev) =>
+        prev.map((row) => {
+          if (String(row.group_id || "").trim() !== gid) return row;
+          const next = { ...row };
+          if (fieldId === "kr_name") next.kr_name = saved.kr_name || next.kr_name;
+          if (fieldId === "barcode") next.barcode = saved.barcode ?? patchBody.barcode ?? next.barcode;
+          if (fieldId === "segment") {
+            next.segment = saved.segment ?? patchBody.segment;
+            next.segment_display = saved.segment ?? patchBody.segment;
+          }
+          if (fieldId === "representative_code") {
+            next.representative_code = saved.representative_code ?? patchBody.representative_code;
+          }
+          return next;
+        })
+      );
+      setProductSearchDetailEditingFieldId("");
+      setProductSearchDetailEditDraft("");
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "저장 중 오류";
+      window.alert(msg);
+    } finally {
+      setProductSearchDetailFieldSavingId("");
     }
   }
 
@@ -5643,7 +5814,7 @@ export default function App() {
         Object.entries(manualMappingForm).map(([key, value]) => [key, String(value || "").trim()])
       );
       if (!payload.kr_sku) {
-        window.alert("한국 SKU를 입력해 주세요.");
+        window.alert("상품코드를 입력해 주세요.");
         return;
       }
       if (!payload.kr_name) {
@@ -10040,43 +10211,13 @@ export default function App() {
                     <div className="skuManualBlock">
                       <p className="skuManualNoticeHint">
                         <span className="skuManualNoticeHintLead">
-                          한국&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;브랜드, SKU, 상품명 필수
+                          한국&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;브랜드, 상품코드, 상품명 필수
                         </span>
-                        <span className="skuManualNoticeHintSub">
-                          *MKT 등급, FCST 등급 등 상품의 상세 정보는 후에 상품마스터 탭에서 수정할 수 있습니다.
+                        <span className="skuManualNoticeHintSub skuManualNoticeHintSubWarn">
+                          *MKT 등급, FCST 등급 등 상품의 상세 정보는 후에 상품마스터 탭 또는 상품검색 탭의 상세보기에서 수정할 수 있습니다.
                         </span>
                       </p>
                       <div className="skuManualKrGrid">
-                      <label className="skuManualKrField">
-                        <span className="skuManualKrFieldHead">
-                          한국 SKU <abbr title="필수">*</abbr>
-                        </span>
-                        <div className="skuManualKrFieldBody">
-                          <input
-                            type="text"
-                            value={manualMappingForm.kr_sku}
-                            onChange={(e) =>
-                              setManualMappingForm((prev) => ({ ...prev, kr_sku: e.target.value }))
-                            }
-                            placeholder="예: 05803"
-                            autoComplete="off"
-                          />
-                        </div>
-                      </label>
-                      <label className="skuManualKrField">
-                        <span className="skuManualKrFieldHead">바코드</span>
-                        <div className="skuManualKrFieldBody">
-                          <input
-                            type="text"
-                            value={manualMappingForm.barcode}
-                            onChange={(e) =>
-                              setManualMappingForm((prev) => ({ ...prev, barcode: e.target.value }))
-                            }
-                            placeholder="예: X0041I3ECT"
-                            autoComplete="off"
-                          />
-                        </div>
-                      </label>
                       <div className="skuManualKrSpanRow skuManualKrRow2">
                         <label className="skuManualKrField">
                           <span className="skuManualKrFieldHead">
@@ -10096,6 +10237,57 @@ export default function App() {
                           </div>
                         </label>
                         <label className="skuManualKrField">
+                          <span className="skuManualKrFieldHead">구분</span>
+                          <div className="skuManualKrFieldBody">
+                            <input
+                              type="text"
+                              value={manualMappingForm.segment}
+                              onChange={(e) =>
+                                setManualMappingForm((prev) => ({ ...prev, segment: e.target.value }))
+                              }
+                              placeholder="예: (상시) 유통기획"
+                              autoComplete="off"
+                            />
+                          </div>
+                        </label>
+                      </div>
+                      <div className="skuManualKrSpanRow skuManualKrRow2">
+                        <label className="skuManualKrField">
+                          <span className="skuManualKrFieldHead">대표코드</span>
+                          <div className="skuManualKrFieldBody">
+                            <input
+                              type="text"
+                              value={manualMappingForm.representative_code}
+                              onChange={(e) =>
+                                setManualMappingForm((prev) => ({
+                                  ...prev,
+                                  representative_code: e.target.value,
+                                }))
+                              }
+                              placeholder="예: 05803 (비우면 상품코드와 동일)"
+                              autoComplete="off"
+                            />
+                          </div>
+                        </label>
+                        <label className="skuManualKrField">
+                          <span className="skuManualKrFieldHead">
+                            상품코드 <abbr title="필수">*</abbr>
+                          </span>
+                          <div className="skuManualKrFieldBody">
+                            <input
+                              type="text"
+                              value={manualMappingForm.kr_sku}
+                              onChange={(e) =>
+                                setManualMappingForm((prev) => ({ ...prev, kr_sku: e.target.value }))
+                              }
+                              placeholder="예: 05803"
+                              autoComplete="off"
+                            />
+                          </div>
+                        </label>
+                      </div>
+                      <div className="skuManualKrSpanRow skuManualKrRow2">
+                        <label className="skuManualKrField">
                           <span className="skuManualKrFieldHead">
                             한국 상품명 <abbr title="필수">*</abbr>
                           </span>
@@ -10111,32 +10303,16 @@ export default function App() {
                             />
                           </div>
                         </label>
-                      </div>
-                      <div className="skuManualKrSpanRow skuManualKrRow2">
                         <label className="skuManualKrField">
-                          <span className="skuManualKrFieldHead">마케팅 우선순위</span>
+                          <span className="skuManualKrFieldHead">바코드</span>
                           <div className="skuManualKrFieldBody">
                             <input
                               type="text"
-                              value={manualMappingForm.mkt_priority}
+                              value={manualMappingForm.barcode}
                               onChange={(e) =>
-                                setManualMappingForm((prev) => ({ ...prev, mkt_priority: e.target.value }))
+                                setManualMappingForm((prev) => ({ ...prev, barcode: e.target.value }))
                               }
-                              placeholder="예: A 등급 (필수 입력 X)"
-                              autoComplete="off"
-                            />
-                          </div>
-                        </label>
-                        <label className="skuManualKrField">
-                          <span className="skuManualKrFieldHead">구분</span>
-                          <div className="skuManualKrFieldBody">
-                            <input
-                              type="text"
-                              value={manualMappingForm.segment}
-                              onChange={(e) =>
-                                setManualMappingForm((prev) => ({ ...prev, segment: e.target.value }))
-                              }
-                              placeholder="예: (상시) 유통기획 (필수 입력 X)"
+                              placeholder="예: X0041I3ECT"
                               autoComplete="off"
                             />
                           </div>
@@ -10149,13 +10325,15 @@ export default function App() {
                   <div className="skuManualSection skuManualSectionOverseas">
                     <div className="skuManualBlock">
                       <p className="skuManualNoticeHint">
-                        해외&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;선택. 비우면 해당 국가 제외
+                        <span className="skuManualNoticeHintLead">
+                          해외&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;선택. 비우면 해당 국가 제외
+                        </span>
                       </p>
                       <div className="skuManualTable skuManualTableOverseas">
                       <div className="skuManualTableHead">
                         <div>국가</div>
-                        <div>SKU</div>
-                        <div>상품명</div>
+                        <div>해외 SKU</div>
+                        <div>해외 상품명</div>
                       </div>
                       {SKU_MAPPING_OVERSEAS_FIELDS.map((field) => (
                         <div key={field.code} className="skuManualRow">
@@ -10251,7 +10429,6 @@ export default function App() {
                     String(row.segment || "").trim() === "단종" || row.segment_display === "단종";
                   const detailGroupId = String(row.group_id || row._id || "").trim();
                   const detailOpen = productSearchDetailOpenId === detailGroupId;
-                  const detailPayload = productSearchDetailById[detailGroupId];
                   return (
                   <article key={row._id} className="productMappingItemCard">
                     <div
@@ -10265,80 +10442,33 @@ export default function App() {
                         <span className="productMappingPipe productMappingGridHeadPipe" aria-hidden="true">
                           |
                         </span>
-                        <div className="productMappingItemNamePart productMappingGridHeadName">
-                          {row.kr_name || "상품명 없음"}
-                        </div>
-                        <div className="productMappingGridHeadActions">
+                        <div className="productMappingGridHeadNameWrap productMappingGridHeadName">
+                          <span className="productMappingItemNamePart productMappingGridHeadNameText">
+                            {row.kr_name || "상품명 없음"}
+                          </span>
                           {mappingItemDiscontinued ? (
                             <div
-                              className="productMappingGridHeadMeta productMappingDiscontinuedBadge"
+                              className="productMappingDiscontinuedBadge"
                               title="DB 구분: 단종"
                             >
                               <Ban className="productMappingDiscontinuedIcon" size={18} strokeWidth={2} aria-hidden />
                               <span>단종</span>
                             </div>
                           ) : null}
+                        </div>
+                        <div className="productMappingGridHeadActions">
                           <button
                             type="button"
                             className={`productMappingDetailBtn${detailOpen ? " isOpen" : ""}`}
                             disabled={!detailGroupId || productSearchDetailLoadingId === detailGroupId}
                             onClick={() => void toggleProductSearchDetail(detailGroupId)}
+                            aria-haspopup="dialog"
                             aria-expanded={detailOpen}
-                            aria-controls={detailGroupId ? `product-search-detail-${detailGroupId}` : undefined}
                           >
-                            {productSearchDetailLoadingId === detailGroupId
-                              ? "불러오는 중…"
-                              : detailOpen
-                                ? "접기"
-                                : "상세보기"}
+                            {productSearchDetailLoadingId === detailGroupId ? "불러오는 중…" : "상세보기"}
                           </button>
                         </div>
                       </div>
-                      {detailOpen ? (
-                        <div
-                          id={`product-search-detail-${detailGroupId}`}
-                          className="productMappingItemDetailBand"
-                        >
-                          {productSearchDetailLoadingId === detailGroupId ? (
-                            <div className="productMappingDetailLoading">DB에서 상품 정보를 불러오는 중…</div>
-                          ) : detailPayload ? (
-                            (() => {
-                              const { rows, extraRow } = buildProductSearchDetailRowGroups(row, detailPayload);
-                              return (
-                                <div className="productMappingDetailRows">
-                                  {rows.map((rowItems, rowIdx) => (
-                                    <dl
-                                      key={`detail-row-${rowIdx}`}
-                                      className={`productMappingDetailGrid${
-                                        rowItems.length === 4 ? " isFourCol" : " isTwoCol"
-                                      }${rowIdx === rows.length - 1 ? " isGradeRow" : ""}`}
-                                    >
-                                      {rowItems.map((item) => (
-                                        <div key={item.id} className="productMappingDetailPair">
-                                          <dt>{item.label}</dt>
-                                          <dd>{item.value}</dd>
-                                        </div>
-                                      ))}
-                                    </dl>
-                                  ))}
-                                  {extraRow.length ? (
-                                    <dl className="productMappingDetailGrid isFourCol">
-                                      {extraRow.map((item) => (
-                                        <div key={item.id} className="productMappingDetailPair">
-                                          <dt>{item.label}</dt>
-                                          <dd>{item.value}</dd>
-                                        </div>
-                                      ))}
-                                    </dl>
-                                  ) : null}
-                                </div>
-                              );
-                            })()
-                          ) : (
-                            <div className="productMappingDetailLoading">상세 정보를 불러오지 못했습니다.</div>
-                          )}
-                        </div>
-                      ) : null}
                       {row._countries.map((country, countryIdx) => (
                         <Fragment key={`${row._id}-${country.code}`}>
                           {countryIdx > 0 ? (
@@ -10367,6 +10497,142 @@ export default function App() {
                 })}
               </div>
             )}
+            {productSearchDetailOpenId ? (() => {
+              const detailRow = productMappingCards.find(
+                (r) => String(r.group_id || r._id || "").trim() === productSearchDetailOpenId
+              );
+              const detailPayload = productSearchDetailById[productSearchDetailOpenId];
+              const loading = productSearchDetailLoadingId === productSearchDetailOpenId;
+              const detailItems =
+                detailPayload && detailRow ? buildProductSearchDetailList(detailRow, detailPayload) : [];
+              return (
+                <div
+                  className="productSearchDetailModalBackdrop"
+                  role="presentation"
+                  onClick={() => {
+                    setProductSearchDetailOpenId("");
+                    cancelProductSearchDetailFieldEdit();
+                  }}
+                >
+                  <div
+                    className="productSearchDetailModal"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="product-search-detail-title"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="productSearchDetailModalHead">
+                      <div
+                        id="product-search-detail-title"
+                        className="productSearchDetailModalHeadMain"
+                      >
+                        <div className="productSearchDetailModalHeadLead">
+                          <Package
+                            className="productSearchDetailModalHeadIcon"
+                            size={19}
+                            strokeWidth={2}
+                            aria-hidden="true"
+                          />
+                          <span className="productSearchDetailModalHeadBrand">
+                            {detailRow?.brand || "–"}
+                          </span>
+                          <span className="productSearchDetailModalHeadPipe" aria-hidden="true">
+                            |
+                          </span>
+                        </div>
+                        <span className="productSearchDetailModalHeadName">
+                          {detailRow?.kr_name || "상품명 없음"}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="productSearchDetailModalClose"
+                        onClick={() => {
+                          setProductSearchDetailOpenId("");
+                          cancelProductSearchDetailFieldEdit();
+                        }}
+                        aria-label="상세보기 닫기"
+                      >
+                        <X size={18} strokeWidth={2.25} aria-hidden="true" />
+                      </button>
+                    </div>
+                    <div className="productSearchDetailMemo">
+                      {loading ? (
+                        <p className="productSearchDetailMemoLoading">DB에서 상품 정보를 불러오는 중…</p>
+                      ) : detailItems.length ? (
+                        <dl className="productSearchDetailMemoList">
+                          {detailItems.map((item) => {
+                            const isEditing = productSearchDetailEditingFieldId === item.id;
+                            const isSaving = productSearchDetailFieldSavingId === item.id;
+                            return (
+                            <div key={item.id} className="productSearchDetailMemoRow">
+                              <dt>{item.label}</dt>
+                              <dd>
+                                <div className="productSearchDetailMemoValueRow">
+                                  {isEditing ? (
+                                    <>
+                                      <input
+                                        type="text"
+                                        className="productSearchDetailMemoInput"
+                                        value={productSearchDetailEditDraft}
+                                        onChange={(e) => setProductSearchDetailEditDraft(e.target.value)}
+                                        disabled={isSaving}
+                                        autoFocus
+                                      />
+                                      <button
+                                        type="button"
+                                        className="productSearchDetailMemoSaveBtn"
+                                        disabled={isSaving}
+                                        onClick={() =>
+                                          void saveProductSearchDetailFieldEdit(
+                                            productSearchDetailOpenId,
+                                            detailRow,
+                                            detailPayload
+                                          )
+                                        }
+                                      >
+                                        {isSaving ? "저장 중…" : "저장"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="productSearchDetailMemoCancelBtn"
+                                        disabled={isSaving}
+                                        onClick={cancelProductSearchDetailFieldEdit}
+                                      >
+                                        취소
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="productSearchDetailMemoValue">{item.value}</span>
+                                      {item.editable ? (
+                                        <button
+                                          type="button"
+                                          className="productSearchDetailMemoEditBtn"
+                                          title={`${item.label} 수정`}
+                                          aria-label={`${item.label} 수정`}
+                                          disabled={Boolean(productSearchDetailFieldSavingId)}
+                                          onClick={() => beginProductSearchDetailFieldEdit(item)}
+                                        >
+                                          <Pencil size={14} strokeWidth={2} aria-hidden="true" />
+                                        </button>
+                                      ) : null}
+                                    </>
+                                  )}
+                                </div>
+                              </dd>
+                            </div>
+                            );
+                          })}
+                        </dl>
+                      ) : (
+                        <p className="productSearchDetailMemoLoading">상세 정보를 불러오지 못했습니다.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })() : null}
             </div>
           </section>
         </section>

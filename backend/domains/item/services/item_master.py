@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, selectinload
 from domains.item.models import ItemMasterExtraColumn, ProductGroup, ProductLocale
 from domains.item.services.item_mapping import (
     _normalize_brand_cell,
+    _normalize_barcode_cell,
     _normalize_mapping_sku,
     normalize_item_segment,
 )
@@ -24,15 +25,17 @@ from shared.config import get_runtime_settings
 
 MASTER_COLUMN_ORDER = [
     "brand",
-    "segment",
-    "version",
+    "representative_code",
     "kr_sku",
+    "version",
     "kr_name",
+    "segment",
     "stock_category",
     "fcst_grade",
     "stock_grade",
     "release_month",
     "code_registered_at",
+    "kr_grade",
     "us_grade",
     "tw_grade",
     "hk_grade",
@@ -41,15 +44,17 @@ MASTER_COLUMN_ORDER = [
 
 MASTER_COLUMN_LABELS = {
     "brand": "브랜드",
-    "segment": "구분",
-    "version": "Ver.",
+    "representative_code": "대표코드",
     "kr_sku": "상품코드",
+    "version": "Ver.",
     "kr_name": "상품명",
+    "segment": "구분",
     "stock_category": "재고구분",
     "fcst_grade": "FCST등급",
     "stock_grade": "재고등급",
     "release_month": "출시월",
     "code_registered_at": "코드 등록 일자",
+    "kr_grade": "한국 등급",
     "us_grade": "미국 등급",
     "tw_grade": "대만 등급",
     "hk_grade": "홍콩 등급",
@@ -58,6 +63,9 @@ MASTER_COLUMN_LABELS = {
 
 MASTER_HEADER_ALIASES: dict[str, frozenset[str]] = {
     "brand": frozenset({"brand", "브랜드"}),
+    "representative_code": frozenset(
+        {"representativecode", "representative_code", "대표코드", "repcode", "rep_code"}
+    ),
     "segment": frozenset({"segment", "구분", "상품구분", "분류", "상품분류"}),
     "version": frozenset({"ver", "ver.", "version", "버전", "옵션", "option", "options"}),
     "kr_name": frozenset({"krname", "kr_name", "상품명", "품명", "description", "name"}),
@@ -88,6 +96,7 @@ MASTER_HEADER_ALIASES: dict[str, frozenset[str]] = {
         }
     ),
     "us_grade": frozenset({"usgrade", "us_grade", "미국등급", "미국 등급", "us등급"}),
+    "kr_grade": frozenset({"krgrade", "kr_grade", "한국등급", "한국 등급", "kr등급"}),
     "tw_grade": frozenset({"twgrade", "tw_grade", "대만등급", "대만 등급", "tw등급"}),
     "hk_grade": frozenset({"hkgrade", "hk_grade", "홍콩등급", "홍콩 등급", "hk등급"}),
     "jp_grade": frozenset({"jpgrade", "jp_grade", "일본등급", "일본 등급", "jp등급"}),
@@ -104,8 +113,8 @@ def _normalize_master_header(value: object) -> str:
     return re.sub(r"[\s_\-·]+", "", raw)
 
 
-# 상품코드 열: 이 헤더만 인식 (우선순위 — 앞일수록 우선)
-KR_SKU_HEADER_LABELS: tuple[str, ...] = ("상품코드", "어드민코드", "대표코드")
+# 상품코드 열: 이 헤더만 인식 (우선순위 — 앞일수록 우선). 대표코드는 별도 열.
+KR_SKU_HEADER_LABELS: tuple[str, ...] = ("상품코드", "어드민코드")
 KR_SKU_HEADER_NORMS: frozenset[str] = frozenset(
     _normalize_master_header(label) for label in KR_SKU_HEADER_LABELS
 )
@@ -284,25 +293,37 @@ def _extra_fields_payload(group: ProductGroup, field_keys: list[str]) -> dict[st
     return {key: _cell_text(raw.get(key))[:EXTRA_FIELD_VALUE_MAX_LEN] for key in field_keys}
 
 
+def _resolve_representative_code(explicit: object, kr_sku: str) -> str:
+    raw = _normalize_mapping_sku(explicit)
+    if raw:
+        return raw
+    return kr_sku
+
+
 def master_row_payload(group: ProductGroup, extra_field_keys: list[str] | None = None) -> dict:
     kr = _kr_locale(group)
     seg_norm = normalize_item_segment(group.segment)
+    kr_sku = kr.sku if kr else ""
+    rep = _cell_text(group.representative_code) or kr_sku
     return {
         "group_id": str(group.id),
         "brand": group.brand or "",
+        "representative_code": rep,
         "segment": seg_norm or "",
         "version": group.version or "",
-        "kr_sku": kr.sku if kr else "",
+        "kr_sku": kr_sku,
         "kr_name": group.kr_name or "",
         "stock_category": group.stock_category or "",
         "fcst_grade": group.fcst_grade or "",
         "stock_grade": group.stock_grade or "",
         "release_month": _serialize_release_month(group),
         "code_registered_at": _serialize_code_registered_at(group),
+        "kr_grade": group.kr_grade or "",
         "us_grade": group.us_grade or "",
         "tw_grade": group.tw_grade or "",
         "hk_grade": group.hk_grade or "",
         "jp_grade": group.jp_grade or "",
+        "barcode": group.barcode or "",
         "extra_fields": _extra_fields_payload(group, extra_field_keys or []),
         "updated_at": group.updated_at.isoformat() if group.updated_at else None,
     }
@@ -376,7 +397,7 @@ def _kr_sku_source_columns(df: pd.DataFrame) -> list[str]:
 
 
 def _merge_kr_sku_series(df: pd.DataFrame) -> pd.Series:
-    """상품코드 > 어드민코드 > 대표코드 — 첫 번째 비어 있지 않은 값."""
+    """상품코드 > 어드민코드 — 첫 번째 비어 있지 않은 값."""
     col_by_norm: dict[str, str] = {}
     for col in df.columns:
         norm = _normalize_master_header(col)
@@ -546,6 +567,10 @@ def _read_master_records(upload_files: list[UploadFile]) -> list[dict]:
                 {
                     "row_label": row_label,
                     "brand": brand,
+                    "representative_code": _resolve_representative_code(
+                        row.get("representative_code") if "representative_code" in df.columns else "",
+                        kr_sku,
+                    ),
                     "segment": normalize_item_segment(row.get("segment")) if "segment" in df.columns else None,
                     "version": _cell_text(row.get("version"))[:64] if "version" in df.columns else "",
                     "kr_sku": kr_sku,
@@ -561,6 +586,7 @@ def _read_master_records(upload_files: list[UploadFile]) -> list[dict]:
                     "code_registered_at": _normalize_code_registered_at(row.get("code_registered_at"))
                     if "code_registered_at" in df.columns
                     else None,
+                    "kr_grade": _cell_text(row.get("kr_grade"))[:32] if "kr_grade" in df.columns else "",
                     "us_grade": _cell_text(row.get("us_grade"))[:32] if "us_grade" in df.columns else "",
                     "tw_grade": _cell_text(row.get("tw_grade"))[:32] if "tw_grade" in df.columns else "",
                     "hk_grade": _cell_text(row.get("hk_grade"))[:32] if "hk_grade" in df.columns else "",
@@ -775,6 +801,7 @@ def _find_group_by_kr_sku(db: Session, kr_sku_norm: str) -> ProductGroup | None:
 def _apply_master_fields(group: ProductGroup, kr_locale: ProductLocale, record: dict, now: datetime) -> None:
     group.kr_name = record["kr_name"]
     group.brand = record["brand"]
+    group.representative_code = record.get("representative_code") or record["kr_sku"]
     group.segment = record.get("segment")
     group.version = record.get("version") or None
     group.stock_category = record.get("stock_category") or None
@@ -782,6 +809,7 @@ def _apply_master_fields(group: ProductGroup, kr_locale: ProductLocale, record: 
     group.stock_grade = record.get("stock_grade") or None
     group.release_month = record.get("release_month") or None
     group.code_registered_at = record.get("code_registered_at")
+    group.kr_grade = record.get("kr_grade") or None
     group.us_grade = record.get("us_grade") or None
     group.tw_grade = record.get("tw_grade") or None
     group.hk_grade = record.get("hk_grade") or None
@@ -862,6 +890,7 @@ def merge_item_master_uploads(db: Session, upload_files: list[UploadFile]) -> di
                 id=uuid.uuid4(),
                 kr_name=record["kr_name"],
                 brand=record["brand"],
+                representative_code=record.get("representative_code") or record["kr_sku"],
                 segment=record.get("segment"),
                 version=record.get("version") or None,
                 stock_category=record.get("stock_category") or None,
@@ -869,6 +898,7 @@ def merge_item_master_uploads(db: Session, upload_files: list[UploadFile]) -> di
                 stock_grade=record.get("stock_grade") or None,
                 release_month=record.get("release_month"),
                 code_registered_at=record.get("code_registered_at"),
+                kr_grade=record.get("kr_grade") or None,
                 us_grade=record.get("us_grade") or None,
                 tw_grade=record.get("tw_grade") or None,
                 hk_grade=record.get("hk_grade") or None,
@@ -973,6 +1003,10 @@ def patch_item_master_row(db: Session, payload: dict[str, object]) -> dict:
     release_month_in = str(payload.get("release_month") or "").strip()
     record = {
         "brand": brand_in,
+        "representative_code": _resolve_representative_code(
+            payload.get("representative_code"),
+            kr_sku_in,
+        ),
         "segment": normalize_item_segment(payload.get("segment"))
         if str(payload.get("segment") or "").strip()
         else None,
@@ -986,6 +1020,7 @@ def patch_item_master_row(db: Session, payload: dict[str, object]) -> dict:
         "code_registered_at": _normalize_code_registered_at(payload.get("code_registered_at"))
         if str(payload.get("code_registered_at") or "").strip()
         else None,
+        "kr_grade": str(payload.get("kr_grade") or "").strip()[:32],
         "us_grade": str(payload.get("us_grade") or "").strip()[:32],
         "tw_grade": str(payload.get("tw_grade") or "").strip()[:32],
         "hk_grade": str(payload.get("hk_grade") or "").strip()[:32],
@@ -993,6 +1028,9 @@ def patch_item_master_row(db: Session, payload: dict[str, object]) -> dict:
     }
     now = datetime.now(timezone.utc)
     _apply_master_fields(group, kr, record, now)
+    if "barcode" in payload:
+        bc = _normalize_barcode_cell(payload.get("barcode"))
+        group.barcode = bc if bc else None
     group.manual_updated_at = now
 
     extra_cols = list_item_master_extra_columns(db)
