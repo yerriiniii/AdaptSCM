@@ -619,6 +619,58 @@ def _resolve_representative_code_for_mapping(explicit: object, kr_sku: str) -> s
     return kr_sku
 
 
+def _serialize_mapping_release_month(group: ProductGroup) -> str:
+    if group.release_month:
+        return str(group.release_month).strip()
+    if group.release_date:
+        return group.release_date.strftime("%Y%m")
+    return ""
+
+
+def _serialize_mapping_code_registered_at(group: ProductGroup) -> str:
+    raw = str(group.code_registered_at or "").strip()
+    if not raw:
+        return ""
+    if "T" in raw:
+        return raw.split("T", 1)[0]
+    if " " in raw and len(raw) >= 10 and raw[4:5] == "-" and raw[7:8] == "-":
+        return raw.split(" ", 1)[0]
+    return raw
+
+
+def _mapping_item_discontinued(group: ProductGroup) -> bool:
+    return normalize_item_segment(group.segment) == "단종"
+
+
+def _filled_product_search_detail_count(group: ProductGroup) -> int:
+    locales = group.locales or []
+    kr_locale = next(
+        (loc for loc in locales if str(loc.country_code or "").strip().upper() == "KR"),
+        None,
+    )
+    kr_sku = str(kr_locale.sku if kr_locale and kr_locale.sku else "").strip()
+    rep = str(group.representative_code or "").strip() or kr_sku
+    seg_norm = normalize_item_segment(group.segment) or ""
+    values = {
+        "barcode": str(group.barcode or "").strip(),
+        "representative_code": rep,
+        "version": str(group.version or "").strip(),
+        "kr_name": str(group.kr_name or "").strip(),
+        "segment": seg_norm,
+        "stock_category": str(group.stock_category or "").strip(),
+        "fcst_grade": str(group.fcst_grade or "").strip(),
+        "stock_grade": str(group.stock_grade or "").strip(),
+        "release_month": _serialize_mapping_release_month(group),
+        "code_registered_at": _serialize_mapping_code_registered_at(group),
+        "kr_grade": str(group.kr_grade or "").strip(),
+        "us_grade": str(group.us_grade or "").strip(),
+        "tw_grade": str(group.tw_grade or "").strip(),
+        "hk_grade": str(group.hk_grade or "").strip(),
+        "jp_grade": str(group.jp_grade or "").strip(),
+    }
+    return sum(1 for value in values.values() if value)
+
+
 def _mapping_item_payload(group: ProductGroup) -> dict:
     locales = sorted(group.locales, key=lambda locale: COUNTRY_ORDER.get(locale.country_code, 999))
     seg_norm = normalize_item_segment(group.segment)
@@ -635,6 +687,17 @@ def _mapping_item_payload(group: ProductGroup) -> dict:
         "segment": seg_norm,
         "segment_display": format_item_segment_display(seg_norm),
         "mkt_priority": mkt_norm,
+        "version": group.version or "",
+        "stock_category": group.stock_category or "",
+        "fcst_grade": group.fcst_grade or "",
+        "stock_grade": group.stock_grade or "",
+        "release_month": _serialize_mapping_release_month(group),
+        "code_registered_at": _serialize_mapping_code_registered_at(group),
+        "kr_grade": group.kr_grade or "",
+        "us_grade": group.us_grade or "",
+        "tw_grade": group.tw_grade or "",
+        "hk_grade": group.hk_grade or "",
+        "jp_grade": group.jp_grade or "",
         "locales": [
             {"country_code": locale.country_code, "name": locale.name, "sku": locale.sku}
             for locale in locales
@@ -1714,10 +1777,15 @@ def list_item_sku_mappings(db: Session, query: str | None = None, limit: int = 1
     cap = max(1, limit)
 
     if not needle:
-        # 검색 전: 국가(로케일) 수가 많은 그룹부터 — 단순 kr_name 순 slice 만 하면 다국적 그룹이 limit 밖으로 밀림
+        # 검색 전: 국가 수 → 채워진 필드 수 → 단종 후순위 — limit slice 전 정렬
         ordered = sorted(
             rows,
-            key=lambda g: (-len(g.locales or []), str(g.kr_name or "").casefold()),
+            key=lambda g: (
+                -len(g.locales or []),
+                -_filled_product_search_detail_count(g),
+                1 if _mapping_item_discontinued(g) else 0,
+                str(g.kr_name or "").casefold(),
+            ),
         )
         return [_mapping_item_payload(g) for g in ordered[:cap]]
 
