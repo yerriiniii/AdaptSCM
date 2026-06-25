@@ -1450,7 +1450,7 @@ function applyProductSearchDetailFieldToPayload(payload, fieldId, rawValue) {
 const PRODUCT_SEARCH_DETAIL_FIELDS = [
   { id: "barcode", label: "바코드" },
   { id: "representative_code", label: "대표코드" },
-  { id: "version", label: "ver" },
+  { id: "version", label: "Ver." },
   { id: "kr_name", label: "상품명" },
   { id: "segment", label: "구분" },
   { id: "stock_category", label: "재고구분" },
@@ -1530,6 +1530,42 @@ function productEditSegmentImpliesDiscontinued(raw) {
   if (!s) return false;
   s = s.replace(/^[(\uFF08]\s*[XxＸ]\s*[)\uFF09]\s*/, "").trim();
   return s === "단종";
+}
+
+function mappingRowAsProductSearchMaster(mappingRow = {}) {
+  return {
+    version: mappingRow.version,
+    stock_category: mappingRow.stock_category,
+    fcst_grade: mappingRow.fcst_grade,
+    stock_grade: mappingRow.stock_grade,
+    release_month: mappingRow.release_month,
+    code_registered_at: mappingRow.code_registered_at,
+    kr_grade: mappingRow.kr_grade,
+    us_grade: mappingRow.us_grade,
+    tw_grade: mappingRow.tw_grade,
+    hk_grade: mappingRow.hk_grade,
+    jp_grade: mappingRow.jp_grade,
+    representative_code: mappingRow.representative_code,
+    barcode: mappingRow.barcode,
+    kr_name: mappingRow.kr_name,
+    segment: mappingRow.segment,
+    kr_sku: mappingRowKrSku(mappingRow),
+  };
+}
+
+function countProductSearchDetailFilledFields(mappingRow = {}) {
+  const master = mappingRowAsProductSearchMaster(mappingRow);
+  return PRODUCT_SEARCH_DETAIL_FIELDS.reduce((count, { id }) => {
+    const val = productSearchDetailRawValue(id, mappingRow, master);
+    return count + (val ? 1 : 0);
+  }, 0);
+}
+
+function mappingRowDiscontinued(row = {}) {
+  if (String(row.segment || "").trim() === "단종") return true;
+  const display = String(row.segment_display || "").trim();
+  if (display === "단종" || display === PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY) return true;
+  return productEditSegmentImpliesDiscontinued(row.segment);
 }
 
 function productEditDraftFromRow(row = {}) {
@@ -2328,11 +2364,17 @@ export default function App() {
         _countries: getProductMappingCountries(row),
       }))
       .filter((row) => row._countries.length > 0);
-    // 검색 전에만: 국가가 많은 그룹 우선(백엔드도 동일 정렬). 검색 중에는 API 응답 순서 유지
+    // 검색 전에만: 국가 수 → 채워진 필드 수 → 단종 후순위. 검색 중에는 API 응답 순서 유지
     if (!mappingSearchKeyword.trim()) {
       cards.sort((a, b) => {
-        const byLen = b._countries.length - a._countries.length;
-        if (byLen !== 0) return byLen;
+        const byCountries = b._countries.length - a._countries.length;
+        if (byCountries !== 0) return byCountries;
+        const byFilled =
+          countProductSearchDetailFilledFields(b) - countProductSearchDetailFilledFields(a);
+        if (byFilled !== 0) return byFilled;
+        const aDisc = mappingRowDiscontinued(a) ? 1 : 0;
+        const bDisc = mappingRowDiscontinued(b) ? 1 : 0;
+        if (aDisc !== bDisc) return aDisc - bDisc;
         return String(a.kr_name || "").localeCompare(String(b.kr_name || ""), "ko");
       });
     }
@@ -10425,8 +10467,7 @@ export default function App() {
             ) : !productMappingCards.length ? null : (
               <div className="productMappingList">
                 {productMappingCards.map((row) => {
-                  const mappingItemDiscontinued =
-                    String(row.segment || "").trim() === "단종" || row.segment_display === "단종";
+                  const mappingItemDiscontinued = mappingRowDiscontinued(row);
                   const detailGroupId = String(row.group_id || row._id || "").trim();
                   const detailOpen = productSearchDetailOpenId === detailGroupId;
                   return (
