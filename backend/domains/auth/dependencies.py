@@ -48,10 +48,4 @@ def require_active_user(user: UserAccount = Depends(get_current_user)) -> UserAc
     return user
 
 
-def require_admin(user: UserAccount = Depends(require_active_user)) -> UserAccount:
-    if not user.is_admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리자만 접근할 수 있습니다.")
-    return user
-
-
-__all__ = ["get_current_user", "require_active_user", "require_admin"]
+__all__ = ["get_current_user", "require_active_user"]

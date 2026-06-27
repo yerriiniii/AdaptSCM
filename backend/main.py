@@ -7,10 +7,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 
 from domains.auth.lifecycle import run_initial_admin_bootstrap
-from domains.auth.routers import auth_admin_router, auth_router
-from domains.auth.models import signup_email_proof_model as _auth_signup_proof  # noqa: F401
-from domains.auth.models import signup_email_send_log_model as _auth_signup_send_log  # noqa: F401
 from domains.auth.models import user_models as _auth_user_models  # noqa: F401
+from domains.auth.routers import auth_router
 from domains.order import models as _order_models  # noqa: F401
 from domains.order.routers import router as order_router
 from domains.item import models as _item_models  # noqa: F401
@@ -50,7 +48,6 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
-app.include_router(auth_admin_router)
 app.include_router(stock_router)
 app.include_router(item_router)
 app.include_router(shipment_router)
@@ -82,4 +79,3 @@ def health() -> dict[str, str | bool | list[str]]:
         "s3_configured": is_s3_configured(),
         "frontend_origins": settings.frontend_origins,
     }
-
