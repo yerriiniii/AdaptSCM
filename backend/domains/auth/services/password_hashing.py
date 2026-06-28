@@ -11,12 +11,3 @@ def _to_bcrypt_secret(plain: str) -> bytes:
 def hash_password(plain: str) -> str:
     secret = _to_bcrypt_secret(plain)
     return bcrypt.hashpw(secret, bcrypt.gensalt(rounds=12)).decode("ascii")
-
-
-def verify_password(plain: str, hashed: str) -> bool:
-    if not plain or not hashed:
-        return False
-    try:
-        return bcrypt.checkpw(_to_bcrypt_secret(plain), hashed.encode("ascii"))
-    except (ValueError, TypeError):
-        return False

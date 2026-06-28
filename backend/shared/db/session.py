@@ -681,49 +681,6 @@ def _ensure_shipment_view_indexes(engine: Engine) -> None:
             )
 
 
-def _ensure_user_accounts_email_verification(engine: Engine) -> None:
-    """기존 DB에 email_verified 등 컬럼 및 인덱스 보정."""
-    inspector = inspect(engine)
-    if "user_accounts" not in inspector.get_table_names():
-        return
-    dialect = engine.dialect.name
-    existing = {c["name"] for c in inspector.get_columns("user_accounts")}
-    with engine.begin() as conn:
-        if "email_verified" not in existing:
-            if dialect == "postgresql":
-                conn.execute(text("ALTER TABLE user_accounts ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT false"))
-            else:
-                conn.execute(text("ALTER TABLE user_accounts ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT 0"))
-        if "email_verification_token" not in existing:
-            conn.execute(text("ALTER TABLE user_accounts ADD COLUMN email_verification_token VARCHAR(128)"))
-        if "email_verification_expires_at" not in existing:
-            col = "TIMESTAMPTZ" if dialect == "postgresql" else "DATETIME"
-            conn.execute(text(f"ALTER TABLE user_accounts ADD COLUMN email_verification_expires_at {col}"))
-    if dialect == "postgresql":
-        with engine.begin() as conn:
-            conn.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS ix_user_accounts_email_verification_token "
-                    "ON user_accounts (email_verification_token)"
-                )
-            )
-    with engine.begin() as conn:
-        if dialect == "postgresql":
-            conn.execute(
-                text(
-                    "UPDATE user_accounts SET email_verified = true "
-                    "WHERE is_admin = true OR status = 'active'"
-                )
-            )
-        else:
-            conn.execute(
-                text(
-                    "UPDATE user_accounts SET email_verified = 1 "
-                    "WHERE is_admin = 1 OR status = 'active'"
-                )
-            )
-
-
 def _run_schema_init_if_needed(engine: Engine) -> None:
     """테이블 생성·경량 마이그레이션. 프로세스당 1회."""
     global _schema_initialized
@@ -750,17 +707,14 @@ def _run_schema_init_if_needed(engine: Engine) -> None:
         _ensure_shipment_view_indexes(engine)
         _log.info("출고 뷰 조회용 인덱스 보정 완료 (%.2fs)", time.perf_counter() - t5)
         t6 = time.perf_counter()
-        _ensure_user_accounts_email_verification(engine)
-        _log.info("user_accounts 이메일 인증 컬럼 보정 완료 (%.2fs)", time.perf_counter() - t6)
-        t7 = time.perf_counter()
         _ensure_item_master_text_columns(engine)
-        _log.info("item 마스터 텍스트 컬럼 보정 완료 (%.2fs)", time.perf_counter() - t7)
-        t8 = time.perf_counter()
+        _log.info("item 마스터 텍스트 컬럼 보정 완료 (%.2fs)", time.perf_counter() - t6)
+        t7 = time.perf_counter()
         _ensure_item_master_extra_fields(engine)
-        _log.info("item 마스터 extra_fields 컬럼 보정 완료 (%.2fs)", time.perf_counter() - t8)
-        t9 = time.perf_counter()
+        _log.info("item 마스터 extra_fields 컬럼 보정 완료 (%.2fs)", time.perf_counter() - t7)
+        t8 = time.perf_counter()
         _ensure_item_representative_code_backfill(engine)
-        _log.info("item representative_code 백필 완료 (%.2fs)", time.perf_counter() - t9)
+        _log.info("item representative_code 백필 완료 (%.2fs)", time.perf_counter() - t8)
         _schema_initialized = True
         _log.info("DB 스키마 초기화 전체 완료 (총 %.2fs)", time.perf_counter() - t0)
 

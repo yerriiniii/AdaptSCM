@@ -29,26 +29,10 @@ class RuntimeSettings:
     s3_prefix: str
     db_echo: bool
     frontend_origins: list[str]
-    # JWT: 서명에 사용. 운영에서는 긴 무작위 문자열 필수.
     jwt_secret: str
     jwt_algorithm: str
     jwt_expire_minutes: int
-    # 관리자 진입용 고유 인증번호 (.env ADMIN_ACCESS_CODE)
     admin_access_code: str | None
-    # 최초 기동 시 1회 생성(이메일이 없을 때만). 이후엔 env 제거·변경해도 기존 계정은 유지.
-    initial_admin_email: str | None
-    initial_admin_password: str | None
-    # 가입 시 인증 링크에 쓰는 프론트 URL (끝 슬래시 없이)
-    public_app_url: str
-    # 가입 환영 메일 (SMTP 없으면 링크만 서버 로그에 남음)
-    email_smtp_host: str | None
-    email_smtp_port: int
-    email_smtp_user: str | None
-    email_smtp_password: str | None
-    email_smtp_from: str | None
-    email_smtp_use_tls: bool
-    # 이메일 인증 토큰 유효 시간(초)
-    email_verification_ttl_sec: int
 
     @property
     def database_enabled(self) -> bool:
@@ -82,18 +66,6 @@ def get_runtime_settings() -> RuntimeSettings:
         ),
         jwt_secret=(os.getenv("JWT_SECRET") or "dev-only-change-me").strip(),
         jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256").strip() or "HS256",
-        # 기본 3시간. 운영은 JWT_EXPIRE_MINUTES 로 조정.
         jwt_expire_minutes=max(1, _read_int(os.getenv("JWT_EXPIRE_MINUTES"), 60 * 3)),
         admin_access_code=(os.getenv("ADMIN_ACCESS_CODE") or "").strip() or None,
-        initial_admin_email=(os.getenv("INITIAL_ADMIN_EMAIL") or "").strip() or None,
-        initial_admin_password=os.getenv("INITIAL_ADMIN_PASSWORD") or None,
-        public_app_url=(os.getenv("PUBLIC_APP_URL") or "http://localhost:5173").rstrip("/"),
-        email_smtp_host=(os.getenv("EMAIL_SMTP_HOST") or "").strip() or None,
-        email_smtp_port=max(1, _read_int(os.getenv("EMAIL_SMTP_PORT"), 587)),
-        email_smtp_user=(os.getenv("EMAIL_SMTP_USER") or "").strip() or None,
-        email_smtp_password=os.getenv("EMAIL_SMTP_PASSWORD") or None,
-        email_smtp_from=(os.getenv("EMAIL_SMTP_FROM") or "").strip() or None,
-        email_smtp_use_tls=_read_bool(os.getenv("EMAIL_SMTP_USE_TLS", "true"), default=True),
-        # 가입용 이메일 인증 링크(토큰) 유효 시간. 기본 5분(300초). env 로 조정(최소 60초).
-        email_verification_ttl_sec=max(60, _read_int(os.getenv("EMAIL_VERIFICATION_TTL_SEC"), 300)),
     )

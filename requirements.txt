@@ -10,4 +10,3 @@ boto3
 python-dotenv
 bcrypt>=4.0.1
 python-jose[cryptography]
-email-validator
