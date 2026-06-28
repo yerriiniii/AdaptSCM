@@ -8,8 +8,6 @@ services:
       - .env
     ports:
       - "8000:8000"
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
 
   frontend:
     image: ${DOCKER_HUB_USER:-yerriiniii}/inventory-frontend:latest
@@ -18,5 +16,3 @@ services:
     pull_policy: always
     ports:
       - "3000:80"
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
