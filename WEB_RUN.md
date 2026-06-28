@@ -26,7 +26,7 @@
 
 `http://localhost:5173`
 
-### 3) 주요 API (접두사 `/api/inventory`)
+### 3) 주요 API (접두사 `/api/adaptscm`)
 
 - `GET /view` : 저장된 일자·국가별 뷰
 - `POST /aggregate` : 업로드 엑셀 집계
@@ -96,7 +96,7 @@ server {
     listen 80;
     server_name _;
 
-    root /var/www/inventory;
+    root /var/www/adaptscm;
     index index.html;
 
     location / {

@@ -6,11 +6,11 @@ import { Download, Filter, Minus, Plus, Upload } from "lucide-react";
 
 /** 백엔드 `domains/item/routers/item.py` master-rows 엔드포인트와 동기화 */
 const ITEM_MASTER_API = {
-  rows: `${API_BASE}/api/inventory/mappings/master-rows`,
-  upload: `${API_BASE}/api/inventory/mappings/master-rows/upload`,
-  extraColumns: `${API_BASE}/api/inventory/mappings/master-rows/extra-columns`,
+  rows: `${API_BASE}/api/adaptscm/mappings/master-rows`,
+  upload: `${API_BASE}/api/adaptscm/mappings/master-rows/upload`,
+  extraColumns: `${API_BASE}/api/adaptscm/mappings/master-rows/extra-columns`,
   extraColumn: (fieldKey) =>
-    `${API_BASE}/api/inventory/mappings/master-rows/extra-columns/${encodeURIComponent(fieldKey)}`,
+    `${API_BASE}/api/adaptscm/mappings/master-rows/extra-columns/${encodeURIComponent(fieldKey)}`,
 };
 
 const ITEM_MASTER_FILTER_POPOVER_WIDTH_PX = 320;

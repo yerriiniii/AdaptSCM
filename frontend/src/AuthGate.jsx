@@ -103,8 +103,8 @@ export default function AuthGate({ children }) {
     const onExpired = () => {
       expireSession("세션이 만료되었습니다. 인증번호를 다시 입력해 주세요.");
     };
-    window.addEventListener("inventory-auth-expired", onExpired);
-    return () => window.removeEventListener("inventory-auth-expired", onExpired);
+    window.addEventListener("adaptscm-auth-expired", onExpired);
+    return () => window.removeEventListener("adaptscm-auth-expired", onExpired);
   }, [expireSession]);
 
   useEffect(() => {
@@ -119,7 +119,7 @@ export default function AuthGate({ children }) {
     }
     const id = setTimeout(() => {
       expireSession("세션이 만료되었습니다. 인증번호를 다시 입력해 주세요.");
-      window.dispatchEvent(new CustomEvent("inventory-auth-expired"));
+      window.dispatchEvent(new CustomEvent("adaptscm-auth-expired"));
     }, delay);
     return () => clearTimeout(id);
   }, [phase, expireSession]);

@@ -15,11 +15,12 @@ from domains.shipment.services.shipment_vendor_channel_maps import (
     parse_shipment_vendor_primary_overrides_from_payload,
 )
 from domains.stock.services.stock_persistence import _read_upload_bytes
+from shared.branding import API_PREFIX
 from shared.config import get_runtime_settings
 from shared.db import get_db_session
 
 router = APIRouter(
-    prefix="/api/inventory/shipment",
+    prefix=f"{API_PREFIX}/shipment",
     tags=["shipment"],
     dependencies=[Depends(require_active_user)],
 )

@@ -114,7 +114,7 @@ def _ensure_inventory_columns(engine: Engine) -> None:
     existing_tables = set(inspector.get_table_names())
     column_specs = {
         "uploaded_files": {
-            "file_domain": "VARCHAR(20) NOT NULL DEFAULT 'inventory'",
+            "file_domain": "VARCHAR(20) NOT NULL DEFAULT 'adaptscm'",
             "shipment_sheet_key": "VARCHAR(64)",
         },
         "inventory_rows": {
@@ -128,7 +128,7 @@ def _ensure_inventory_columns(engine: Engine) -> None:
         "inventory_aggregates": {
             "sku": "VARCHAR(255)",
             "warehouse": "VARCHAR(255)",
-            "source_domain": "VARCHAR(20) NOT NULL DEFAULT 'INVENTORY'",
+            "source_domain": "VARCHAR(20) NOT NULL DEFAULT 'ADAPTSCM'",
         },
         "item": {
             "brand": "VARCHAR(255)",

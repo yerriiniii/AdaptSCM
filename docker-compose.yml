@@ -1,7 +1,7 @@
 services:
   backend:
-    image: ${DOCKER_HUB_USER:-yerriiniii}/inventory-backend:latest
-    container_name: inventory-backend
+    image: ${DOCKER_HUB_USER:-yerriiniii}/adaptscm-backend:latest
+    container_name: adaptscm-backend
     restart: always
     pull_policy: always
     env_file:
@@ -10,8 +10,8 @@ services:
       - "8000:8000"
 
   frontend:
-    image: ${DOCKER_HUB_USER:-yerriiniii}/inventory-frontend:latest
-    container_name: inventory-frontend
+    image: ${DOCKER_HUB_USER:-yerriiniii}/adaptscm-frontend:latest
+    container_name: adaptscm-frontend
     restart: always
     pull_policy: always
     ports:

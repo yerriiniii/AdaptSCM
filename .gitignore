@@ -45,4 +45,4 @@ npm-debug.log*
 .coverage
 htmlcov/
 
-InventorySystem.pem
+AdaptSCM.pem

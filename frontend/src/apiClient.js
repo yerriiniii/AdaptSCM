@@ -3,7 +3,7 @@ import axios from "axios";
 /** Vite dev: `vite.config`에서 `/api` → `http://127.0.0.1:8000` 프록시. 배포: nginx 동일 출처. */
 export const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
-const TOKEN_KEY = "inventory_access_token";
+const TOKEN_KEY = "adaptscm_access_token";
 
 /** 초기 `/api/auth/me` 등: 무한 대기 방지 */
 export const AUTH_SESSION_CHECK_TIMEOUT_MS = 8_000;
@@ -74,7 +74,7 @@ axios.interceptors.response.use(
     if (err?.config?.headers?.Authorization) {
       clearAccessToken();
       if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("inventory-auth-expired"));
+        window.dispatchEvent(new CustomEvent("adaptscm-auth-expired"));
       }
     }
     return Promise.reject(err);

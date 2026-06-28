@@ -25,8 +25,8 @@ jobs:
       - name: Build & Push Backend
         run: |
           docker build -f backend/Dockerfile \
-            -t ${{ secrets.DOCKER_USERNAME }}/inventory-backend:latest .
-          docker push ${{ secrets.DOCKER_USERNAME }}/inventory-backend:latest
+            -t ${{ secrets.DOCKER_USERNAME }}/adaptscm-backend:latest .
+          docker push ${{ secrets.DOCKER_USERNAME }}/adaptscm-backend:latest
 
       # -------------------------
       # Frontend Build & Push
@@ -36,8 +36,8 @@ jobs:
           API_URL="${{ vars.VITE_API_BASE_URL }}"
           docker build -f frontend/Dockerfile \
             --build-arg VITE_API_BASE_URL="$API_URL" \
-            -t ${{ secrets.DOCKER_USERNAME }}/inventory-frontend:latest ./frontend
-          docker push ${{ secrets.DOCKER_USERNAME }}/inventory-frontend:latest
+            -t ${{ secrets.DOCKER_USERNAME }}/adaptscm-frontend:latest ./frontend
+          docker push ${{ secrets.DOCKER_USERNAME }}/adaptscm-frontend:latest
 
   deploy:
     runs-on: ubuntu-latest
@@ -64,8 +64,8 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --region ap-northeast-2 \
             --parameters '{"commands":[
-              "cd /home/ubuntu/Inventory-System",
-              "docker pull yerriiniii/inventory-backend:latest",
-              "docker pull yerriiniii/inventory-frontend:latest",
+              "cd /home/ubuntu/AdaptSCM",
+              "docker pull yerriiniii/adaptscm-backend:latest",
+              "docker pull yerriiniii/adaptscm-frontend:latest",
               "docker compose up -d"
             ]}'

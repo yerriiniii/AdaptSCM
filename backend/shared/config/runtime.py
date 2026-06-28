@@ -58,7 +58,7 @@ def get_runtime_settings() -> RuntimeSettings:
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         aws_region=os.getenv("AWS_REGION", "ap-northeast-2"),
         s3_bucket=os.getenv("S3_BUCKET"),
-        s3_prefix=os.getenv("S3_PREFIX", "inventory"),
+        s3_prefix=os.getenv("S3_PREFIX", "adaptscm"),
         db_echo=_read_bool(os.getenv("DB_ECHO"), default=False),
         frontend_origins=_read_csv(
             os.getenv("FRONTEND_ORIGINS"),

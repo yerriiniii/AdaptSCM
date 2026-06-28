@@ -52,9 +52,9 @@ const SETTINGS_COUNTRY_ORDER = [
   "SHIPMENT",
   "PURCHASE_ORDERS",
 ];
-const PO_UPLOADED_FILES_STORAGE_KEY = "inventory_po_uploaded_file_entries";
+const PO_UPLOADED_FILES_STORAGE_KEY = "adaptscm_po_uploaded_file_entries";
 const PO_FILE_COUNTRY = "PURCHASE_ORDERS";
-const ITEM_MASTER_UPLOADED_FILES_STORAGE_KEY = "inventory_item_master_uploaded_file_entries";
+const ITEM_MASTER_UPLOADED_FILES_STORAGE_KEY = "adaptscm_item_master_uploaded_file_entries";
 const ITEM_MASTER_FILE_COUNTRY = "ITEM_MASTER";
 
 function loadPoUploadedFileEntries() {
@@ -1354,7 +1354,7 @@ function mappingRowKrSku(row = {}) {
   return String(kr?.sku ?? "").trim();
 }
 
-const ITEM_MASTER_ROWS_PATCH_API = `${API_BASE}/api/inventory/mappings/master-rows`;
+const ITEM_MASTER_ROWS_PATCH_API = `${API_BASE}/api/adaptscm/mappings/master-rows`;
 
 /** 상품 검색 상세 — 팝업에서 DB 저장 가능한 필드 */
 const PRODUCT_SEARCH_DETAIL_EDITABLE_IDS = new Set([
@@ -2862,7 +2862,7 @@ export default function App() {
     (async () => {
       try {
         const year = shipmentMonthStripYearRef.current;
-        const shipRes = await axios.get(`${API_BASE}/api/inventory/shipment/view`, {
+        const shipRes = await axios.get(`${API_BASE}/api/adaptscm/shipment/view`, {
           params: { year, all_channels: true },
           signal: ac.signal,
         });
@@ -4490,7 +4490,7 @@ export default function App() {
       if (vendorOverridesMap && typeof vendorOverridesMap === "object" && Object.keys(vendorOverridesMap).length > 0) {
         formData.append("shipment_vendor_primary_overrides", JSON.stringify(vendorOverridesMap));
       }
-      const res = await axios.post(`${API_BASE}/api/inventory/shipment/aggregate`, formData, {
+      const res = await axios.post(`${API_BASE}/api/adaptscm/shipment/aggregate`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       const data = res?.data || {};
@@ -4745,7 +4745,7 @@ export default function App() {
       formData.append("files", file);
       formData.append("file_countries", overrideCountry || "");
     });
-    const res = await axios.post(`${API_BASE}/api/inventory/file-metadata`, formData, {
+    const res = await axios.post(`${API_BASE}/api/adaptscm/file-metadata`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
     return res?.data?.files || [];
@@ -4762,7 +4762,7 @@ export default function App() {
         size: entry.size || 0,
       })),
     };
-    const res = await axios.post(`${API_BASE}/api/inventory/upload-url`, payload);
+    const res = await axios.post(`${API_BASE}/api/adaptscm/upload-url`, payload);
     return Array.isArray(res?.data?.files) ? res.data.files : [];
   }
 
@@ -4788,7 +4788,7 @@ export default function App() {
         file_id: plan.file_id || "",
       })),
     };
-    return axios.post(`${API_BASE}/api/inventory/complete-upload`, payload);
+    return axios.post(`${API_BASE}/api/adaptscm/complete-upload`, payload);
   }
 
   function onClickUpload() {
@@ -4811,12 +4811,12 @@ export default function App() {
   }
 
   async function fetchPersistedFiles() {
-    const res = await axios.get(`${API_BASE}/api/inventory/files`);
+    const res = await axios.get(`${API_BASE}/api/adaptscm/files`);
     return Array.isArray(res?.data?.files) ? res.data.files : [];
   }
 
   async function fetchSkuMappingSummary() {
-    const res = await axios.get(`${API_BASE}/api/inventory/mappings`);
+    const res = await axios.get(`${API_BASE}/api/adaptscm/mappings`);
     return {
       total_count: Number(res?.data?.total_count || 0),
       updated_at: res?.data?.updated_at || "",
@@ -4832,14 +4832,14 @@ export default function App() {
   }
 
   async function fetchSkuMappingItems(query = "", limit = 200) {
-    const res = await axios.get(`${API_BASE}/api/inventory/mappings/items`, {
+    const res = await axios.get(`${API_BASE}/api/adaptscm/mappings/items`, {
       params: { query: query || "", limit },
     });
     return Array.isArray(res?.data?.items) ? res.data.items : [];
   }
 
   async function fetchPurchaseOrdersList() {
-    const res = await axios.get(`${API_BASE}/api/inventory/purchase-orders`, {
+    const res = await axios.get(`${API_BASE}/api/adaptscm/purchase-orders`, {
       timeout: PURCHASE_ORDERS_LIST_TIMEOUT_MS,
     });
     const items = Array.isArray(res?.data?.items) ? res.data.items : [];
@@ -4873,7 +4873,7 @@ export default function App() {
     setPurchaseOrderError("");
     setPurchaseOrderSuccess("");
     try {
-      await axios.delete(`${API_BASE}/api/inventory/purchase-orders/${poId}`);
+      await axios.delete(`${API_BASE}/api/adaptscm/purchase-orders/${poId}`);
       if (String(editingPoId) === String(poId)) {
         cancelPoEdit();
       }
@@ -4955,11 +4955,11 @@ export default function App() {
     try {
       for (const { orderId, lineId } of lineFiltered) {
         await axios.delete(
-          `${API_BASE}/api/inventory/purchase-orders/${orderId}/inbound-lines/${lineId}`
+          `${API_BASE}/api/adaptscm/purchase-orders/${orderId}/inbound-lines/${lineId}`
         );
       }
       for (const poId of wholePo) {
-        await axios.delete(`${API_BASE}/api/inventory/purchase-orders/${poId}`);
+        await axios.delete(`${API_BASE}/api/adaptscm/purchase-orders/${poId}`);
         if (String(editingPoId) === String(poId)) {
           cancelPoEdit();
         }
@@ -4991,7 +4991,7 @@ export default function App() {
       return;
     }
     try {
-      const res = await axios.get(`${API_BASE}/api/inventory/purchase-orders/sku-hint`, {
+      const res = await axios.get(`${API_BASE}/api/adaptscm/purchase-orders/sku-hint`, {
         params: { sku },
       });
       const d = res?.data || {};
@@ -5026,7 +5026,7 @@ export default function App() {
       return;
     }
     try {
-      await axios.post(`${API_BASE}/api/inventory/purchase-orders`, {
+      await axios.post(`${API_BASE}/api/adaptscm/purchase-orders`, {
         order_date: odTrim || null,
         order_date_note: odTrim ? null : isOrderDatePlannedNote(odnTrim) ? "발주 예정" : null,
         erp_po_number: String(poForm.erp_po_number || "").trim(),
@@ -5091,7 +5091,7 @@ export default function App() {
         setPurchaseOrderError("업로드할 데이터 행이 없습니다. 템플릿 2행 이후에 내용을 입력했는지 확인해 주세요.");
         return;
       }
-      await axios.post(`${API_BASE}/api/inventory/purchase-orders/import`, { rows });
+      await axios.post(`${API_BASE}/api/adaptscm/purchase-orders/import`, { rows });
       setPurchaseOrderFileEntries((prev) => {
         const next = [
           ...prev,
@@ -5145,7 +5145,7 @@ export default function App() {
       return;
     }
     try {
-      const res = await axios.post(`${API_BASE}/api/inventory/purchase-orders/${orderId}/inbounds`, {
+      const res = await axios.post(`${API_BASE}/api/adaptscm/purchase-orders/${orderId}/inbounds`, {
         delivery_available_date: d.delivery_available_tbd ? null : d.delivery_available_date?.trim() || null,
         expected_inbound_date:
           String(nextInboundStatus || "").toUpperCase() === "O" || d.expected_inbound_tbd
@@ -5206,7 +5206,7 @@ export default function App() {
     setPurchaseOrderError("");
     setPurchaseOrderSuccess("");
     try {
-      await axios.patch(`${API_BASE}/api/inventory/purchase-orders/${orderId}/inbound-lines/${lineId}`, patch);
+      await axios.patch(`${API_BASE}/api/adaptscm/purchase-orders/${orderId}/inbound-lines/${lineId}`, patch);
       setSavedPoInline(null);
       await fetchPurchaseOrdersList();
       return true;
@@ -5237,7 +5237,7 @@ export default function App() {
     poInboundSeedLockRef.current.add(pid);
     setPurchaseOrderError("");
     try {
-      const res = await axios.post(`${API_BASE}/api/inventory/purchase-orders/${pid}/inbounds`, {
+      const res = await axios.post(`${API_BASE}/api/adaptscm/purchase-orders/${pid}/inbounds`, {
         delivery_available_date: po.delivery_available_date || null,
         expected_inbound_date: po.expected_inbound_date || null,
         actual_inbound_date: null,
@@ -5287,7 +5287,7 @@ export default function App() {
     }
     try {
       await axios.patch(
-        `${API_BASE}/api/inventory/purchase-orders/${orderId}`,
+        `${API_BASE}/api/adaptscm/purchase-orders/${orderId}`,
         buildPurchaseOrderUpdatePayloadFromPo(po, patch)
       );
       setSavedPoInline(null);
@@ -5424,7 +5424,7 @@ export default function App() {
       return;
     }
     try {
-      const res = await axios.get(`${API_BASE}/api/inventory/purchase-orders/sku-hint`, {
+      const res = await axios.get(`${API_BASE}/api/adaptscm/purchase-orders/sku-hint`, {
         params: { sku },
       });
       const d = res?.data || {};
@@ -5490,7 +5490,7 @@ export default function App() {
       }
     }
     try {
-      await axios.patch(`${API_BASE}/api/inventory/purchase-orders/${editingPoId}`, {
+      await axios.patch(`${API_BASE}/api/adaptscm/purchase-orders/${editingPoId}`, {
         order_date: odTrim || null,
         order_date_note: odTrim ? null : isOrderDatePlannedNote(odnTrim) ? "발주 예정" : null,
         erp_po_number: String(d.erp_po_number || "").trim(),
@@ -5523,7 +5523,7 @@ export default function App() {
   }
 
   async function fetchPersistedScopeView(countryCode) {
-    const res = await axios.get(`${API_BASE}/api/inventory/view`, {
+    const res = await axios.get(`${API_BASE}/api/adaptscm/view`, {
       params: { country_code: countryCode },
     });
     return {
@@ -5542,7 +5542,7 @@ export default function App() {
       if (!Number.isFinite(requestedYear)) return;
       const params = { year: requestedYear };
       if (channel) params.channel = channel;
-      const shipRes = await axios.get(`${API_BASE}/api/inventory/shipment/view`, { params, signal });
+      const shipRes = await axios.get(`${API_BASE}/api/adaptscm/shipment/view`, { params, signal });
       const data = shipRes?.data || {};
       /** 이전 연도 요청이 늦게 도착해 최신 선택보다 옛 데이터가 덮어쓰는 레이스 방지 */
       if (Number(shipmentMonthStripYearRef.current) !== requestedYear) return;
@@ -5626,7 +5626,7 @@ export default function App() {
     });
 
     setFileEntries((prev) => {
-      const invPersisted = persistedFiles.filter((e) => (e.file_domain || "inventory") !== "shipment");
+      const invPersisted = persistedFiles.filter((e) => (e.file_domain || "adaptscm") !== "shipment");
       const persistedKeys = new Set(
         invPersisted.map((entry) => `${entry.name}::${entry.country || ""}::${entry.date || ""}`)
       );
@@ -5653,7 +5653,7 @@ export default function App() {
     });
 
     setShipmentFileEntries((prev) => {
-      const shipPersisted = persistedFiles.filter((e) => (e.file_domain || "inventory") === "shipment");
+      const shipPersisted = persistedFiles.filter((e) => (e.file_domain || "adaptscm") === "shipment");
       const persistedKeys = new Set(shipPersisted.map((entry) => `${entry.name}::SHIPMENT`));
       const localOnlyShip = preserveLocalOnly
         ? prev.filter((entry) => {
@@ -5724,7 +5724,7 @@ export default function App() {
     try {
       setProductSearchDetailLoadingId(id);
       const res = await axios.get(
-        `${API_BASE}/api/inventory/mappings/master-rows/${encodeURIComponent(id)}`
+        `${API_BASE}/api/adaptscm/mappings/master-rows/${encodeURIComponent(id)}`
       );
       setProductSearchDetailById((prev) => ({ ...prev, [id]: res?.data || null }));
     } catch (err) {
@@ -5814,7 +5814,7 @@ export default function App() {
       setMappingError("");
       const formData = new FormData();
       uploadFiles.forEach((file) => formData.append("files", file));
-      const res = await axios.post(`${API_BASE}/api/inventory/mappings/upload`, formData, {
+      const res = await axios.post(`${API_BASE}/api/adaptscm/mappings/upload`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setMappingSummary({
@@ -5867,7 +5867,7 @@ export default function App() {
         window.alert("브랜드를 입력해 주세요.");
         return;
       }
-      await axios.post(`${API_BASE}/api/inventory/mappings/item`, payload);
+      await axios.post(`${API_BASE}/api/adaptscm/mappings/item`, payload);
       setManualMappingForm({ ...EMPTY_SKU_MAPPING_FORM });
       setManualSkuFormKey((k) => k + 1);
       await hydratePersistedState();
@@ -5900,7 +5900,7 @@ export default function App() {
             if (!s || s === PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY) return null;
             return s;
           })();
-      await axios.patch(`${API_BASE}/api/inventory/mappings/item`, {
+      await axios.patch(`${API_BASE}/api/adaptscm/mappings/item`, {
         group_id: gid,
         kr_sku: String(d.kr_sku || "").trim(),
         kr_name: String(d.kr_name || "").trim(),
@@ -6007,7 +6007,7 @@ export default function App() {
     try {
       setSettingsMutating(true);
       if (entry.dbFileId) {
-        await axios.delete(`${API_BASE}/api/inventory/files/${entry.dbFileId}`);
+        await axios.delete(`${API_BASE}/api/adaptscm/files/${entry.dbFileId}`);
       }
       // hydrate는 KR/해외 뷰 조회 등 중간에 실패할 수 있어, 삭제 직후 목록에서 먼저 제거해야
       // (실패 시 아래 catch에서 전체 hydrate로 재동기화)
@@ -6051,7 +6051,7 @@ export default function App() {
     setSettingsMutating(true);
     setFileEntries((prev) => prev.map((x) => (x.id === entry.id ? { ...x, date: nextIso } : x)));
     try {
-      await axios.patch(`${API_BASE}/api/inventory/files/${entry.dbFileId}`, {
+      await axios.patch(`${API_BASE}/api/adaptscm/files/${entry.dbFileId}`, {
         base_date: nextIso && String(nextIso).trim() ? String(nextIso).trim() : null,
       });
       await hydratePersistedState({ preserveLocalOnly: true });
@@ -6110,7 +6110,7 @@ export default function App() {
     }
     try {
       setSettingsMutating(true);
-      await axios.delete(`${API_BASE}/api/inventory/files`, {
+      await axios.delete(`${API_BASE}/api/adaptscm/files`, {
         params: { country_code: country },
       });
       await hydratePersistedState({ excludeCountry: country });
@@ -6132,7 +6132,7 @@ export default function App() {
     }
     try {
       setSettingsMutating(true);
-      await axios.delete(`${API_BASE}/api/inventory/files`);
+      await axios.delete(`${API_BASE}/api/adaptscm/files`);
       setPurchaseOrderFileEntries([]);
       persistPoUploadedFileEntries([]);
       setItemMasterFileEntries([]);

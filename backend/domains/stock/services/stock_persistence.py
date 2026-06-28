@@ -25,6 +25,14 @@ from domains.item.services.item_mapping_resolve import (
     attach_item_mapping_kr_to_stock_rows,
     validate_stock_row_frame_item_mapping,
 )
+from shared.branding import (
+    FILE_DOMAIN_STOCK,
+    SOURCE_STOCK,
+    SOURCE_STOCK_LEGACY,
+    is_stock_file_domain,
+    normalize_file_domain,
+    s3_prefix_from_settings,
+)
 from shared.config import get_runtime_settings
 from shared.storage import create_presigned_upload_url, get_s3_client, is_s3_configured
 
@@ -148,7 +156,7 @@ def _next_aggregation_version(db: Session) -> int:
 
 
 def _serialize_uploaded_file(uploaded_file: UploadedFile, client_id: str | None = None) -> dict:
-    fd = getattr(uploaded_file, "file_domain", None) or "inventory"
+    fd = normalize_file_domain(getattr(uploaded_file, "file_domain", None))
     return {
         "client_id": client_id,
         "file_id": str(uploaded_file.id),
@@ -163,7 +171,8 @@ def _serialize_uploaded_file(uploaded_file: UploadedFile, client_id: str | None 
 
 def _scope_filter(country_code: str, base_date: date | None):
     inv_only = or_(
-        InventoryAggregate.source_domain == "INVENTORY",
+        InventoryAggregate.source_domain == SOURCE_STOCK,
+        InventoryAggregate.source_domain == SOURCE_STOCK_LEGACY,
         InventoryAggregate.source_domain.is_(None),
     )
     if base_date is None:
@@ -225,7 +234,7 @@ def _delete_s3_object(bucket: str | None, key: str | None) -> None:
 
 def _s3_prefix_for_country_scope(settings, country_code: str) -> str:
     """??? ??? ??? ???????? ?? ???????? ??? ?????? ???)."""
-    root = (settings.s3_prefix or "inventory").strip().strip("/")
+    root = s3_prefix_from_settings(settings)
     if not root:
         return ""
     cc = str(country_code or "").strip().upper()
@@ -238,7 +247,7 @@ def _s3_prefix_for_country_scope(settings, country_code: str) -> str:
 
 
 def _s3_prefix_inventory_root(settings) -> str:
-    root = (settings.s3_prefix or "inventory").strip().strip("/")
+    root = s3_prefix_from_settings(settings)
     if not root:
         return ""
     return f"{root}/"
@@ -329,7 +338,7 @@ def _rebuild_aggregate_scope(db: Session, country_code: str, base_date: date | N
                 warehouse=_nullable_string(record["warehouse"]),
                 total_quantity=int(record["quantity"]),
                 aggregation_version=aggregation_version,
-                source_domain="INVENTORY",
+                source_domain=SOURCE_STOCK,
             )
         )
 
@@ -435,8 +444,8 @@ def patch_stock_file_base_date(db: Session, file_id: str, base_date_value: str |
     if uploaded_file is None:
         raise HTTPException(status_code=404, detail="??????? ????????.")
 
-    file_domain = getattr(uploaded_file, "file_domain", None) or "inventory"
-    if file_domain != "inventory":
+    file_domain = getattr(uploaded_file, "file_domain", None)
+    if not is_stock_file_domain(file_domain):
         raise HTTPException(status_code=400, detail="?? ????? ?????? ???????? ????????.")
 
     old_scope = (uploaded_file.country_code, uploaded_file.base_date)
@@ -475,7 +484,8 @@ def get_stock_view(db: Session, country_code: str) -> dict:
         raise HTTPException(status_code=400, detail="country_code? ????????")
 
     inv_domain = or_(
-        InventoryAggregate.source_domain == "INVENTORY",
+        InventoryAggregate.source_domain == SOURCE_STOCK,
+        InventoryAggregate.source_domain == SOURCE_STOCK_LEGACY,
         InventoryAggregate.source_domain.is_(None),
     )
     rows = db.execute(
@@ -699,7 +709,7 @@ def persist_stock_uploads(
                         warehouse=_nullable_string(record["warehouse"]),
                         total_quantity=int(record["quantity"]),
                         aggregation_version=aggregation_version,
-                        source_domain="INVENTORY",
+                        source_domain=SOURCE_STOCK,
                     )
                 )
 
@@ -875,7 +885,7 @@ def complete_stock_direct_uploads(db: Session, files: list[dict]) -> list[dict]:
                         warehouse=_nullable_string(record["warehouse"]),
                         total_quantity=int(record["quantity"]),
                         aggregation_version=aggregation_version,
-                        source_domain="INVENTORY",
+                        source_domain=SOURCE_STOCK,
                     )
                 )
 
@@ -900,7 +910,7 @@ def delete_stock_file(db: Session, file_id: str) -> None:
     b, k = _resolved_upload_s3_bucket_and_key(uploaded_file)
 
     affected_scope = (uploaded_file.country_code, uploaded_file.base_date)
-    file_domain = getattr(uploaded_file, "file_domain", None) or "inventory"
+    file_domain = getattr(uploaded_file, "file_domain", None)
     country_u = str(uploaded_file.country_code or "").strip().upper()
     # ????? country_code??SHIPMENT ??? file_domain ???? inventory ????? ??? ???????? purge ??? ???
     is_shipment_cleanup = file_domain == "shipment" or country_u == "SHIPMENT"
@@ -947,14 +957,14 @@ def delete_stock_files(db: Session, country_code: str | None = None) -> dict[str
         return {"deleted_count": 0}
 
     ship_touched = any(
-        (getattr(f, "file_domain", None) or "inventory") == "shipment"
+        (getattr(f, "file_domain", None) or FILE_DOMAIN_STOCK) == "shipment"
         or str(f.country_code or "").strip().upper() == "SHIPMENT"
         for f in uploaded_files
     )
     inv_scopes_unique = {
         (f.country_code, f.base_date)
         for f in uploaded_files
-        if (getattr(f, "file_domain", None) or "inventory") != "shipment"
+        if not is_stock_file_domain(getattr(f, "file_domain", None))
         and str(f.country_code or "").strip().upper() != "SHIPMENT"
     }
     s3_pairs: list[tuple[str | None, str | None]] = []

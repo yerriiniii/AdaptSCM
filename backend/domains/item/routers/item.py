@@ -37,10 +37,11 @@ from domains.item.services.item_master import (
     merge_item_master_uploads,
     patch_item_master_row,
 )
+from shared.branding import API_PREFIX
 from shared.db import get_db_session
 
 router = APIRouter(
-    prefix="/api/inventory",
+    prefix=API_PREFIX,
     tags=["item"],
     dependencies=[Depends(require_active_user)],
 )

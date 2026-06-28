@@ -20,10 +20,11 @@ from domains.stock.services.stock_persistence import (
     persist_stock_uploads,
     prepare_stock_direct_uploads,
 )
+from shared.branding import API_PREFIX
 from shared.db import get_db_session
 
 router = APIRouter(
-    prefix="/api/inventory",
+    prefix=API_PREFIX,
     tags=["stock"],
     dependencies=[Depends(require_active_user)],
 )

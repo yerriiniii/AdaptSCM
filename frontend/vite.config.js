@@ -5,7 +5,7 @@ import react from "@vitejs/plugin-react";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// 프로젝트 루트(`InventorySystem/.env`) — uvicorn을 8001 등으로 쓰면
+// 프로젝트 루트(`AdaptSCM/.env`) — uvicorn을 8001 등으로 쓰면
 //   VITE_DEV_PROXY_API=http://127.0.0.1:8001
 // 넣고 Vite(5173) 개발 서버를 재시작.
 

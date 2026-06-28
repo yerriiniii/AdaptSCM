@@ -1,6 +1,6 @@
 """출고 ?�일 S3·DB ?�??�?집계 조회.
 
-POST /api/inventory/shipment/aggregate ??**?�시 4??*�?처리?�다.
+POST /api/adaptscm/shipment/aggregate ??**?�시 4??*�?처리?�다.
 (?�매처·상?�코???�는 ?�드민코?�·주문일·주문?�량). ?�트명·파?�명?� ?�용?��? ?�으�?
 �??�트부???�더가 맞는 ?�트�?찾는?? ?�매처→칩·통??집계??
 `shipment_vendor_channel_maps` ??1�??�합 규칙???�른??
@@ -33,17 +33,20 @@ from domains.shipment.services.shipment_matrix import (
     parse_shipment_raw_orders_workbook,
     shipment_workbook_is_raw_orders_format,
 )
+from shared.branding import (
+    FILE_DOMAIN_SHIPMENT,
+    SOURCE_SHIPMENT,
+    s3_prefix_from_settings,
+)
 from shared.config import get_runtime_settings
 from shared.storage import get_s3_client, is_s3_configured
 
-SOURCE_SHIPMENT = "SHIPMENT"
-FILE_DOMAIN_SHIPMENT = "shipment"
 SHIPMENT_BUCKET_COUNTRY = "SHIPMENT"
 SHIPMENT_MATRIX_UPLOAD_KEY = "matrix"
 
 
 def _shipment_s3_key(prefix: str, stored_name: str) -> str:
-    root = (prefix or "inventory").strip().strip("/")
+    root = (prefix or "").strip().strip("/") or s3_prefix_from_settings(get_runtime_settings())
     return f"{root}/shipment/{stored_name}"
 
 
@@ -252,7 +255,7 @@ def persist_shipment_matrix_uploads(
                         _upsert_shipment_matrix_channel_rows(db, channel_sheet, data_year, recs)
 
             stored_name = f"{uuid.uuid4()}{os.path.splitext(upload_file.filename or '')[1] or '.xlsx'}"
-            s3_key = _shipment_s3_key(settings.s3_prefix or "inventory", stored_name)
+            s3_key = _shipment_s3_key(settings.s3_prefix or s3_prefix_from_settings(settings), stored_name)
             s3.put_object(
                 Bucket=settings.s3_bucket,
                 Key=s3_key,

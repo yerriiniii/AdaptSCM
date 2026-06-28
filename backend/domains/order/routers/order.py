@@ -31,11 +31,12 @@ from domains.order.services.purchase_order import (
 )
 from domains.item.schemas import SkuLookupForPurchaseResponse
 from domains.item.services.item_mapping import find_item_by_any_country_sku
+from shared.branding import API_PREFIX
 from shared.config import get_runtime_settings
 from shared.db import get_db_session
 
 router = APIRouter(
-    prefix="/api/inventory/purchase-orders",
+    prefix=f"{API_PREFIX}/purchase-orders",
     tags=["order"],
     dependencies=[Depends(require_active_user)],
 )

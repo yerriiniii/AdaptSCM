@@ -22,7 +22,7 @@ from shared.db.session import initialize_database, is_database_configured, test_
 from shared.storage import is_s3_configured
 
 settings = get_runtime_settings()
-app = FastAPI(title="Inventory Aggregate API", version="0.1.0")
+app = FastAPI(title="AdaptSCM API", version="0.1.0")
 _log = logging.getLogger(__name__)
 
 
