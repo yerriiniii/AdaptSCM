@@ -99,14 +99,14 @@ function persistItemMasterUploadedFileEntries(entries) {
 /** 메인 탭 노출 — false면 상단 탭 버튼만 숨김(탭 본문·로직은 유지). 복구 시 해당 키를 true로. */
 const MAIN_TAB_VISIBILITY = {
   PRODUCT_SEARCH: true,
+  ITEM_MASTER: true,
   SKU_MAPPING: true,
-  SHIPMENT: true,
-  PURCHASE_ORDERS: true,
+  SHIPMENT: false,
+  PURCHASE_ORDERS: false,
   SETTINGS: true,
   KR: false,
   OVERSEAS: false,
   COMPARE: false,
-  ITEM_MASTER: false,
 };
 const DEFAULT_MAIN_TAB =
   Object.entries(MAIN_TAB_VISIBILITY).find(([, visible]) => visible)?.[0] || "PRODUCT_SEARCH";
@@ -120,7 +120,7 @@ const SETTINGS_VISIBLE_FILE_COUNTRIES = (() => {
   if (MAIN_TAB_VISIBILITY.OVERSEAS) OVERSEAS_UPLOAD_COUNTRIES.forEach((c) => codes.add(c));
   if (MAIN_TAB_VISIBILITY.SHIPMENT) codes.add("SHIPMENT");
   if (MAIN_TAB_VISIBILITY.PURCHASE_ORDERS) codes.add(PO_FILE_COUNTRY);
-  if (MAIN_TAB_VISIBILITY.SKU_MAPPING) codes.add(ITEM_MASTER_FILE_COUNTRY);
+  if (MAIN_TAB_VISIBILITY.ITEM_MASTER) codes.add(ITEM_MASTER_FILE_COUNTRY);
   return codes;
 })();
 /** 출고 현황 칩 = 엑셀 시트 이름(백엔드 SHIPMENT_MATRIX_SHEET_NAMES와 동일 순서) */
@@ -2187,7 +2187,7 @@ export default function App() {
   const [manualMappingForm, setManualMappingForm] = useState({ ...EMPTY_SKU_MAPPING_FORM });
   const [manualSkuFormKey, setManualSkuFormKey] = useState(0);
   const [mappingInputKey, setMappingInputKey] = useState(0);
-  const [skuManageMode, setSkuManageMode] = useState("ITEM_MASTER");
+  const [skuManageMode, setSkuManageMode] = useState("UPLOAD");
   const [productEditKeyword, setProductEditKeyword] = useState("");
   const [productEditRows, setProductEditRows] = useState([]);
   const [productEditLoading, setProductEditLoading] = useState(false);
@@ -2355,7 +2355,6 @@ export default function App() {
     compareFilter: 0,
     topScroll: 0,
   });
-  const [skuManageHeaderHeight, setSkuManageHeaderHeight] = useState(0);
   const productMappingCards = useMemo(() => {
     const cards = mappingRows
       .map((row, idx) => ({
@@ -2410,7 +2409,7 @@ export default function App() {
   const isSettingsScope = countryTabMode === "SETTINGS";
   const isSkuMappingScope = countryTabMode === "SKU_MAPPING";
   const isProductSearchScope = countryTabMode === "PRODUCT_SEARCH";
-  const isItemMasterScope = isSkuMappingScope && skuManageMode === "ITEM_MASTER";
+  const isItemMasterScope = countryTabMode === "ITEM_MASTER";
   const isPurchaseOrderScope = countryTabMode === "PURCHASE_ORDERS";
   const isShipmentScope = countryTabMode === "SHIPMENT";
   const isInventoryAdminScope =
@@ -2426,6 +2425,13 @@ export default function App() {
       setCountryTabMode(DEFAULT_MAIN_TAB);
     }
   }, [countryTabMode]);
+
+  /** 상품 등록 탭: 예전 상품마스터 서브탭 상태가 남아 있으면 업로드로 보정 */
+  useEffect(() => {
+    if (isSkuMappingScope && skuManageMode === "ITEM_MASTER") {
+      setSkuManageMode("UPLOAD");
+    }
+  }, [isSkuMappingScope, skuManageMode]);
 
   /** 출고 탭: 칩(시트) 또는 초기 로드 시 뷰 조회 */
   useEffect(() => {
@@ -2527,27 +2533,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isItemMasterScope) {
-      setSkuManageHeaderHeight(0);
-      return;
-    }
-    const measure = () => {
-      setSkuManageHeaderHeight(skuManageHeaderRef.current?.offsetHeight ?? 0);
-    };
-    measure();
-    let ro;
-    if (typeof ResizeObserver !== "undefined" && skuManageHeaderRef.current) {
-      ro = new ResizeObserver(measure);
-      ro.observe(skuManageHeaderRef.current);
-    }
-    window.addEventListener("resize", measure);
-    return () => {
-      window.removeEventListener("resize", measure);
-      ro?.disconnect();
-    };
-  }, [isItemMasterScope, skuManageMode]);
-
-  useEffect(() => {
     if (!isPurchaseOrderScope) return;
     const measure = () => {
       setPoOrderStickyHeights({
@@ -2602,7 +2587,7 @@ export default function App() {
     purchaseOrdersLoading,
   ]);
 
-  const itemMasterStickyBaseTop = stickyHeights.topbar + skuManageHeaderHeight;
+  const itemMasterStickyBaseTop = stickyHeights.topbar;
 
   const inventoryStickyWidth = useMemo(() => {
     if (isShipmentScope) return SHIPMENT_MATRIX_STICKY_TOTAL_PX;
@@ -6366,14 +6351,27 @@ export default function App() {
               <span>상품 검색</span>
             </button>
           ) : null}
+          {MAIN_TAB_VISIBILITY.ITEM_MASTER ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "ITEM_MASTER" ? "active" : ""}`}
+              onClick={() => setCountryTabMode("ITEM_MASTER")}
+            >
+              <Package className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>상품마스터</span>
+            </button>
+          ) : null}
           {MAIN_TAB_VISIBILITY.SKU_MAPPING ? (
             <button
               type="button"
               className={`tab tabWithIcon ${countryTabMode === "SKU_MAPPING" ? "active" : ""}`}
-              onClick={() => setCountryTabMode("SKU_MAPPING")}
+              onClick={() => {
+                setCountryTabMode("SKU_MAPPING");
+                setSkuManageMode("UPLOAD");
+              }}
             >
               <Barcode className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-              <span>상품 관리</span>
+              <span>상품 등록</span>
             </button>
           ) : null}
           {MAIN_TAB_VISIBILITY.SHIPMENT ? (
@@ -6443,16 +6441,6 @@ export default function App() {
             >
               <GitCompare className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
               <span>재고 비교</span>
-            </button>
-          ) : null}
-          {MAIN_TAB_VISIBILITY.ITEM_MASTER ? (
-            <button
-              type="button"
-              className={`tab tabWithIcon ${countryTabMode === "ITEM_MASTER" ? "active" : ""}`}
-              onClick={() => setCountryTabMode("ITEM_MASTER")}
-            >
-              <Database className="tabIcon" size={TOP_TAB_ICON_SIZE_PX - 1} strokeWidth={2} aria-hidden />
-              <span>로우데이터</span>
             </button>
           ) : null}
         </div>
@@ -10137,6 +10125,16 @@ export default function App() {
         </section>
       )}
 
+      {isItemMasterScope && (
+        <ItemMasterTab
+          active={isItemMasterScope}
+          settingsMutating={settingsMutating}
+          setSettingsMutating={setSettingsMutating}
+          stickyBaseTop={itemMasterStickyBaseTop}
+          onFilesUploaded={recordItemMasterUploadedFiles}
+        />
+      )}
+
       {isSkuMappingScope && (
         <section className="settingsPane settingsCard">
           <div className="skuManageCard">
@@ -10149,19 +10147,8 @@ export default function App() {
               style={{ display: "none" }}
               onChange={(e) => uploadSkuMappingFiles(e.target.files || [])}
             />
-            <div
-              className={`skuManageHeader${isItemMasterScope ? " skuManageHeaderSticky" : ""}`}
-              ref={skuManageHeaderRef}
-              style={isItemMasterScope ? { top: stickyHeights.topbar } : undefined}
-            >
+            <div className="skuManageHeader" ref={skuManageHeaderRef}>
               <div className="skuManageTabs">
-                <button
-                  type="button"
-                  className={`skuManageTab ${skuManageMode === "ITEM_MASTER" ? "active" : ""}`}
-                  onClick={() => setSkuManageMode("ITEM_MASTER")}
-                >
-                  상품마스터
-                </button>
                 <button
                   type="button"
                   className={`skuManageTab ${skuManageMode === "UPLOAD" ? "active" : ""}`}
@@ -10179,20 +10166,9 @@ export default function App() {
               </div>
             </div>
             <div
-              className={`skuManageContent ${skuManageMode === "MANUAL" ? " manual-only" : ""}${
-                skuManageMode === "ITEM_MASTER" ? " item-master-mode" : ""
-              }`}
+              className={`skuManageContent ${skuManageMode === "MANUAL" ? " manual-only" : ""}`}
             >
-              {skuManageMode === "ITEM_MASTER" ? (
-                <ItemMasterTab
-                  embedded
-                  active={isItemMasterScope}
-                  settingsMutating={settingsMutating}
-                  setSettingsMutating={setSettingsMutating}
-                  stickyBaseTop={itemMasterStickyBaseTop}
-                  onFilesUploaded={recordItemMasterUploadedFiles}
-                />
-              ) : skuManageMode === "UPLOAD" ? (
+              {skuManageMode === "UPLOAD" ? (
                 <div className="skuUploadStage skuManageSinglePanel poOrderFileUploadStage">
                   <div className="settingsNotice poOrderFileUploadNotice">
                     <p className="poOrderFileUploadLead">
