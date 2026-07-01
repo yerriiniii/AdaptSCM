@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
 import { API_BASE } from "./apiClient";
-import { Download, Filter, Minus, Plus, Upload } from "lucide-react";
+import { ArrowUpRight, Download, Filter, Minus, Plus, Upload } from "lucide-react";
 
 /** 백엔드 `domains/item/routers/item.py` master-rows 엔드포인트와 동기화 */
 const ITEM_MASTER_API = {
@@ -184,28 +184,30 @@ function excelColumnWidthFromPxApprox(px) {
   return Math.round((((p - 5) / 7) + Number.EPSILON) * 100) / 100;
 }
 
+const ITEM_MASTER_COLUMN_WIDTHS_PX = {
+  브랜드: 100,
+  대표코드: 88,
+  상품코드: 88,
+  "Ver.": 56,
+  상품명: 240,
+  구분: 120,
+  재고구분: 80,
+  FCST등급: 72,
+  재고등급: 72,
+  출시월: 72,
+  "코드 등록 일자": 100,
+  "한국 등급": 72,
+  "미국 등급": 72,
+  "대만 등급": 72,
+  "홍콩 등급": 72,
+  "일본 등급": 72,
+};
+
 async function buildItemMasterTemplateWorkbookBuffer() {
   const ExcelJS = (await import("exceljs")).default;
   const FONT_9 = { name: "맑은 고딕", size: 9 };
   const headers = ITEM_MASTER_FIELDS.map(({ label }) => label);
-  const columnWidthsPx = {
-    브랜드: 100,
-    대표코드: 88,
-    상품코드: 88,
-    "Ver.": 56,
-    상품명: 240,
-    구분: 120,
-    재고구분: 80,
-    FCST등급: 72,
-    재고등급: 72,
-    출시월: 72,
-    "코드 등록 일자": 100,
-    "한국 등급": 72,
-    "미국 등급": 72,
-    "대만 등급": 72,
-    "홍콩 등급": 72,
-    "일본 등급": 72,
-  };
+  const columnWidthsPx = ITEM_MASTER_COLUMN_WIDTHS_PX;
   const exampleHintRow = [
     "예: 95PROBLEM",
     "예: 06231",
@@ -259,6 +261,81 @@ async function downloadItemMasterTemplateWorkbook() {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "상품마스터_템플릿.xlsx";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function itemMasterRowToExportValues(row, extraColumns = []) {
+  const values = ITEM_MASTER_FIELDS.map(({ key }) => {
+    if (key === "code_registered_at") {
+      return formatCodeRegisteredAtDisplay(row?.[key]);
+    }
+    if (key === "segment") {
+      const seg = String(row?.[key] ?? "").trim();
+      if (productEditSegmentImpliesDiscontinued(seg)) {
+        return PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY;
+      }
+      return seg;
+    }
+    return row?.[key] == null ? "" : String(row[key]);
+  });
+  const ef = row?.extra_fields && typeof row.extra_fields === "object" ? row.extra_fields : {};
+  extraColumns.forEach(({ field_key }) => {
+    values.push(ef[field_key] == null ? "" : String(ef[field_key]));
+  });
+  return values;
+}
+
+async function buildItemMasterExportWorkbookBuffer(rows, extraColumns = []) {
+  const ExcelJS = (await import("exceljs")).default;
+  const FONT_9 = { name: "맑은 고딕", size: 9 };
+  const headers = [
+    ...ITEM_MASTER_FIELDS.map(({ label }) => label),
+    ...extraColumns.map(({ label }) => String(label || "").trim()).filter(Boolean),
+  ];
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("상품마스터", { views: [{ showGridLines: true }] });
+  const hr = ws.addRow(headers);
+  hr.height = 18;
+  (rows || []).forEach((row) => {
+    const dataRow = ws.addRow(itemMasterRowToExportValues(row, extraColumns));
+    dataRow.height = 16;
+  });
+  headers.forEach((h, i) => {
+    const px = ITEM_MASTER_COLUMN_WIDTHS_PX[h];
+    ws.getColumn(i + 1).width =
+      px != null ? excelColumnWidthFromPxApprox(px) : String(h).length > 12 ? 22 : 15;
+  });
+  ws.eachRow((row, rowNumber) => {
+    row.eachCell((cell) => {
+      cell.font = { ...FONT_9, bold: rowNumber === 1 };
+      cell.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+      if (rowNumber === 1) {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
+      }
+    });
+  });
+  return wb.xlsx.writeBuffer();
+}
+
+async function downloadItemMasterExportWorkbook(rows, extraColumns = []) {
+  if (!rows?.length) {
+    window.alert("보낼 상품 데이터가 없습니다.");
+    return;
+  }
+  const buf = await buildItemMasterExportWorkbookBuffer(rows, extraColumns);
+  const blob = new Blob([buf], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const stamp = new Date().toISOString().slice(0, 10);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `상품마스터_${stamp}.xlsx`;
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -839,6 +916,19 @@ export default function ItemMasterTab({
               ) : null}
             </button>
           </div>
+          <button
+            type="button"
+            className="itemMasterExportBtn"
+            disabled={settingsMutating || masterEditMode || masterLoading || !displayedMasterRows.length}
+            onClick={() => {
+              downloadItemMasterExportWorkbook(displayedMasterRows, masterExtraColumns).catch(() =>
+                window.alert("보내기 중 오류가 났습니다.")
+              );
+            }}
+          >
+            <ArrowUpRight size={16} strokeWidth={2} aria-hidden="true" />
+            내보내기
+          </button>
           {masterFilterOpen && typeof document !== "undefined"
             ? createPortal(
                 <div
