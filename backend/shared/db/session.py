@@ -27,6 +27,8 @@ _session_factory: sessionmaker[Session] | None = None
 _engine_creation_lock = threading.Lock()
 _schema_init_lock = threading.Lock()
 _schema_initialized = False
+_db_connection_verified = False
+_db_connection_verified_lock = threading.Lock()
 
 
 def _engine_connect_kwargs(database_url: str) -> dict:
@@ -719,17 +721,74 @@ def _run_schema_init_if_needed(engine: Engine) -> None:
         _log.info("DB 스키마 초기화 전체 완료 (총 %.2fs)", time.perf_counter() - t0)
 
 
+def wait_for_database(
+    *,
+    max_attempts: int | None = None,
+    delay_seconds: float | None = None,
+) -> None:
+    """DB가 준비될 때까지 연결을 재시도한다(Compose 기동 순서·외부 DB 웜업 대응)."""
+    global _db_connection_verified
+
+    if not is_database_configured():
+        return
+
+    if _db_connection_verified:
+        return
+
+    with _db_connection_verified_lock:
+        if _db_connection_verified:
+            return
+
+        attempts = max_attempts
+        if attempts is None:
+            try:
+                attempts = max(1, int(os.getenv("DB_CONNECT_RETRY_ATTEMPTS", "30")))
+            except ValueError:
+                attempts = 30
+
+        delay = delay_seconds
+        if delay is None:
+            try:
+                delay = max(0.1, float(os.getenv("DB_CONNECT_RETRY_DELAY_SEC", "2")))
+            except ValueError:
+                delay = 2.0
+
+        last_error: BaseException | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                engine = get_engine()
+                with engine.connect() as connection:
+                    connection.execute(text("SELECT 1"))
+                _log.info("DB 연결 성공 (시도 %s/%s)", attempt, attempts)
+                _db_connection_verified = True
+                return
+            except Exception as exc:
+                last_error = exc
+                if attempt >= attempts:
+                    break
+                _log.warning(
+                    "DB 연결 대기 중 (%s/%s): %s",
+                    attempt,
+                    attempts,
+                    exc,
+                )
+                time.sleep(delay)
+
+        assert last_error is not None
+        raise last_error
+
+
 def initialize_database() -> None:
     """테이블·경량 마이그레이션 1회. 스크립트·startup·첫 세션에서 호출 가능."""
     if not is_database_configured():
         return
+    wait_for_database()
     _run_schema_init_if_needed(get_engine())
 
 
 def test_database_connection() -> bool:
     if not is_database_configured():
         raise RuntimeError("DATABASE_URL 환경변수가 설정되지 않았습니다.")
-    initialize_database()
     engine = get_engine()
     with engine.connect() as connection:
         connection.execute(text("SELECT 1"))

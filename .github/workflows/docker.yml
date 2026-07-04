@@ -5,6 +5,9 @@ on:
     branches: [ develop ]
   workflow_dispatch:
 
+env:
+  IMAGE_TAG: ${{ github.sha }}
+
 jobs:
   docker:
     runs-on: ubuntu-latest
@@ -20,24 +23,24 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       # -------------------------
-      # Backend Build & Push
+      # Backend Build & Push (commit SHA 태그)
       # -------------------------
       - name: Build & Push Backend
         run: |
           docker build -f backend/Dockerfile \
-            -t ${{ secrets.DOCKER_USERNAME }}/adaptscm-backend:latest .
-          docker push ${{ secrets.DOCKER_USERNAME }}/adaptscm-backend:latest
+            -t ${{ secrets.DOCKER_USERNAME }}/adaptscm-backend:${{ env.IMAGE_TAG }} .
+          docker push ${{ secrets.DOCKER_USERNAME }}/adaptscm-backend:${{ env.IMAGE_TAG }}
 
       # -------------------------
-      # Frontend Build & Push
+      # Frontend Build & Push (commit SHA 태그)
       # -------------------------
       - name: Build & Push Frontend
         run: |
           API_URL="${{ vars.VITE_API_BASE_URL }}"
           docker build -f frontend/Dockerfile \
             --build-arg VITE_API_BASE_URL="$API_URL" \
-            -t ${{ secrets.DOCKER_USERNAME }}/adaptscm-frontend:latest ./frontend
-          docker push ${{ secrets.DOCKER_USERNAME }}/adaptscm-frontend:latest
+            -t ${{ secrets.DOCKER_USERNAME }}/adaptscm-frontend:${{ env.IMAGE_TAG }} ./frontend
+          docker push ${{ secrets.DOCKER_USERNAME }}/adaptscm-frontend:${{ env.IMAGE_TAG }}
 
   deploy:
     runs-on: ubuntu-latest
@@ -59,13 +62,15 @@ jobs:
       # -------------------------
       - name: Deploy via SSM
         run: |
+          IMAGE_TAG="${{ env.IMAGE_TAG }}"
           aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --region ap-northeast-2 \
-            --parameters '{"commands":[
-              "cd /home/ubuntu/AdaptSCM",
-              "docker pull yerriiniii/adaptscm-backend:latest",
-              "docker pull yerriiniii/adaptscm-frontend:latest",
-              "docker compose up -d"
-            ]}'
+            --parameters "{\"commands\":[
+              \"cd /home/ubuntu/AdaptSCM\",
+              \"if grep -q '^IMAGE_TAG=' .env 2>/dev/null; then sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=${IMAGE_TAG}/' .env; else echo IMAGE_TAG=${IMAGE_TAG} >> .env; fi\",
+              \"docker compose down\",
+              \"docker compose pull\",
+              \"docker compose up -d\"
+            ]}"
