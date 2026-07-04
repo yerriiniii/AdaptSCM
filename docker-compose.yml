@@ -1,6 +1,28 @@
 services:
+  database:
+    profiles: ["local"]
+    image: postgres:16-alpine
+    container_name: adaptscm-database
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-adaptscm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adaptscm}
+      POSTGRES_DB: ${POSTGRES_DB:-adaptscm}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-adaptscm} -d ${POSTGRES_DB:-adaptscm}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
   backend:
-    image: ${DOCKER_HUB_USER:-yerriiniii}/adaptscm-backend:latest
+    image: ${DOCKER_HUB_USER:-yerriiniii}/adaptscm-backend:${IMAGE_TAG:-latest}
     container_name: adaptscm-backend
     restart: always
     pull_policy: always
@@ -8,11 +30,34 @@ services:
       - .env
     ports:
       - "8000:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   frontend:
-    image: ${DOCKER_HUB_USER:-yerriiniii}/adaptscm-frontend:latest
+    image: ${DOCKER_HUB_USER:-yerriiniii}/adaptscm-frontend:${IMAGE_TAG:-latest}
     container_name: adaptscm-frontend
     restart: always
     pull_policy: always
     ports:
       - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s

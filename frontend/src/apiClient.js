@@ -8,6 +8,21 @@ const TOKEN_KEY = "adaptscm_access_token";
 /** 초기 `/api/auth/me` 등: 무한 대기 방지 */
 export const AUTH_SESSION_CHECK_TIMEOUT_MS = 8_000;
 
+/** 백엔드·DB 준비 전 초기 API 실패 시 재시도 */
+const API_RETRY_MAX_ATTEMPTS = 4;
+const API_RETRY_BASE_DELAY_MS = 750;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableApiError(err) {
+  if (!err) return false;
+  if (!err.response) return true;
+  const status = err.response.status;
+  return status === 502 || status === 503 || status === 504;
+}
+
 export function getAccessToken() {
   if (typeof localStorage === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
@@ -68,7 +83,17 @@ function isAuthPublicRequestUrl(url) {
 
 axios.interceptors.response.use(
   (res) => res,
-  (err) => {
+  async (err) => {
+    const config = err?.config;
+    if (config && isRetryableApiError(err)) {
+      const retryCount = Number(config.__apiRetryCount || 0);
+      if (retryCount < API_RETRY_MAX_ATTEMPTS) {
+        config.__apiRetryCount = retryCount + 1;
+        await sleep(API_RETRY_BASE_DELAY_MS * config.__apiRetryCount);
+        return axios(config);
+      }
+    }
+
     if (err?.response?.status !== 401) return Promise.reject(err);
     if (isAuthPublicRequestUrl(err?.config?.url)) return Promise.reject(err);
     if (err?.config?.headers?.Authorization) {

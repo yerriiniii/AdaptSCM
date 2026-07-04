@@ -3,7 +3,7 @@ import logging
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import OperationalError
 
 from domains.auth.lifecycle import run_initial_admin_bootstrap
@@ -64,7 +64,7 @@ async def on_startup() -> None:
 
 
 @app.get("/health")
-def health() -> dict[str, str | bool | list[str]]:
+def health() -> Response:
     database_status = "disabled"
     if is_database_configured():
         try:
@@ -73,9 +73,12 @@ def health() -> dict[str, str | bool | list[str]]:
         except Exception:
             database_status = "error"
 
-    return {
+    payload = {
         "status": "ok",
         "database": database_status,
         "s3_configured": is_s3_configured(),
         "frontend_origins": settings.frontend_origins,
     }
+    if is_database_configured() and database_status != "ok":
+        return JSONResponse(status_code=503, content=payload)
+    return JSONResponse(content=payload)
