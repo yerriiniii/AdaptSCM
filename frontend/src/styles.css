@@ -58,6 +58,24 @@ body {
   color: #1f2937;
 }
 
+/* 데스크톱(WebView2): sticky 상단 탭이 뷰포트에서 잘리지 않도록 스크롤·합성 보정 */
+html.tauri-desktop,
+html.tauri-desktop body {
+  overscroll-behavior-y: none;
+}
+
+html.tauri-desktop .stickyTopbar {
+  /* 세션 배너 높이만큼 내려 고정 (top:0 강제 금지 — 배너에 가림) */
+  top: var(--auth-session-banner-height, 0px);
+  margin-top: 0 !important;
+  box-shadow: 0 -1px 0 #ffffff;
+}
+
+:root {
+  --auth-session-banner-height: 0px;
+}
+
+
 .pageSplit {
   min-height: 100vh;
   background-color: #ffffff;
@@ -70,9 +88,10 @@ body {
 }
 
 /* 히어로 래퍼 — 탭/칩은 dashboard 직계 자식(sticky 유지). 전체 배경 흰색이라 띠 구분 없음 */
+/* 히어로↔탭 간격은 여기 margin-bottom으로 (sticky 탭에 margin-top 쓰면 WebView2/Tauri에서 상단이 잘림) */
 .dashboardHeroBand {
   background-color: transparent;
-  margin: 0;
+  margin: 0 0 26px;
   padding: 0;
   box-sizing: border-box;
 }
@@ -250,16 +269,21 @@ body {
   border: 0;
   border-radius: 0;
   padding: 8px 0 0;
-  margin-top: 26px;
+  /* sticky 탭에 margin-top 금지 — 간격은 .dashboardHeroBand margin-bottom */
+  margin-top: 0;
 }
 
 .stickyTopbar {
   position: sticky;
-  top: 0;
+  top: var(--auth-session-banner-height, 0px);
   z-index: 30;
   background-color: #ffffff;
+  /* sticky 상단이 뷰포트에 정확히 붙도록 (데스크톱 WebView2 클리핑 방지) */
+  margin-top: 0;
   padding-top: 10px;
   padding-bottom: 12px;
+  /* 스크롤 시 뒤 콘텐츠가 탭 글자 사이로 비치지 않게 */
+  background-clip: padding-box;
 }
 
 .stickyTopbar.dashboardStripWhite.isBottomCapsule {

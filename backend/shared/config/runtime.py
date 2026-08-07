@@ -62,7 +62,14 @@ def get_runtime_settings() -> RuntimeSettings:
         db_echo=_read_bool(os.getenv("DB_ECHO"), default=False),
         frontend_origins=_read_csv(
             os.getenv("FRONTEND_ORIGINS"),
-            default=["http://localhost:5173", "http://127.0.0.1:5173"],
+            default=[
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                # Tauri 데스크톱 웹뷰 origin (Windows / macOS·Linux)
+                "http://tauri.localhost",
+                "https://tauri.localhost",
+                "tauri://localhost",
+            ],
         ),
         jwt_secret=(os.getenv("JWT_SECRET") or "dev-only-change-me").strip(),
         jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256").strip() or "HS256",

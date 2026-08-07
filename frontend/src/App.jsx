@@ -2355,6 +2355,8 @@ export default function App() {
     compareFilter: 0,
     topScroll: 0,
   });
+  /** 세션 배너도 sticky top:0 — 메인 탭 sticky top 은 배너 높이만큼 내려야 가려지지 않음 */
+  const [sessionBannerHeight, setSessionBannerHeight] = useState(0);
   const productMappingCards = useMemo(() => {
     const cards = mappingRows
       .map((row, idx) => ({
@@ -2533,6 +2535,46 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let ro;
+    const detachRo = () => {
+      if (ro) {
+        ro.disconnect();
+        ro = null;
+      }
+    };
+    const readBannerHeight = () => {
+      const el = document.querySelector(".authGateSessionBanner");
+      if (el) {
+        setSessionBannerHeight(el.offsetHeight || 0);
+        if (!ro && typeof ResizeObserver !== "undefined") {
+          ro = new ResizeObserver(readBannerHeight);
+          ro.observe(el);
+        }
+        return;
+      }
+      detachRo();
+      const raw = getComputedStyle(document.documentElement)
+        .getPropertyValue("--auth-session-banner-height")
+        .trim();
+      const n = Number.parseFloat(raw);
+      setSessionBannerHeight(Number.isFinite(n) ? n : 0);
+    };
+    readBannerHeight();
+    const root = document.getElementById("root");
+    const mo =
+      root && typeof MutationObserver !== "undefined"
+        ? new MutationObserver(readBannerHeight)
+        : null;
+    if (root && mo) mo.observe(root, { childList: true });
+    window.addEventListener("resize", readBannerHeight);
+    return () => {
+      window.removeEventListener("resize", readBannerHeight);
+      detachRo();
+      if (mo) mo.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isPurchaseOrderScope) return;
     const measure = () => {
       setPoOrderStickyHeights({
@@ -2587,7 +2629,9 @@ export default function App() {
     purchaseOrdersLoading,
   ]);
 
-  const itemMasterStickyBaseTop = stickyHeights.topbar;
+  const mainTabsStickyTop = sessionBannerHeight;
+  const stickyBelowMainTabs = sessionBannerHeight + stickyHeights.topbar;
+  const itemMasterStickyBaseTop = stickyBelowMainTabs;
 
   const inventoryStickyWidth = useMemo(() => {
     if (isShipmentScope) return SHIPMENT_MATRIX_STICKY_TOTAL_PX;
@@ -2601,12 +2645,12 @@ export default function App() {
   /** 해외 국가 칩 · 출고 일자/월 합계 서브 탭 등 2단 띠 */
   const hasSecondaryInventoryStrip = countryTabMode === "OVERSEAS" || countryTabMode === "SHIPMENT";
   const activeCountryChipsHeight = hasSecondaryInventoryStrip ? stickyHeights.countryChips : 0;
-  const activeFilterStickyTop = stickyHeights.topbar + activeCountryChipsHeight;
+  const activeFilterStickyTop = stickyBelowMainTabs + activeCountryChipsHeight;
   const activeFilterHeight = isCompareScope ? stickyHeights.compareFilter : stickyHeights.inventoryFilter;
   const activeTopScrollHeight = showTopScroll ? stickyHeights.topScroll : 0;
   const tableHeaderTop = activeFilterStickyTop + activeFilterHeight + activeTopScrollHeight;
 
-  const poStickySubTabsTop = stickyHeights.topbar + PO_STICKY_MAIN_TO_SUB_GAP_PX;
+  const poStickySubTabsTop = stickyBelowMainTabs + PO_STICKY_MAIN_TO_SUB_GAP_PX;
   const poStickySavedFilterTop = poStickySubTabsTop + poOrderStickyHeights.subTabs;
   const poSavedFilterBottomSticky = poStickySavedFilterTop + poOrderStickyHeights.savedFilter;
   const poSavedTopScrollStickyTop =
@@ -6339,6 +6383,7 @@ export default function App() {
       <header
         ref={topbarRef}
         className={`topbar stickyTopbar dashboardStripWhite${!hasSecondaryInventoryStrip ? " isBottomCapsule" : ""}`}
+        style={{ top: mainTabsStickyTop }}
       >
         <div className="tabs">
           {MAIN_TAB_VISIBILITY.PRODUCT_SEARCH ? (
@@ -6450,7 +6495,7 @@ export default function App() {
         <div
           ref={countryChipsRef}
           className="countryChips stickyCountryChips dashboardStripWhite isBottomCapsule"
-          style={{ top: stickyHeights.topbar }}
+          style={{ top: stickyBelowMainTabs }}
         >
           <div className="tabs overseasCountryTabs">
             {overseasCountries.map((code) => (
@@ -6470,7 +6515,7 @@ export default function App() {
         <div
           ref={countryChipsRef}
           className="countryChips stickyCountryChips dashboardStripWhite isBottomCapsule"
-          style={{ top: stickyHeights.topbar }}
+          style={{ top: stickyBelowMainTabs }}
         >
           <div className="tabs overseasCountryTabs" role="tablist" aria-label="출고 하위 메뉴">
             <button
@@ -7890,7 +7935,7 @@ export default function App() {
           <div
             className="poStickyMainSubGap"
             style={{
-              top: stickyHeights.topbar,
+              top: stickyBelowMainTabs,
               height: PO_STICKY_MAIN_TO_SUB_GAP_PX,
               marginBottom: -PO_STICKY_MAIN_TO_SUB_GAP_PX,
             }}

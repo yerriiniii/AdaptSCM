@@ -15,8 +15,12 @@ __pycache__/
 
 # Build
 frontend/dist/
+frontend/src-tauri/target/
 dist/
 build/
+
+# Desktop local API target (copy from .env.desktop.example)
+frontend/.env.desktop
 
 # Environment
 .env
