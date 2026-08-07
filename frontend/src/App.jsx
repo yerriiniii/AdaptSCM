@@ -101,12 +101,12 @@ const MAIN_TAB_VISIBILITY = {
   PRODUCT_SEARCH: true,
   ITEM_MASTER: true,
   SKU_MAPPING: true,
-  SHIPMENT: false,
-  PURCHASE_ORDERS: false,
+  KR: true,
+  OVERSEAS: true,
+  COMPARE: true,
+  SHIPMENT: true,
+  PURCHASE_ORDERS: true,
   SETTINGS: true,
-  KR: false,
-  OVERSEAS: false,
-  COMPARE: false,
 };
 const DEFAULT_MAIN_TAB =
   Object.entries(MAIN_TAB_VISIBILITY).find(([, visible]) => visible)?.[0] || "PRODUCT_SEARCH";
@@ -6419,6 +6419,39 @@ export default function App() {
               <span>상품 등록</span>
             </button>
           ) : null}
+          {MAIN_TAB_VISIBILITY.KR ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "KR" ? "active" : ""}`}
+              onClick={() => setCountryTabMode("KR")}
+            >
+              <Home className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>한국 재고</span>
+            </button>
+          ) : null}
+          {MAIN_TAB_VISIBILITY.OVERSEAS ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "OVERSEAS" ? "active" : ""}`}
+              onClick={() => {
+                setCountryTabMode("OVERSEAS");
+                setSelectedOverseasCountry((prev) => prev || OVERSEAS_UPLOAD_COUNTRIES[0]);
+              }}
+            >
+              <Globe2 className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>해외 재고</span>
+            </button>
+          ) : null}
+          {MAIN_TAB_VISIBILITY.COMPARE ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "COMPARE" ? "active" : ""}`}
+              onClick={() => setCountryTabMode("COMPARE")}
+            >
+              <GitCompare className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>재고 비교</span>
+            </button>
+          ) : null}
           {MAIN_TAB_VISIBILITY.SHIPMENT ? (
             <button
               type="button"
@@ -6453,39 +6486,6 @@ export default function App() {
             >
               <Database className="tabIcon tabIconDataManagement" size={TOP_TAB_ICON_SIZE_PX - 1} strokeWidth={2} aria-hidden />
               <span>데이터 관리</span>
-            </button>
-          ) : null}
-          {MAIN_TAB_VISIBILITY.KR ? (
-            <button
-              type="button"
-              className={`tab tabWithIcon ${countryTabMode === "KR" ? "active" : ""}`}
-              onClick={() => setCountryTabMode("KR")}
-            >
-              <Home className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-              <span>한국 재고</span>
-            </button>
-          ) : null}
-          {MAIN_TAB_VISIBILITY.OVERSEAS ? (
-            <button
-              type="button"
-              className={`tab tabWithIcon ${countryTabMode === "OVERSEAS" ? "active" : ""}`}
-              onClick={() => {
-                setCountryTabMode("OVERSEAS");
-                setSelectedOverseasCountry((prev) => prev || OVERSEAS_UPLOAD_COUNTRIES[0]);
-              }}
-            >
-              <Globe2 className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-              <span>해외 재고</span>
-            </button>
-          ) : null}
-          {MAIN_TAB_VISIBILITY.COMPARE ? (
-            <button
-              type="button"
-              className={`tab tabWithIcon ${countryTabMode === "COMPARE" ? "active" : ""}`}
-              onClick={() => setCountryTabMode("COMPARE")}
-            >
-              <GitCompare className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-              <span>재고 비교</span>
             </button>
           ) : null}
         </div>
