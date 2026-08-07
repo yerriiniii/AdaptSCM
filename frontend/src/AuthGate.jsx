@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { Eye, EyeOff, KeyRound, Package } from "lucide-react";
 import {
@@ -10,6 +10,14 @@ import {
 } from "./apiClient";
 
 const SESSION_HOURS = 3;
+
+function setSessionBannerHeightCssVar(px) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(
+    "--auth-session-banner-height",
+    `${Math.max(0, Math.round(px) || 0)}px`
+  );
+}
 
 function parseErrorMessage(err) {
   const st = err?.response?.status;
@@ -56,6 +64,7 @@ export default function AuthGate({ children }) {
   const [submitting, setSubmitting] = useState(false);
   const [showAccessCode, setShowAccessCode] = useState(false);
   const [sessionTick, setSessionTick] = useState(0);
+  const sessionBannerRef = useRef(null);
 
   const expireSession = useCallback((message) => {
     setAccessToken(null);
@@ -137,6 +146,31 @@ export default function AuthGate({ children }) {
     if (expMs == null) return "";
     return formatSessionRemaining(expMs);
   }, [phase, sessionTick]);
+
+  useEffect(() => {
+    if (!sessionRemainingLabel) {
+      setSessionBannerHeightCssVar(0);
+      return undefined;
+    }
+    const el = sessionBannerRef.current;
+    if (!el) {
+      setSessionBannerHeightCssVar(0);
+      return undefined;
+    }
+    const measure = () => setSessionBannerHeightCssVar(el.offsetHeight || 0);
+    measure();
+    let ro;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(measure);
+      ro.observe(el);
+    }
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      if (ro) ro.disconnect();
+      setSessionBannerHeightCssVar(0);
+    };
+  }, [sessionRemainingLabel]);
 
   const onSubmitAccessCode = async (e) => {
     e.preventDefault();
@@ -255,7 +289,7 @@ export default function AuthGate({ children }) {
   return (
     <>
       {sessionRemainingLabel ? (
-        <div className="authGateSessionBanner" role="status" aria-live="polite">
+        <div ref={sessionBannerRef} className="authGateSessionBanner" role="status" aria-live="polite">
           세션 남은 시간 {sessionRemainingLabel}
         </div>
       ) : null}
