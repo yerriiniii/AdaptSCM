@@ -217,7 +217,8 @@ html.tauri-desktop .stickyTopbar {
   margin: 0;
 }
 
-.heroHeadAccountBtn {
+.heroHeadAccountBtn,
+button.ghost.heroHeadAccountBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -231,6 +232,15 @@ html.tauri-desktop .stickyTopbar {
   font-size: 12px;
   font-weight: 600;
   border-radius: 8px;
+  border: 1px solid #f2c8cf;
+  background: #fff5f6;
+  color: #c24157;
+}
+
+.heroHeadAccountBtn:hover,
+button.ghost.heroHeadAccountBtn:hover {
+  background: #ffedef;
+  color: #c24157;
 }
 
 .heroHeadAccountBtn .tabIcon {
@@ -298,6 +308,15 @@ html.tauri-desktop .stickyTopbar {
 .tabs {
   display: flex;
   gap: 50px;
+}
+
+/* 메인 상단 탭: 오른쪽 끝 = 나가기 버튼 오른쪽 끝, 탭 간 간격 균등 */
+.topbar > .tabs {
+  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 0;
 }
 
 .cautionBtn {
@@ -2326,6 +2345,47 @@ html.tauri-desktop .stickyTopbar {
   font-size: 13px;
 }
 
+/* 한국·해외 재고: 검색바 왼쪽 — 초록 primary 액션 */
+.inventoryFilterActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.inventoryFilterActionBtn {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.inventoryFilterActionBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.aggregateProgressBanner {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #bfd7ff;
+  background: #eef5ff;
+  color: #1e3a5f;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.aggregateProgressBannerInline {
+  margin-top: 0;
+  margin-right: 8px;
+  padding: 8px 12px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .compareKpiRow {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -2568,12 +2628,6 @@ html.tauri-desktop .stickyTopbar {
   margin-bottom: 18px;
   padding: 6px 2px 0;
   flex-wrap: wrap;
-}
-
-/* 한국·해외 재고: 탭 아래 업로드/통합 — 상품마스터 툴바와 동일 톤 */
-.inventoryScopeToolbar {
-  margin-top: 4px;
-  margin-bottom: 14px;
 }
 
 .inventoryShipmentActionRow {

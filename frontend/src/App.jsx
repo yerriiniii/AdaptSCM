@@ -4416,14 +4416,16 @@ export default function App() {
     );
   }
 
-  async function aggregateInventory() {
+  async function aggregateInventory(entriesOverride) {
     if (isShipmentScope || isInventoryAdminScope || countryTabMode === "COMPARE") return;
     const scopeKey = getScopeKey(countryTabMode, selectedOverseasCountry);
     if (scopeKey === "__NONE__") return;
     setInventoryRequested(true);
     setInventoryError("");
     setScopeErrorCache((prev) => ({ ...prev, [scopeKey]: "" }));
-    if (!scopedFileEntries.length) {
+    const entriesSource = Array.isArray(entriesOverride) ? entriesOverride : fileEntries;
+    const scopedEntries = entriesSource.filter((entry) => matchesCountryScope(entry.country));
+    if (!scopedEntries.length) {
       setInventoryError("현재 탭/국가에 업로드된 파일이 없습니다.");
       setScopeErrorCache((prev) => ({
         ...prev,
@@ -4433,7 +4435,7 @@ export default function App() {
     }
     setInventoryLoading(true);
     try {
-      const requestEntries = scopedFileEntries.filter((entry) => entry.file && !entry.dbFileId);
+      const requestEntries = scopedEntries.filter((entry) => entry.file && !entry.dbFileId);
       if (!requestEntries.length) {
         await hydratePersistedState();
         return;
@@ -4464,6 +4466,56 @@ export default function App() {
     } finally {
       setInventoryLoading(false);
     }
+  }
+
+  async function handleInventoryFilesSelected(event) {
+    if (!(isKRScope || isOverseasScope) || inventoryLoading) return;
+    const files = Array.from(event?.target?.files || []);
+    if (!files.length) return;
+    const existingNames = new Set(fileEntries.map((entry) => String(entry.name || "")));
+    const incomingCounts = files.reduce((acc, file) => {
+      acc[file.name] = (acc[file.name] || 0) + 1;
+      return acc;
+    }, {});
+    const duplicateNames = [
+      ...new Set(
+        files
+          .map((file) => file.name)
+          .filter((name) => existingNames.has(name) || incomingCounts[name] > 1)
+      ),
+    ];
+    const uploadableFiles = files.filter(
+      (file, index) =>
+        !existingNames.has(file.name) &&
+        files.findIndex((candidate) => candidate.name === file.name) === index
+    );
+    if (duplicateNames.length) {
+      window.alert(`${duplicateNames.join(", ")}\n같은 파일이 두개입니다.`);
+    }
+    if (!uploadableFiles.length) {
+      setUploadInputKey((k) => k + 1);
+      return;
+    }
+    const override =
+      countryTabMode === "OVERSEAS"
+        ? String(selectedOverseasCountry || OVERSEAS_UPLOAD_COUNTRIES[0]).trim().toUpperCase()
+        : "KR";
+    const metadata = await Promise.all(uploadableFiles.map((file) => inferFileMetadata(file, override)));
+    const appended = uploadableFiles.map((file, idx) => {
+      const meta = metadata[idx] || {};
+      return {
+        id: `${Date.now()}-${idx}-${file.name}`,
+        file,
+        name: file.name,
+        size: file.size,
+        country: override || meta.country || detectCountry(file.name),
+        date: meta.date || detectDate(file.name),
+      };
+    });
+    const nextEntries = [...fileEntries, ...appended];
+    setFileEntries(nextEntries);
+    setUploadInputKey((k) => k + 1);
+    await aggregateInventory(nextEntries);
   }
 
   function closeShipmentVendorOverrideModal() {
@@ -4620,6 +4672,7 @@ export default function App() {
   }
 
   async function handleShipmentFileSelected(event) {
+    if (shipmentLoading) return;
     const files = Array.from(event?.target?.files || []);
     if (!files.length) return;
     const existingNames = new Set(shipmentFileEntries.map((entry) => String(entry.name || "")));
@@ -6430,15 +6483,6 @@ export default function App() {
                 >
                   출고 양식 엑셀 템플릿 다운로드
                 </button>
-                <button
-                  type="button"
-                  className="poOrderFileTemplateBtn"
-                  disabled={shipmentLoading || shipmentFileEntries.filter((e) => e.file).length === 0}
-                  onClick={() => void runShipmentAggregate().then((ok) => ok && setShipmentSubTab("status"))}
-                  title="이미 선택한 출고 파일로 통합을 다시 실행합니다"
-                >
-                  {shipmentLoading ? "출고 통합 중..." : "출고 통합 실행"}
-                </button>
               </div>
               <button
                 type="button"
@@ -6449,96 +6493,21 @@ export default function App() {
                 <span className="skuUploadMain">
                   <span className="skuUploadBadge">XLSX</span>
                   <span className="skuUploadButtonLabel">
-                    {shipmentLoading ? "출고 통합 중..." : "출고 파일 업로드"}
+                    {shipmentLoading ? "출고 통합 진행 중…" : "출고 파일 업로드"}
                   </span>
                 </span>
               </button>
+              {shipmentLoading ? (
+                <div className="aggregateProgressBanner" role="status" aria-live="polite">
+                  출고 통합 진행 중…
+                </div>
+              ) : null}
             </div>
           </div>
         </section>
       )}
       {!isInventoryAdminScope && !isCompareScope && !(isShipmentScope && shipmentSubTab === "fileUpload") && (
         <>
-      {(isKRScope || isOverseasScope) && (
-        <div className="inventoryScopeToolbar itemMasterToolbarRow" role="toolbar" aria-label="재고 파일 작업">
-          <input
-            key={uploadInputKey}
-            id="inventory-files-input"
-            type="file"
-            accept=".xlsx,.csv"
-            multiple
-            hidden
-            onChange={(e) => {
-              const run = async () => {
-                const files = Array.from(e.target.files || []);
-                if (!files.length) return;
-                const existingNames = new Set(fileEntries.map((entry) => String(entry.name || "")));
-                const incomingCounts = files.reduce((acc, file) => {
-                  acc[file.name] = (acc[file.name] || 0) + 1;
-                  return acc;
-                }, {});
-                const duplicateNames = [
-                  ...new Set(
-                    files
-                      .map((file) => file.name)
-                      .filter((name) => existingNames.has(name) || incomingCounts[name] > 1)
-                  ),
-                ];
-                const uploadableFiles = files.filter(
-                  (file, index) =>
-                    !existingNames.has(file.name) &&
-                    files.findIndex((candidate) => candidate.name === file.name) === index
-                );
-                if (duplicateNames.length) {
-                  window.alert(`${duplicateNames.join(", ")}\n같은 파일이 두개입니다.`);
-                }
-                if (!uploadableFiles.length) {
-                  setUploadInputKey((k) => k + 1);
-                  return;
-                }
-                const override =
-                  countryTabMode === "OVERSEAS"
-                    ? String(selectedOverseasCountry || OVERSEAS_UPLOAD_COUNTRIES[0]).trim().toUpperCase()
-                    : "KR";
-                const metadata = await Promise.all(
-                  uploadableFiles.map((file) => inferFileMetadata(file, override))
-                );
-                setFileEntries((prev) => [
-                  ...prev,
-                  ...uploadableFiles.map((file, idx) => {
-                    const meta = metadata[idx] || {};
-                    return {
-                      id: `${Date.now()}-${idx}-${file.name}`,
-                      file,
-                      name: file.name,
-                      size: file.size,
-                      country: override || meta.country || detectCountry(file.name),
-                      date: meta.date || detectDate(file.name),
-                    };
-                  }),
-                ]);
-                setUploadInputKey((k) => k + 1);
-              };
-              run();
-            }}
-          />
-          <button
-            type="button"
-            className="poOrderFileTemplateBtn itemMasterTemplateBtn itemMasterUploadBtn"
-            onClick={onClickUpload}
-          >
-            파일 업로드
-          </button>
-          <button
-            type="button"
-            className="poOrderFileTemplateBtn itemMasterTemplateBtn"
-            onClick={() => void aggregateInventory()}
-            disabled={inventoryLoading || inventoryFiles.length === 0}
-          >
-            {inventoryLoading ? "통합 중..." : "재고 통합 실행"}
-          </button>
-        </div>
-      )}
       {!isShipmentScope && (
       <section className="kpiRow inventoryKpiRow">
         <div className="kpiCard">
@@ -6667,6 +6636,33 @@ export default function App() {
           className="filterBar stickyFilterBar"
           style={{ top: activeFilterStickyTop }}
         >
+          {(isKRScope || isOverseasScope) && (
+            <div className="inventoryFilterActions" role="group" aria-label="재고 파일 작업">
+              <input
+                key={uploadInputKey}
+                id="inventory-files-input"
+                type="file"
+                accept=".xlsx,.csv"
+                multiple
+                hidden
+                disabled={inventoryLoading}
+                onChange={(e) => void handleInventoryFilesSelected(e)}
+              />
+              <button
+                type="button"
+                className="primary inventoryFilterActionBtn"
+                onClick={onClickUpload}
+                disabled={inventoryLoading}
+              >
+                {inventoryLoading ? "재고 통합 진행 중…" : "파일 업로드"}
+              </button>
+            </div>
+          )}
+          {inventoryLoading && (isKRScope || isOverseasScope) ? (
+            <div className="aggregateProgressBanner aggregateProgressBannerInline" role="status" aria-live="polite">
+              재고 통합 진행 중…
+            </div>
+          ) : null}
           <div className="searchWrap">
             <SearchFieldIcon className="searchIcon" size={16} strokeWidth={2} />
             <input
@@ -7541,7 +7537,7 @@ export default function App() {
               {"\n"}- 날짜/레벨/검색 필터를 초기화해보세요.
               {isShipmentScope
                 ? "\n- 출고 탭 「출고 파일 업로드」에서 엑셀을 올리면 자동으로 출고 통합됩니다."
-                : "\n- 먼저 파일 업로드 후 재고 통합 실행을 1회 해주세요."}
+                : "\n- 한국/해외 재고 탭에서 파일을 업로드하면 자동으로 재고 통합됩니다."}
             </pre>
           )}
       </section>
@@ -7658,7 +7654,7 @@ export default function App() {
             {!filteredCompareRows.length ? (
               <pre className="error">
                 비교할 데이터가 없습니다.
-                {"\n"}- 먼저 한국 재고 또는 해외 재고 탭에서 파일 업로드 후 재고 통합 실행을 해주세요.
+                {"\n"}- 한국 재고 또는 해외 재고 탭에서 파일을 업로드하면 자동으로 재고 통합됩니다.
               </pre>
             ) : (
               <>
@@ -9840,9 +9836,12 @@ export default function App() {
               <div className="cautionSectionTitle">공통 (재고·출고·파일)</div>
               <ul className="cautionList">
                 <li>
+                  한국/해외 재고 탭에서 파일을 업로드하면 자동으로 재고 통합이 실행됩니다. 이미 올린 것과 같은 파일
+                  이름은 다시 올라가지 않습니다.
+                </li>
+                <li>
                   출고 탭 「출고 파일 업로드」에서 엑셀을 올리면 자동으로 출고 통합이 실행되고 결과가 화면에 반영됩니다.
                 </li>
-                <li>재고 탭에서는 이미 올린 것과 같은 파일 이름은 다시 올라가지 않습니다.</li>
                 <li>
                   재고 엑셀에 넣은 상품코드는 상품 관리에서 그 국가로 먼저 등록되어 있어야 합니다. 하나라도 빠지면 그 파일
                   전체가 반영되지 않을 수 있습니다.
