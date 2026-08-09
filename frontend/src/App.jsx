@@ -215,7 +215,7 @@ const SKU_MAPPING_FIELDS = [
   { code: "TH", label: "태국", nameKey: "th_name", skuKey: "th_sku" },
 ];
 const SKU_MAPPING_TEMPLATE_COLUMNS = SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [nameKey, skuKey]);
-const SKU_MAPPING_OPTIONAL_COLUMNS = ["option", "brand", "barcode", "mkt_priority", "segment"];
+const SKU_MAPPING_OPTIONAL_COLUMNS = ["option", "brand", "barcode", "representative_code", "mkt_priority", "segment"];
 const EMPTY_SKU_MAPPING_FORM = Object.fromEntries([
   ...SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [
     [nameKey, ""],
@@ -538,23 +538,26 @@ const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
   {
     code: "KR",
     fileLabel: "한국",
-    headers: ["브랜드", "구분", "한국 SKU", "대표코드", "한국 상품명"],
+    headers: ["브랜드", "한국 상품명", "상품코드", "대표코드", "구분"],
     columnWidthsPx: {
       "한국 상품명": 200,
       구분: 180,
       브랜드: 100,
-      "대표코드": 88,
+      대표코드: 88,
+      상품코드: 88,
     },
     exampleHintRow: [
       "예: 푸드올로지",
-      "예: (상시) 유통기획",
-      "예: 05803",
-      "예: 05803",
       "예: 푸드올로지 보틀 500ml 레드",
+      "예: 05803",
+      "예: 05803",
+      "예: (상시) 유통기획",
     ],
     headerNotes: {
-      "대표코드":
-        "선택. 비우면 한국 SKU와 동일하게 저장됩니다. 여러 옵션 SKU가 같은 대표 상품을 가리킬 때 사용합니다.",
+      대표코드:
+        "한국 상품의 대표코드. 비우면 상품코드와 동일하게 저장됩니다. 여러 옵션 SKU가 같은 대표 상품을 가리킬 때 사용합니다.",
+      상품코드:
+        "한국 상품코드(SKU). 필수. DB 매칭·갱신의 기준 키입니다. 「한국 SKU」「어드민코드」 헤더도 동일하게 인식합니다.",
       구분:
         "선택. item.segment 로 저장. 값은 그대로 저장하되, 앞의 (X) / （X） 수식어만 제거합니다. 예: (X) 단종 → 단종.",
     },
@@ -562,21 +565,44 @@ const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
   {
     code: "US",
     fileLabel: "미국",
-    headers: ["미국 SKU", "미국 상품명", "한국 SKU"],
+    headers: ["미국 SKU", "미국 상품명", "한국 상품코드"],
     headerNotes: {
-      "한국 SKU": "연결할 기존 한국 상품의 SKU입니다. 이 값으로 item을 찾아 US 로케일을 붙입니다.",
+      "미국 SKU": "필수. 한국 상품코드와 매핑할 미국 상품코드입니다.",
+      "미국 상품명": "선택. 비워도 됩니다. 매핑의 기준은 상품코드입니다.",
+      "한국 상품코드":
+        "연결할 기존 한국 상품의 상품코드입니다. DB에 이미 등록된 코드만 매핑됩니다. 없으면 해당 해외 행은 건너뛰고 안내합니다.",
     },
   },
-  { code: "TW", fileLabel: "대만", headers: ["대만 SKU", "대만 상품명"], headerNotes: {} },
-  { code: "HK", fileLabel: "홍콩", headers: ["홍콩 SKU", "홍콩 상품명"], headerNotes: {} },
+  {
+    code: "TW",
+    fileLabel: "대만",
+    headers: ["대만 SKU", "대만 상품명"],
+    headerNotes: {
+      "대만 SKU":
+        "필수. 한국 상품과 매핑할 대만 상품코드입니다. DB에 대응하는 한국 상품이 없으면 해당 행은 건너뜁니다.",
+      "대만 상품명": "선택. 비워도 됩니다. 매핑의 기준은 상품코드입니다.",
+    },
+  },
+  {
+    code: "HK",
+    fileLabel: "홍콩",
+    headers: ["홍콩 SKU", "홍콩 상품명"],
+    headerNotes: {
+      "홍콩 SKU":
+        "필수. 한국 상품과 매핑할 홍콩 상품코드입니다. DB에 대응하는 한국 상품이 없으면 해당 행은 건너뜁니다.",
+      "홍콩 상품명": "선택. 비워도 됩니다. 매핑의 기준은 상품코드입니다.",
+    },
+  },
   {
     code: "JP",
     fileLabel: "일본",
-    headers: ["일본 SKU", "일본 상품명", "한국 SKU"],
+    headers: ["일본 SKU", "일본 상품명", "한국 상품코드"],
     headerNotes: {
       "일본 SKU":
-        "DB 일본(jp_sku) 로케일에 저장됩니다. SKU 끝 `-옵션` 접미사는 매칭 시 자동으로 제거·재시도합니다.",
-      "한국 SKU": "연결할 기존 한국 상품의 SKU입니다. 이 값으로 item을 찾아 JP 로케일을 붙입니다.",
+        "필수. DB 일본(jp_sku) 로케일에 저장됩니다. SKU 끝 `-옵션` 접미사는 매칭 시 자동으로 제거·재시도합니다.",
+      "일본 상품명": "선택. 비워도 됩니다. 매핑의 기준은 상품코드입니다.",
+      "한국 상품코드":
+        "연결할 기존 한국 상품의 상품코드입니다. DB에 이미 등록된 코드만 매핑됩니다. 없으면 해당 해외 행은 건너뛰고 안내합니다.",
     },
   },
 ];
@@ -5906,11 +5932,21 @@ export default function App() {
       });
       setMappingInputKey((prev) => prev + 1);
       await hydratePersistedState();
-      window.alert(
-        `${formatInt(Number(res?.data?.processed_file_count || 0))}개 파일에서 ${formatInt(
-          Number(res?.data?.merged_item_count || 0)
-        )}개의 SKU 매핑을 병합 반영했습니다.`
-      );
+      const skippedWarnings = Array.isArray(res?.data?.skipped_overseas_warnings)
+        ? res.data.skipped_overseas_warnings.map((w) => String(w || "").trim()).filter(Boolean)
+        : [];
+      const skippedCount = Number(res?.data?.skipped_overseas_count || skippedWarnings.length || 0);
+      let doneMsg = `${formatInt(Number(res?.data?.processed_file_count || 0))}개 파일에서 ${formatInt(
+        Number(res?.data?.merged_item_count || 0)
+      )}개의 SKU 매핑을 병합 반영했습니다.`;
+      if (skippedCount > 0 && skippedWarnings.length) {
+        const warningBlock = skippedWarnings.join("\n\n");
+        setMappingError(
+          `한국 상품코드가 DB에 없어 매핑에서 제외한 해외 상품 ${formatInt(skippedCount)}건\n\n${warningBlock}`
+        );
+        doneMsg += `\n\n한국 상품이 DB에 없어 제외한 해외 상품 ${formatInt(skippedCount)}건이 있습니다. 자세한 안내는 화면 아래 안내 박스를 확인해 주세요.`;
+      }
+      window.alert(doneMsg);
     } catch (err) {
       const detail = err?.response?.data?.detail;
       const msg = Array.isArray(detail) ? detail.join("\n") : detail || "SKU 매핑 업로드 중 오류";
@@ -9985,6 +10021,14 @@ export default function App() {
                   열이 포함됩니다. 하나의 파일 안에 여러 개의 시트를 읽을 수는 없으니, 되도록 시트를 더 추가하지는 말아
                   주세요.
                 </li>
+                <li>
+                  해외 매핑은 국가별 상품코드(SKU)만 있으면 됩니다. 해외 상품명은 비워도 되며, 주 목적은 한국
+                  상품코드와 해외 상품코드 연결입니다.
+                </li>
+                <li>
+                  해외 파일을 올릴 때 행의 한국 상품코드가 DB에 없으면 그 행은 건너뛰고, DB에 있는 한국 상품만
+                  먼저 매핑합니다. 제외된 해외 상품코드는 안내로 보여 줍니다.
+                </li>
                 <li>여러 개의 엑셀을 한 번에 선택해 올릴 수 있습니다.</li>
                 <li>기존에 등록되어 있는 상품에 대한 정보가 업로드되면 기존 정보에서 갱신합니다.</li>
                 <li>
@@ -10213,10 +10257,10 @@ export default function App() {
                     <div className="skuManualBlock">
                       <p className="skuManualNoticeHint">
                         <span className="skuManualNoticeHintLead">
-                          한국&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;브랜드, 상품코드, 상품명 필수
+                          한국&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;브랜드, 상품코드, 상품명 필수 · 대표코드·구분·바코드 선택
                         </span>
                         <span className="skuManualNoticeHintSub skuManualNoticeHintSubWarn">
-                          *MKT 등급, FCST 등급 등 상품의 상세 정보는 후에 상품마스터 탭 또는 상품검색 탭의 상세보기에서 수정할 수 있습니다.
+                          *대표코드를 비우면 상품코드와 동일하게 저장됩니다. MKT 등급, FCST 등급 등 상세 정보는 상품마스터 탭 또는 상품검색 상세보기에서 수정할 수 있습니다.
                         </span>
                       </p>
                       <div className="skuManualKrGrid">
@@ -10239,21 +10283,39 @@ export default function App() {
                           </div>
                         </label>
                         <label className="skuManualKrField">
-                          <span className="skuManualKrFieldHead">구분</span>
+                          <span className="skuManualKrFieldHead">
+                            한국 상품명 <abbr title="필수">*</abbr>
+                          </span>
                           <div className="skuManualKrFieldBody">
                             <input
                               type="text"
-                              value={manualMappingForm.segment}
+                              value={manualMappingForm.kr_name}
                               onChange={(e) =>
-                                setManualMappingForm((prev) => ({ ...prev, segment: e.target.value }))
+                                setManualMappingForm((prev) => ({ ...prev, kr_name: e.target.value }))
                               }
-                              placeholder="예: (상시) 유통기획"
+                              placeholder="예: 푸드올로지 보틀 500ml"
                               autoComplete="off"
                             />
                           </div>
                         </label>
                       </div>
                       <div className="skuManualKrSpanRow skuManualKrRow2">
+                        <label className="skuManualKrField">
+                          <span className="skuManualKrFieldHead">
+                            상품코드 <abbr title="필수">*</abbr>
+                          </span>
+                          <div className="skuManualKrFieldBody">
+                            <input
+                              type="text"
+                              value={manualMappingForm.kr_sku}
+                              onChange={(e) =>
+                                setManualMappingForm((prev) => ({ ...prev, kr_sku: e.target.value }))
+                              }
+                              placeholder="예: 05803"
+                              autoComplete="off"
+                            />
+                          </div>
+                        </label>
                         <label className="skuManualKrField">
                           <span className="skuManualKrFieldHead">대표코드</span>
                           <div className="skuManualKrFieldBody">
@@ -10271,36 +10333,18 @@ export default function App() {
                             />
                           </div>
                         </label>
-                        <label className="skuManualKrField">
-                          <span className="skuManualKrFieldHead">
-                            상품코드 <abbr title="필수">*</abbr>
-                          </span>
-                          <div className="skuManualKrFieldBody">
-                            <input
-                              type="text"
-                              value={manualMappingForm.kr_sku}
-                              onChange={(e) =>
-                                setManualMappingForm((prev) => ({ ...prev, kr_sku: e.target.value }))
-                              }
-                              placeholder="예: 05803"
-                              autoComplete="off"
-                            />
-                          </div>
-                        </label>
                       </div>
                       <div className="skuManualKrSpanRow skuManualKrRow2">
                         <label className="skuManualKrField">
-                          <span className="skuManualKrFieldHead">
-                            한국 상품명 <abbr title="필수">*</abbr>
-                          </span>
+                          <span className="skuManualKrFieldHead">구분</span>
                           <div className="skuManualKrFieldBody">
                             <input
                               type="text"
-                              value={manualMappingForm.kr_name}
+                              value={manualMappingForm.segment}
                               onChange={(e) =>
-                                setManualMappingForm((prev) => ({ ...prev, kr_name: e.target.value }))
+                                setManualMappingForm((prev) => ({ ...prev, segment: e.target.value }))
                               }
-                              placeholder="예: 푸드올로지 보틀 500ml"
+                              placeholder="예: (상시) 유통기획"
                               autoComplete="off"
                             />
                           </div>
@@ -10328,14 +10372,14 @@ export default function App() {
                     <div className="skuManualBlock">
                       <p className="skuManualNoticeHint">
                         <span className="skuManualNoticeHintLead">
-                          해외&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;선택. 비우면 해당 국가 제외
+                          해외&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;해외 상품코드(SKU)만 있으면 매핑됩니다. 상품명은 선택(비워도 됨)
                         </span>
                       </p>
                       <div className="skuManualTable skuManualTableOverseas">
                       <div className="skuManualTableHead">
                         <div>국가</div>
-                        <div>해외 SKU</div>
-                        <div>해외 상품명</div>
+                        <div>해외 상품코드</div>
+                        <div>해외 상품명 (선택)</div>
                       </div>
                       {SKU_MAPPING_OVERSEAS_FIELDS.map((field) => (
                         <div key={field.code} className="skuManualRow">
@@ -10349,7 +10393,7 @@ export default function App() {
                               onChange={(e) =>
                                 setManualMappingForm((prev) => ({ ...prev, [field.skuKey]: e.target.value }))
                               }
-                              placeholder={`${field.label} SKU`}
+                              placeholder={`${field.label} 상품코드`}
                               autoComplete="off"
                             />
                           </div>
@@ -10360,7 +10404,7 @@ export default function App() {
                               onChange={(e) =>
                                 setManualMappingForm((prev) => ({ ...prev, [field.nameKey]: e.target.value }))
                               }
-                              placeholder={`${field.label} 상품명`}
+                              placeholder="선택 · 비워도 됨"
                               autoComplete="off"
                             />
                           </div>
