@@ -15,6 +15,8 @@ class InventorySkuMappingSummaryResponse(BaseModel):
 class InventorySkuMappingUploadResponse(InventorySkuMappingSummaryResponse):
     processed_file_count: int = 0
     merged_item_count: int = 0
+    skipped_overseas_count: int = 0
+    skipped_overseas_warnings: list[str] = Field(default_factory=list)
 
 
 class InventorySkuMappingLocaleResponse(BaseModel):
