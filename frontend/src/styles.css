@@ -2570,6 +2570,19 @@ html.tauri-desktop .stickyTopbar {
   flex-wrap: wrap;
 }
 
+/* 한국·해외 재고: 탭 아래 업로드/통합 — 상품마스터 툴바와 동일 톤 */
+.inventoryScopeToolbar {
+  margin-top: 4px;
+  margin-bottom: 14px;
+}
+
+.inventoryShipmentActionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
 .itemMasterStickyToolbar {
   position: sticky;
   z-index: 36;
