@@ -101,18 +101,15 @@ const MAIN_TAB_VISIBILITY = {
   PRODUCT_SEARCH: true,
   ITEM_MASTER: true,
   SKU_MAPPING: true,
-  SHIPMENT: false,
-  PURCHASE_ORDERS: false,
+  KR: true,
+  OVERSEAS: true,
+  COMPARE: true,
+  SHIPMENT: true,
+  PURCHASE_ORDERS: true,
   SETTINGS: true,
-  KR: false,
-  OVERSEAS: false,
-  COMPARE: false,
 };
 const DEFAULT_MAIN_TAB =
   Object.entries(MAIN_TAB_VISIBILITY).find(([, visible]) => visible)?.[0] || "PRODUCT_SEARCH";
-/** 히어로 「파일 업로드」「재고/출고 통합」 — 재고 탭만(출고는 전용 서브탭에서 처리) */
-const SHOW_INVENTORY_FEATURES =
-  MAIN_TAB_VISIBILITY.KR || MAIN_TAB_VISIBILITY.OVERSEAS || MAIN_TAB_VISIBILITY.COMPARE;
 /** 데이터 관리에 표시할 엑셀 파일 그룹(보이는 메인 탭 기준) */
 const SETTINGS_VISIBLE_FILE_COUNTRIES = (() => {
   const codes = new Set();
@@ -218,7 +215,7 @@ const SKU_MAPPING_FIELDS = [
   { code: "TH", label: "태국", nameKey: "th_name", skuKey: "th_sku" },
 ];
 const SKU_MAPPING_TEMPLATE_COLUMNS = SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [nameKey, skuKey]);
-const SKU_MAPPING_OPTIONAL_COLUMNS = ["option", "brand", "barcode", "mkt_priority", "segment"];
+const SKU_MAPPING_OPTIONAL_COLUMNS = ["option", "brand", "barcode", "representative_code", "mkt_priority", "segment"];
 const EMPTY_SKU_MAPPING_FORM = Object.fromEntries([
   ...SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [
     [nameKey, ""],
@@ -541,23 +538,26 @@ const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
   {
     code: "KR",
     fileLabel: "한국",
-    headers: ["브랜드", "구분", "한국 SKU", "대표코드", "한국 상품명"],
+    headers: ["브랜드", "한국 상품명", "상품코드", "대표코드", "구분"],
     columnWidthsPx: {
       "한국 상품명": 200,
       구분: 180,
       브랜드: 100,
-      "대표코드": 88,
+      대표코드: 88,
+      상품코드: 88,
     },
     exampleHintRow: [
       "예: 푸드올로지",
-      "예: (상시) 유통기획",
-      "예: 05803",
-      "예: 05803",
       "예: 푸드올로지 보틀 500ml 레드",
+      "예: 05803",
+      "예: 05803",
+      "예: (상시) 유통기획",
     ],
     headerNotes: {
-      "대표코드":
-        "선택. 비우면 한국 SKU와 동일하게 저장됩니다. 여러 옵션 SKU가 같은 대표 상품을 가리킬 때 사용합니다.",
+      대표코드:
+        "한국 상품의 대표코드. 비우면 상품코드와 동일하게 저장됩니다. 여러 옵션 SKU가 같은 대표 상품을 가리킬 때 사용합니다.",
+      상품코드:
+        "한국 상품코드(SKU). 필수. DB 매칭·갱신의 기준 키입니다. 「한국 SKU」「어드민코드」 헤더도 동일하게 인식합니다.",
       구분:
         "선택. item.segment 로 저장. 값은 그대로 저장하되, 앞의 (X) / （X） 수식어만 제거합니다. 예: (X) 단종 → 단종.",
     },
@@ -565,21 +565,44 @@ const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
   {
     code: "US",
     fileLabel: "미국",
-    headers: ["미국 SKU", "미국 상품명", "한국 SKU"],
+    headers: ["미국 SKU", "미국 상품명", "한국 상품코드"],
     headerNotes: {
-      "한국 SKU": "연결할 기존 한국 상품의 SKU입니다. 이 값으로 item을 찾아 US 로케일을 붙입니다.",
+      "미국 SKU": "필수. 한국 상품코드와 매핑할 미국 상품코드입니다.",
+      "미국 상품명": "선택. 비워도 됩니다. 매핑의 기준은 상품코드입니다.",
+      "한국 상품코드":
+        "연결할 기존 한국 상품의 상품코드입니다. DB에 이미 등록된 코드만 매핑됩니다. 없으면 해당 해외 행은 건너뛰고 안내합니다.",
     },
   },
-  { code: "TW", fileLabel: "대만", headers: ["대만 SKU", "대만 상품명"], headerNotes: {} },
-  { code: "HK", fileLabel: "홍콩", headers: ["홍콩 SKU", "홍콩 상품명"], headerNotes: {} },
+  {
+    code: "TW",
+    fileLabel: "대만",
+    headers: ["대만 SKU", "대만 상품명"],
+    headerNotes: {
+      "대만 SKU":
+        "필수. 한국 상품과 매핑할 대만 상품코드입니다. DB에 대응하는 한국 상품이 없으면 해당 행은 건너뜁니다.",
+      "대만 상품명": "선택. 비워도 됩니다. 매핑의 기준은 상품코드입니다.",
+    },
+  },
+  {
+    code: "HK",
+    fileLabel: "홍콩",
+    headers: ["홍콩 SKU", "홍콩 상품명"],
+    headerNotes: {
+      "홍콩 SKU":
+        "필수. 한국 상품과 매핑할 홍콩 상품코드입니다. DB에 대응하는 한국 상품이 없으면 해당 행은 건너뜁니다.",
+      "홍콩 상품명": "선택. 비워도 됩니다. 매핑의 기준은 상품코드입니다.",
+    },
+  },
   {
     code: "JP",
     fileLabel: "일본",
-    headers: ["일본 SKU", "일본 상품명", "한국 SKU"],
+    headers: ["일본 SKU", "일본 상품명", "한국 상품코드"],
     headerNotes: {
       "일본 SKU":
-        "DB 일본(jp_sku) 로케일에 저장됩니다. SKU 끝 `-옵션` 접미사는 매칭 시 자동으로 제거·재시도합니다.",
-      "한국 SKU": "연결할 기존 한국 상품의 SKU입니다. 이 값으로 item을 찾아 JP 로케일을 붙입니다.",
+        "필수. DB 일본(jp_sku) 로케일에 저장됩니다. SKU 끝 `-옵션` 접미사는 매칭 시 자동으로 제거·재시도합니다.",
+      "일본 상품명": "선택. 비워도 됩니다. 매핑의 기준은 상품코드입니다.",
+      "한국 상품코드":
+        "연결할 기존 한국 상품의 상품코드입니다. DB에 이미 등록된 코드만 매핑됩니다. 없으면 해당 해외 행은 건너뛰고 안내합니다.",
     },
   },
 ];
@@ -4419,14 +4442,16 @@ export default function App() {
     );
   }
 
-  async function aggregateInventory() {
+  async function aggregateInventory(entriesOverride) {
     if (isShipmentScope || isInventoryAdminScope || countryTabMode === "COMPARE") return;
     const scopeKey = getScopeKey(countryTabMode, selectedOverseasCountry);
     if (scopeKey === "__NONE__") return;
     setInventoryRequested(true);
     setInventoryError("");
     setScopeErrorCache((prev) => ({ ...prev, [scopeKey]: "" }));
-    if (!scopedFileEntries.length) {
+    const entriesSource = Array.isArray(entriesOverride) ? entriesOverride : fileEntries;
+    const scopedEntries = entriesSource.filter((entry) => matchesCountryScope(entry.country));
+    if (!scopedEntries.length) {
       setInventoryError("현재 탭/국가에 업로드된 파일이 없습니다.");
       setScopeErrorCache((prev) => ({
         ...prev,
@@ -4436,7 +4461,7 @@ export default function App() {
     }
     setInventoryLoading(true);
     try {
-      const requestEntries = scopedFileEntries.filter((entry) => entry.file && !entry.dbFileId);
+      const requestEntries = scopedEntries.filter((entry) => entry.file && !entry.dbFileId);
       if (!requestEntries.length) {
         await hydratePersistedState();
         return;
@@ -4467,6 +4492,56 @@ export default function App() {
     } finally {
       setInventoryLoading(false);
     }
+  }
+
+  async function handleInventoryFilesSelected(event) {
+    if (!(isKRScope || isOverseasScope) || inventoryLoading) return;
+    const files = Array.from(event?.target?.files || []);
+    if (!files.length) return;
+    const existingNames = new Set(fileEntries.map((entry) => String(entry.name || "")));
+    const incomingCounts = files.reduce((acc, file) => {
+      acc[file.name] = (acc[file.name] || 0) + 1;
+      return acc;
+    }, {});
+    const duplicateNames = [
+      ...new Set(
+        files
+          .map((file) => file.name)
+          .filter((name) => existingNames.has(name) || incomingCounts[name] > 1)
+      ),
+    ];
+    const uploadableFiles = files.filter(
+      (file, index) =>
+        !existingNames.has(file.name) &&
+        files.findIndex((candidate) => candidate.name === file.name) === index
+    );
+    if (duplicateNames.length) {
+      window.alert(`${duplicateNames.join(", ")}\n같은 파일이 두개입니다.`);
+    }
+    if (!uploadableFiles.length) {
+      setUploadInputKey((k) => k + 1);
+      return;
+    }
+    const override =
+      countryTabMode === "OVERSEAS"
+        ? String(selectedOverseasCountry || OVERSEAS_UPLOAD_COUNTRIES[0]).trim().toUpperCase()
+        : "KR";
+    const metadata = await Promise.all(uploadableFiles.map((file) => inferFileMetadata(file, override)));
+    const appended = uploadableFiles.map((file, idx) => {
+      const meta = metadata[idx] || {};
+      return {
+        id: `${Date.now()}-${idx}-${file.name}`,
+        file,
+        name: file.name,
+        size: file.size,
+        country: override || meta.country || detectCountry(file.name),
+        date: meta.date || detectDate(file.name),
+      };
+    });
+    const nextEntries = [...fileEntries, ...appended];
+    setFileEntries(nextEntries);
+    setUploadInputKey((k) => k + 1);
+    await aggregateInventory(nextEntries);
   }
 
   function closeShipmentVendorOverrideModal() {
@@ -4623,6 +4698,7 @@ export default function App() {
   }
 
   async function handleShipmentFileSelected(event) {
+    if (shipmentLoading) return;
     const files = Array.from(event?.target?.files || []);
     if (!files.length) return;
     const existingNames = new Set(shipmentFileEntries.map((entry) => String(entry.name || "")));
@@ -4821,11 +4897,7 @@ export default function App() {
   }
 
   function onClickUpload() {
-    if (isInventoryAdminScope || countryTabMode === "COMPARE") return;
-    if (isShipmentScope) {
-      document.getElementById("shipment-files-input")?.click();
-      return;
-    }
+    if (!(isKRScope || isOverseasScope)) return;
     openFileInput();
   }
 
@@ -5860,11 +5932,21 @@ export default function App() {
       });
       setMappingInputKey((prev) => prev + 1);
       await hydratePersistedState();
-      window.alert(
-        `${formatInt(Number(res?.data?.processed_file_count || 0))}개 파일에서 ${formatInt(
-          Number(res?.data?.merged_item_count || 0)
-        )}개의 SKU 매핑을 병합 반영했습니다.`
-      );
+      const skippedWarnings = Array.isArray(res?.data?.skipped_overseas_warnings)
+        ? res.data.skipped_overseas_warnings.map((w) => String(w || "").trim()).filter(Boolean)
+        : [];
+      const skippedCount = Number(res?.data?.skipped_overseas_count || skippedWarnings.length || 0);
+      let doneMsg = `${formatInt(Number(res?.data?.processed_file_count || 0))}개 파일에서 ${formatInt(
+        Number(res?.data?.merged_item_count || 0)
+      )}개의 SKU 매핑을 병합 반영했습니다.`;
+      if (skippedCount > 0 && skippedWarnings.length) {
+        const warningBlock = skippedWarnings.join("\n\n");
+        setMappingError(
+          `한국 상품코드가 DB에 없어 매핑에서 제외한 해외 상품 ${formatInt(skippedCount)}건\n\n${warningBlock}`
+        );
+        doneMsg += `\n\n한국 상품이 DB에 없어 제외한 해외 상품 ${formatInt(skippedCount)}건이 있습니다. 자세한 안내는 화면 아래 안내 박스를 확인해 주세요.`;
+      }
+      window.alert(doneMsg);
     } catch (err) {
       const detail = err?.response?.data?.detail;
       const msg = Array.isArray(detail) ? detail.join("\n") : detail || "SKU 매핑 업로드 중 오류";
@@ -6234,148 +6316,6 @@ export default function App() {
               </button>
             </div>
           </div>
-          {SHOW_INVENTORY_FEATURES ? (
-          <div className="heroActions">
-            <button
-              className="primary"
-              onClick={onClickUpload}
-              disabled={isInventoryAdminScope || countryTabMode === "COMPARE"}
-            >
-              파일 업로드
-            </button>
-            <button
-              className="primary"
-              onClick={() => void (isShipmentScope ? runShipmentAggregate() : aggregateInventory())}
-              disabled={
-                isInventoryAdminScope ||
-                countryTabMode === "COMPARE" ||
-                (isShipmentScope
-                  ? shipmentLoading || shipmentFileEntries.filter((e) => e.file).length === 0
-                  : inventoryLoading || inventoryFiles.length === 0)
-              }
-            >
-              {isShipmentScope
-                ? shipmentLoading
-                  ? "출고 통합 중..."
-                  : "출고 통합 실행"
-                : inventoryLoading
-                  ? "통합 중..."
-                  : "재고 통합 실행"}
-            </button>
-            <input
-              key={uploadInputKey}
-              id="inventory-files-input"
-              type="file"
-              accept=".xlsx,.csv"
-              multiple
-              hidden
-              onChange={(e) => {
-              const run = async () => {
-                const files = Array.from(e.target.files || []);
-                if (!files.length) return;
-                const existingNames = new Set(fileEntries.map((entry) => String(entry.name || "")));
-                const incomingCounts = files.reduce((acc, file) => {
-                  acc[file.name] = (acc[file.name] || 0) + 1;
-                  return acc;
-                }, {});
-                const duplicateNames = [
-                  ...new Set(
-                    files
-                      .map((file) => file.name)
-                      .filter((name) => existingNames.has(name) || incomingCounts[name] > 1)
-                  ),
-                ];
-                const uploadableFiles = files.filter(
-                  (file, index) =>
-                    !existingNames.has(file.name) &&
-                    files.findIndex((candidate) => candidate.name === file.name) === index
-                );
-                if (duplicateNames.length) {
-                  window.alert(`${duplicateNames.join(", ")}\n같은 파일이 두개입니다.`);
-                }
-                if (!uploadableFiles.length) {
-                  setUploadInputKey((k) => k + 1);
-                  return;
-                }
-                const override =
-                  countryTabMode === "OVERSEAS"
-                    ? String(selectedOverseasCountry || OVERSEAS_UPLOAD_COUNTRIES[0]).trim().toUpperCase()
-                    : "KR";
-                const metadata = await Promise.all(
-                  uploadableFiles.map((file) => inferFileMetadata(file, override))
-                );
-                setFileEntries((prev) => [
-                  ...prev,
-                  ...uploadableFiles.map((file, idx) => {
-                    const meta = metadata[idx] || {};
-                    return {
-                      id: `${Date.now()}-${idx}-${file.name}`,
-                      file,
-                      name: file.name,
-                      size: file.size,
-                      country: override || meta.country || detectCountry(file.name),
-                      date: meta.date || detectDate(file.name),
-                    };
-                  }),
-                ]);
-                setUploadInputKey((k) => k + 1);
-              };
-              run();
-            }}
-            />
-            <input
-              key={shipmentUploadInputKey}
-              id="shipment-files-input"
-              type="file"
-              accept=".xlsx,.xls"
-              multiple
-              hidden
-              onChange={(e) => {
-                const run = async () => {
-                  const files = Array.from(e.target.files || []);
-                  if (!files.length) return;
-                  const existingNames = new Set(shipmentFileEntries.map((entry) => String(entry.name || "")));
-                  const incomingCounts = files.reduce((acc, file) => {
-                    acc[file.name] = (acc[file.name] || 0) + 1;
-                    return acc;
-                  }, {});
-                  const duplicateNames = [
-                    ...new Set(
-                      files
-                        .map((file) => file.name)
-                        .filter((name) => existingNames.has(name) || incomingCounts[name] > 1)
-                    ),
-                  ];
-                  const uploadableFiles = files.filter(
-                    (file, index) =>
-                      !existingNames.has(file.name) &&
-                      files.findIndex((candidate) => candidate.name === file.name) === index
-                  );
-                  if (duplicateNames.length) {
-                    window.alert(`${duplicateNames.join(", ")}\n같은 파일이 두개입니다.`);
-                  }
-                  if (!uploadableFiles.length) {
-                    setShipmentUploadInputKey((k) => k + 1);
-                    return;
-                  }
-                  setShipmentFileEntries((prev) => [
-                    ...prev,
-                    ...uploadableFiles.map((file, idx) => ({
-                      id: `ship-${Date.now()}-${idx}-${file.name}`,
-                      file,
-                      name: file.name,
-                      size: file.size,
-                      country: "SHIPMENT",
-                      date: "",
-                    })),
-                  ]);
-                  setShipmentUploadInputKey((k) => k + 1);
-                };
-                run();
-              }}
-            />
-          </div>
-          ) : null}
         </section>
         </div>
       </div>
@@ -6419,6 +6359,39 @@ export default function App() {
               <span>상품 등록</span>
             </button>
           ) : null}
+          {MAIN_TAB_VISIBILITY.KR ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "KR" ? "active" : ""}`}
+              onClick={() => setCountryTabMode("KR")}
+            >
+              <Home className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>한국 재고</span>
+            </button>
+          ) : null}
+          {MAIN_TAB_VISIBILITY.OVERSEAS ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "OVERSEAS" ? "active" : ""}`}
+              onClick={() => {
+                setCountryTabMode("OVERSEAS");
+                setSelectedOverseasCountry((prev) => prev || OVERSEAS_UPLOAD_COUNTRIES[0]);
+              }}
+            >
+              <Globe2 className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>해외 재고</span>
+            </button>
+          ) : null}
+          {MAIN_TAB_VISIBILITY.COMPARE ? (
+            <button
+              type="button"
+              className={`tab tabWithIcon ${countryTabMode === "COMPARE" ? "active" : ""}`}
+              onClick={() => setCountryTabMode("COMPARE")}
+            >
+              <GitCompare className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
+              <span>재고 비교</span>
+            </button>
+          ) : null}
           {MAIN_TAB_VISIBILITY.SHIPMENT ? (
             <button
               type="button"
@@ -6453,39 +6426,6 @@ export default function App() {
             >
               <Database className="tabIcon tabIconDataManagement" size={TOP_TAB_ICON_SIZE_PX - 1} strokeWidth={2} aria-hidden />
               <span>데이터 관리</span>
-            </button>
-          ) : null}
-          {MAIN_TAB_VISIBILITY.KR ? (
-            <button
-              type="button"
-              className={`tab tabWithIcon ${countryTabMode === "KR" ? "active" : ""}`}
-              onClick={() => setCountryTabMode("KR")}
-            >
-              <Home className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-              <span>한국 재고</span>
-            </button>
-          ) : null}
-          {MAIN_TAB_VISIBILITY.OVERSEAS ? (
-            <button
-              type="button"
-              className={`tab tabWithIcon ${countryTabMode === "OVERSEAS" ? "active" : ""}`}
-              onClick={() => {
-                setCountryTabMode("OVERSEAS");
-                setSelectedOverseasCountry((prev) => prev || OVERSEAS_UPLOAD_COUNTRIES[0]);
-              }}
-            >
-              <Globe2 className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-              <span>해외 재고</span>
-            </button>
-          ) : null}
-          {MAIN_TAB_VISIBILITY.COMPARE ? (
-            <button
-              type="button"
-              className={`tab tabWithIcon ${countryTabMode === "COMPARE" ? "active" : ""}`}
-              onClick={() => setCountryTabMode("COMPARE")}
-            >
-              <GitCompare className="tabIcon" size={TOP_TAB_ICON_SIZE_PX} strokeWidth={2} aria-hidden />
-              <span>재고 비교</span>
             </button>
           ) : null}
         </div>
@@ -6570,7 +6510,7 @@ export default function App() {
                   <strong>통합이 끝나면 「전체 출고 현황」 탭에서 결과를 확인할 수 있습니다.</strong>
                 </p>
               </div>
-              <div className="poOrderFileTemplateRow">
+              <div className="poOrderFileTemplateRow inventoryShipmentActionRow">
                 <button
                   type="button"
                   className="poOrderFileTemplateBtn"
@@ -6589,10 +6529,15 @@ export default function App() {
                 <span className="skuUploadMain">
                   <span className="skuUploadBadge">XLSX</span>
                   <span className="skuUploadButtonLabel">
-                    {shipmentLoading ? "출고 통합 중..." : "출고 파일 업로드"}
+                    {shipmentLoading ? "출고 통합 진행 중…" : "출고 파일 업로드"}
                   </span>
                 </span>
               </button>
+              {shipmentLoading ? (
+                <div className="aggregateProgressBanner" role="status" aria-live="polite">
+                  출고 통합 진행 중…
+                </div>
+              ) : null}
             </div>
           </div>
         </section>
@@ -6727,6 +6672,33 @@ export default function App() {
           className="filterBar stickyFilterBar"
           style={{ top: activeFilterStickyTop }}
         >
+          {(isKRScope || isOverseasScope) && (
+            <div className="inventoryFilterActions" role="group" aria-label="재고 파일 작업">
+              <input
+                key={uploadInputKey}
+                id="inventory-files-input"
+                type="file"
+                accept=".xlsx,.csv"
+                multiple
+                hidden
+                disabled={inventoryLoading}
+                onChange={(e) => void handleInventoryFilesSelected(e)}
+              />
+              <button
+                type="button"
+                className="primary inventoryFilterActionBtn"
+                onClick={onClickUpload}
+                disabled={inventoryLoading}
+              >
+                {inventoryLoading ? "재고 통합 진행 중…" : "파일 업로드"}
+              </button>
+            </div>
+          )}
+          {inventoryLoading && (isKRScope || isOverseasScope) ? (
+            <div className="aggregateProgressBanner aggregateProgressBannerInline" role="status" aria-live="polite">
+              재고 통합 진행 중…
+            </div>
+          ) : null}
           <div className="searchWrap">
             <SearchFieldIcon className="searchIcon" size={16} strokeWidth={2} />
             <input
@@ -7601,7 +7573,7 @@ export default function App() {
               {"\n"}- 날짜/레벨/검색 필터를 초기화해보세요.
               {isShipmentScope
                 ? "\n- 출고 탭 「출고 파일 업로드」에서 엑셀을 올리면 자동으로 출고 통합됩니다."
-                : "\n- 먼저 파일 업로드 후 재고 통합 실행을 1회 해주세요."}
+                : "\n- 한국/해외 재고 탭에서 파일을 업로드하면 자동으로 재고 통합됩니다."}
             </pre>
           )}
       </section>
@@ -7718,7 +7690,7 @@ export default function App() {
             {!filteredCompareRows.length ? (
               <pre className="error">
                 비교할 데이터가 없습니다.
-                {"\n"}- 먼저 한국 재고 또는 해외 재고 탭에서 파일 업로드 후 재고 통합 실행을 해주세요.
+                {"\n"}- 한국 재고 또는 해외 재고 탭에서 파일을 업로드하면 자동으로 재고 통합됩니다.
               </pre>
             ) : (
               <>
@@ -9900,9 +9872,12 @@ export default function App() {
               <div className="cautionSectionTitle">공통 (재고·출고·파일)</div>
               <ul className="cautionList">
                 <li>
+                  한국/해외 재고 탭에서 파일을 업로드하면 자동으로 재고 통합이 실행됩니다. 이미 올린 것과 같은 파일
+                  이름은 다시 올라가지 않습니다.
+                </li>
+                <li>
                   출고 탭 「출고 파일 업로드」에서 엑셀을 올리면 자동으로 출고 통합이 실행되고 결과가 화면에 반영됩니다.
                 </li>
-                <li>재고 탭에서는 이미 올린 것과 같은 파일 이름은 다시 올라가지 않습니다.</li>
                 <li>
                   재고 엑셀에 넣은 상품코드는 상품 관리에서 그 국가로 먼저 등록되어 있어야 합니다. 하나라도 빠지면 그 파일
                   전체가 반영되지 않을 수 있습니다.
@@ -10045,6 +10020,14 @@ export default function App() {
                   SKU 매핑 엑셀 템플릿(ZIP)으로 한국·미국·대만·홍콩 양식을 받을 수 있습니다. ZIP 안의 한국 파일에 구분
                   열이 포함됩니다. 하나의 파일 안에 여러 개의 시트를 읽을 수는 없으니, 되도록 시트를 더 추가하지는 말아
                   주세요.
+                </li>
+                <li>
+                  해외 매핑은 국가별 상품코드(SKU)만 있으면 됩니다. 해외 상품명은 비워도 되며, 주 목적은 한국
+                  상품코드와 해외 상품코드 연결입니다.
+                </li>
+                <li>
+                  해외 파일을 올릴 때 행의 한국 상품코드가 DB에 없으면 그 행은 건너뛰고, DB에 있는 한국 상품만
+                  먼저 매핑합니다. 제외된 해외 상품코드는 안내로 보여 줍니다.
                 </li>
                 <li>여러 개의 엑셀을 한 번에 선택해 올릴 수 있습니다.</li>
                 <li>기존에 등록되어 있는 상품에 대한 정보가 업로드되면 기존 정보에서 갱신합니다.</li>
@@ -10274,10 +10257,10 @@ export default function App() {
                     <div className="skuManualBlock">
                       <p className="skuManualNoticeHint">
                         <span className="skuManualNoticeHintLead">
-                          한국&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;브랜드, 상품코드, 상품명 필수
+                          한국&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;브랜드, 상품코드, 상품명 필수 · 대표코드·구분·바코드 선택
                         </span>
                         <span className="skuManualNoticeHintSub skuManualNoticeHintSubWarn">
-                          *MKT 등급, FCST 등급 등 상품의 상세 정보는 후에 상품마스터 탭 또는 상품검색 탭의 상세보기에서 수정할 수 있습니다.
+                          *대표코드를 비우면 상품코드와 동일하게 저장됩니다. MKT 등급, FCST 등급 등 상세 정보는 상품마스터 탭 또는 상품검색 상세보기에서 수정할 수 있습니다.
                         </span>
                       </p>
                       <div className="skuManualKrGrid">
@@ -10300,21 +10283,39 @@ export default function App() {
                           </div>
                         </label>
                         <label className="skuManualKrField">
-                          <span className="skuManualKrFieldHead">구분</span>
+                          <span className="skuManualKrFieldHead">
+                            한국 상품명 <abbr title="필수">*</abbr>
+                          </span>
                           <div className="skuManualKrFieldBody">
                             <input
                               type="text"
-                              value={manualMappingForm.segment}
+                              value={manualMappingForm.kr_name}
                               onChange={(e) =>
-                                setManualMappingForm((prev) => ({ ...prev, segment: e.target.value }))
+                                setManualMappingForm((prev) => ({ ...prev, kr_name: e.target.value }))
                               }
-                              placeholder="예: (상시) 유통기획"
+                              placeholder="예: 푸드올로지 보틀 500ml"
                               autoComplete="off"
                             />
                           </div>
                         </label>
                       </div>
                       <div className="skuManualKrSpanRow skuManualKrRow2">
+                        <label className="skuManualKrField">
+                          <span className="skuManualKrFieldHead">
+                            상품코드 <abbr title="필수">*</abbr>
+                          </span>
+                          <div className="skuManualKrFieldBody">
+                            <input
+                              type="text"
+                              value={manualMappingForm.kr_sku}
+                              onChange={(e) =>
+                                setManualMappingForm((prev) => ({ ...prev, kr_sku: e.target.value }))
+                              }
+                              placeholder="예: 05803"
+                              autoComplete="off"
+                            />
+                          </div>
+                        </label>
                         <label className="skuManualKrField">
                           <span className="skuManualKrFieldHead">대표코드</span>
                           <div className="skuManualKrFieldBody">
@@ -10332,36 +10333,18 @@ export default function App() {
                             />
                           </div>
                         </label>
-                        <label className="skuManualKrField">
-                          <span className="skuManualKrFieldHead">
-                            상품코드 <abbr title="필수">*</abbr>
-                          </span>
-                          <div className="skuManualKrFieldBody">
-                            <input
-                              type="text"
-                              value={manualMappingForm.kr_sku}
-                              onChange={(e) =>
-                                setManualMappingForm((prev) => ({ ...prev, kr_sku: e.target.value }))
-                              }
-                              placeholder="예: 05803"
-                              autoComplete="off"
-                            />
-                          </div>
-                        </label>
                       </div>
                       <div className="skuManualKrSpanRow skuManualKrRow2">
                         <label className="skuManualKrField">
-                          <span className="skuManualKrFieldHead">
-                            한국 상품명 <abbr title="필수">*</abbr>
-                          </span>
+                          <span className="skuManualKrFieldHead">구분</span>
                           <div className="skuManualKrFieldBody">
                             <input
                               type="text"
-                              value={manualMappingForm.kr_name}
+                              value={manualMappingForm.segment}
                               onChange={(e) =>
-                                setManualMappingForm((prev) => ({ ...prev, kr_name: e.target.value }))
+                                setManualMappingForm((prev) => ({ ...prev, segment: e.target.value }))
                               }
-                              placeholder="예: 푸드올로지 보틀 500ml"
+                              placeholder="예: (상시) 유통기획"
                               autoComplete="off"
                             />
                           </div>
@@ -10389,14 +10372,14 @@ export default function App() {
                     <div className="skuManualBlock">
                       <p className="skuManualNoticeHint">
                         <span className="skuManualNoticeHintLead">
-                          해외&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;선택. 비우면 해당 국가 제외
+                          해외&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;해외 상품코드(SKU)만 있으면 매핑됩니다. 상품명은 선택(비워도 됨)
                         </span>
                       </p>
                       <div className="skuManualTable skuManualTableOverseas">
                       <div className="skuManualTableHead">
                         <div>국가</div>
-                        <div>해외 SKU</div>
-                        <div>해외 상품명</div>
+                        <div>해외 상품코드</div>
+                        <div>해외 상품명 (선택)</div>
                       </div>
                       {SKU_MAPPING_OVERSEAS_FIELDS.map((field) => (
                         <div key={field.code} className="skuManualRow">
@@ -10410,7 +10393,7 @@ export default function App() {
                               onChange={(e) =>
                                 setManualMappingForm((prev) => ({ ...prev, [field.skuKey]: e.target.value }))
                               }
-                              placeholder={`${field.label} SKU`}
+                              placeholder={`${field.label} 상품코드`}
                               autoComplete="off"
                             />
                           </div>
@@ -10421,7 +10404,7 @@ export default function App() {
                               onChange={(e) =>
                                 setManualMappingForm((prev) => ({ ...prev, [field.nameKey]: e.target.value }))
                               }
-                              placeholder={`${field.label} 상품명`}
+                              placeholder="선택 · 비워도 됨"
                               autoComplete="off"
                             />
                           </div>

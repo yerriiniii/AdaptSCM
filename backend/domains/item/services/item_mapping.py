@@ -714,27 +714,41 @@ def _load_product_groups(db: Session) -> list[ProductGroup]:
 
 
 def _build_mapping_group(source: dict[str, object], row_label: str) -> dict:
-    locales: list[dict[str, str]] = []
+    locales: list[dict[str, str | None]] = []
     opt_source = source.get(OPTION_COLUMN_CANONICAL)
     for country_code, name_key, sku_key in COUNTRY_FIELD_SPECS:
         name = _append_option_to_product_name(
             _resolve_row_localized_name(source, country_code, name_key),
             opt_source,
         )
+        if name and _is_placeholder_mapping_name(name):
+            name = ""
         sku = _normalize_mapping_sku(source.get(sku_key))
         if not name and not sku:
             continue
-        if not name or not sku:
+        if country_code == "KR":
+            if not name or not sku:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{row_label}: KR 상품명과 KR SKU(상품코드)는 필수입니다.",
+                )
+            locales.append({"country_code": country_code, "name": name, "sku": sku})
+            continue
+        # 해외: 상품코드(SKU)만 있으면 매핑. 상품명은 선택(공백 허용).
+        if not sku:
             raise HTTPException(
                 status_code=400,
-                detail=f"{row_label}: {country_code} 상품명과 SKU는 함께 입력해야 합니다.",
+                detail=(
+                    f"{row_label}: {country_code} 해외 상품코드(SKU)가 필요합니다. "
+                    "해외 상품명만으로는 등록할 수 없습니다."
+                ),
             )
-        locales.append({"country_code": country_code, "name": name, "sku": sku})
+        locales.append({"country_code": country_code, "name": name or None, "sku": sku})
     if not locales:
         raise HTTPException(status_code=400, detail=f"{row_label}: 최소 1개 이상의 국가 매핑이 필요합니다.")
     kr_locale = next((locale for locale in locales if locale["country_code"] == "KR"), None)
     if kr_locale is None:
-        raise HTTPException(status_code=400, detail=f"{row_label}: KR 상품명과 KR SKU는 필수입니다.")
+        raise HTTPException(status_code=400, detail=f"{row_label}: KR 상품명과 KR SKU(상품코드)는 필수입니다.")
     brand = _normalize_brand_cell(source.get(BRAND_COLUMN_CANONICAL))
     if not brand:
         raise HTTPException(status_code=400, detail=f"{row_label}: brand(또는 브랜드) 값은 필수입니다.")
@@ -1479,6 +1493,52 @@ def get_item_sku_mapping_summary(db: Session) -> dict:
     }
 
 
+def _record_overseas_sku_locales(record: dict) -> list[dict]:
+    return [
+        loc
+        for loc in (record.get("sku_locales") or [])
+        if str(loc.get("country_code") or "").strip().upper() != "KR" and str(loc.get("sku") or "").strip()
+    ]
+
+
+def _record_kr_sku_from_row(record: dict) -> str:
+    anchor = _normalize_mapping_sku(record.get("anchor_kr_sku"))
+    if anchor:
+        return anchor
+    for loc in record.get("sku_locales") or []:
+        if str(loc.get("country_code") or "").strip().upper() != "KR":
+            continue
+        sku = _normalize_mapping_sku(loc.get("sku"))
+        if sku:
+            return sku
+    return ""
+
+
+def _format_skipped_overseas_warning(overseas_sku: str, kr_sku: str = "") -> str:
+    overseas = str(overseas_sku or "").strip() or "(코드 없음)"
+    kr = str(kr_sku or "").strip()
+    if kr:
+        return (
+            f"해외 상품 (상품코드 : {overseas})는 매핑되어 있는 한국 상품코드({kr})가 DB에 존재하지 않습니다.\n"
+            "해당 상품이 실제로 한국에 존재하는 상품인지 확인해 주시고, "
+            "존재한다면 해당 한국 상품을 먼저 등록해 주세요."
+        )
+    return (
+        f"해외 상품 (상품코드 : {overseas})는 매핑되어 있는 한국 상품이 DB에 존재하지 않습니다.\n"
+        "해당 상품이 실제로 한국에 존재하는 상품인지 확인해 주시고, "
+        "존재한다면 해당 한국 상품을 먼저 등록해 주세요."
+    )
+
+
+def _collect_skipped_overseas_warnings(record: dict, kr_sku: str, seen: set[str], out: list[str]) -> None:
+    for loc in _record_overseas_sku_locales(record):
+        sku = str(loc.get("sku") or "").strip()
+        if not sku or sku in seen:
+            continue
+        seen.add(sku)
+        out.append(_format_skipped_overseas_warning(sku, kr_sku))
+
+
 def merge_item_sku_mappings(db: Session, upload_files: list[UploadFile]) -> dict:
     settings = get_runtime_settings()
     if not settings.database_enabled:
@@ -1498,12 +1558,43 @@ def merge_item_sku_mappings(db: Session, upload_files: list[UploadFile]) -> dict
     kr_tw_core_index = _build_kr_tw_core_index(groups)
 
     touched_group_ids: set[uuid.UUID] = set()
+    skipped_overseas_warnings: list[str] = []
+    skipped_overseas_seen: set[str] = set()
     try:
         for record in records:
+            overseas_locales = _record_overseas_sku_locales(record)
+            is_overseas_row = bool(overseas_locales)
             matched_groups = _find_matching_groups(
                 record, sku_index, name_index, group_index, kr_tw_core_index
             )
-            if matched_groups:
+
+            if is_overseas_row:
+                kr_code = _record_kr_sku_from_row(record)
+                if kr_code:
+                    kr_hit = _lookup_group_by_country_sku_variants(sku_index, "KR", kr_code)
+                    if kr_hit is None:
+                        _collect_skipped_overseas_warnings(
+                            record, kr_code, skipped_overseas_seen, skipped_overseas_warnings
+                        )
+                        continue
+                    if not matched_groups:
+                        matched_groups = [kr_hit]
+                if not matched_groups:
+                    # 해외 행은 DB에 한국 상품이 있을 때만 매핑. 신규 item 생성하지 않음.
+                    _collect_skipped_overseas_warnings(
+                        record, kr_code, skipped_overseas_seen, skipped_overseas_warnings
+                    )
+                    continue
+                target = _merge_groups(
+                    db=db,
+                    groups=matched_groups,
+                    preferred_kr_name=str(record["kr_name"] or ""),
+                    sku_index=sku_index,
+                    name_index=name_index,
+                    group_index=group_index,
+                    row_label=str(record["row_label"]),
+                )
+            elif matched_groups:
                 target = _merge_groups(
                     db=db,
                     groups=matched_groups,
@@ -1576,6 +1667,8 @@ def merge_item_sku_mappings(db: Session, upload_files: list[UploadFile]) -> dict
     summary = get_item_sku_mapping_summary(db)
     summary["processed_file_count"] = len(upload_files)
     summary["merged_item_count"] = len(touched_group_ids)
+    summary["skipped_overseas_count"] = len(skipped_overseas_warnings)
+    summary["skipped_overseas_warnings"] = skipped_overseas_warnings
     return summary
 
 
