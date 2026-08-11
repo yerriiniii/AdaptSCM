@@ -200,32 +200,58 @@ const COMPARE_KPI_CARD_ICON_SRC = {
 const TOP_TAB_ICON_SIZE_PX = 20;
 /** `.kpiCardIcon` 표시 크기와 동기화 (`styles.css`). */
 const KPI_CARD_ICON_DISPLAY_PX = 50;
-const SKU_MAPPING_FIELDS = [
-  { code: "KR", label: "한국", nameKey: "kr_name", skuKey: "kr_sku" },
-  { code: "US", label: "미국", nameKey: "us_name", skuKey: "us_sku" },
-  { code: "TW", label: "대만", nameKey: "tw_name", skuKey: "tw_sku" },
-  { code: "HK", label: "홍콩", nameKey: "hk_name", skuKey: "hk_sku" },
-  { code: "JP", label: "일본", nameKey: "jp_name", skuKey: "jp_sku" },
-  { code: "SG", label: "싱가폴", nameKey: "sg_name", skuKey: "sg_sku" },
-  { code: "DE", label: "독일", nameKey: "de_name", skuKey: "de_sku" },
-  { code: "UK", label: "영국", nameKey: "uk_name", skuKey: "uk_sku" },
-  { code: "AU", label: "호주", nameKey: "au_name", skuKey: "au_sku" },
-  { code: "AE", label: "UAE", nameKey: "ae_name", skuKey: "ae_sku" },
-  { code: "VN", label: "베트남", nameKey: "vn_name", skuKey: "vn_sku" },
-  { code: "TH", label: "태국", nameKey: "th_name", skuKey: "th_sku" },
+const SKU_MAPPING_COUNTRIES = [
+  { code: "KR", label: "한국" },
+  { code: "US", label: "미국" },
+  { code: "TW", label: "대만" },
+  { code: "HK", label: "홍콩" },
+  { code: "JP", label: "일본" },
+  { code: "SG", label: "싱가/말레" },
+  { code: "DE", label: "독일" },
+  { code: "UK", label: "영국" },
+  { code: "AU", label: "호주" },
+  { code: "AE", label: "아랍" },
+  { code: "VN", label: "동남아" },
+  { code: "TH", label: "태국" },
 ];
-const SKU_MAPPING_TEMPLATE_COLUMNS = SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [nameKey, skuKey]);
-const SKU_MAPPING_OPTIONAL_COLUMNS = ["option", "brand", "barcode", "representative_code", "mkt_priority", "segment"];
-const EMPTY_SKU_MAPPING_FORM = Object.fromEntries([
-  ...SKU_MAPPING_FIELDS.flatMap(({ nameKey, skuKey }) => [
-    [nameKey, ""],
-    [skuKey, ""],
-  ]),
-  ["brand", ""],
-  ["representative_code", ""],
-  ["barcode", ""],
-  ["segment", ""],
-]);
+const SKU_MAPPING_FIELDS = SKU_MAPPING_COUNTRIES.map((country) => ({
+  ...country,
+  nameKey: country.code === "KR" ? "kr_name" : `${country.code.toLowerCase()}_name`,
+}));
+const SKU_MAPPING_OVERSEAS_COUNTRIES = SKU_MAPPING_COUNTRIES.filter(({ code }) => code !== "KR");
+const SKU_MAPPING_TYPE_PRESETS_BY_COUNTRY = {
+  US: ["MSKU", "ASIN", "FBM", "FBA"],
+  TW: ["SKU"],
+  HK: ["SKU"],
+  JP: ["FBA", "STOO1", "STOO2"],
+  SG: ["FBS1", "FBS2", "FBS3", "FBS4"],
+  DE: ["FBA1", "FBA2"],
+  UK: ["FBA1", "FBA2", "FBA3"],
+  AU: ["FBA1"],
+  AE: ["FBA"],
+  VN: ["리브1", "리브2"],
+  TH: ["SCGJWD1", "SCGJWD2", "SCGJWD3"],
+};
+const createEmptySkuMappingForm = () => ({
+  kr_name: "",
+  kr_sku: "",
+  brand: "",
+  representative_code: "",
+  barcode: "",
+  category: "",
+  segment: "",
+  overseas_locales: SKU_MAPPING_OVERSEAS_COUNTRIES.flatMap(({ code }) =>
+    (SKU_MAPPING_TYPE_PRESETS_BY_COUNTRY[code] || [""]).map((sku_type) => ({
+      country_code: code,
+      sku_type,
+      sku: "",
+      name: "",
+    }))
+  ),
+});
+const SKU_MAPPING_TEMPLATE_COLUMNS = ["kr_name", "kr_sku", "mapping_country_code", "mapping_sku_type", "mapping_sku", "mapping_name"];
+const SKU_MAPPING_OPTIONAL_COLUMNS = ["option", "brand", "barcode", "category", "representative_code", "mkt_priority", "segment"];
+const EMPTY_SKU_MAPPING_FORM = createEmptySkuMappingForm();
 
 /** 검색 입력 옆 돋보기 — Lucide Search와 같은 원·두께, 대각 손잡이만 더 길게 */
 function SearchFieldIcon({ className, size = 16, strokeWidth = 2, ...rest }) {
@@ -534,78 +560,65 @@ function excelColumnWidthFromPxApprox(px) {
 }
 
 /** SKU 탭: 국가별 전용 .xlsx를 ZIP으로 내려받기 (파일마다 첫 시트만 업로드 시 읽힘) */
-const SKU_MAPPING_TEMPLATE_ZIP_SPECS = [
-  {
-    code: "KR",
-    fileLabel: "한국",
-    headers: ["브랜드", "한국 상품명", "상품코드", "대표코드", "구분"],
-    columnWidthsPx: {
-      "한국 상품명": 200,
-      구분: 180,
-      브랜드: 100,
-      대표코드: 88,
-      상품코드: 88,
-    },
-    exampleHintRow: [
-      "예: 푸드올로지",
-      "예: 푸드올로지 보틀 500ml 레드",
-      "예: 05803",
-      "예: 05803",
-      "예: (상시) 유통기획",
-    ],
-    headerNotes: {
-      대표코드:
-        "한국 상품의 대표코드. 비우면 상품코드와 동일하게 저장됩니다. 여러 옵션 SKU가 같은 대표 상품을 가리킬 때 사용합니다.",
-      상품코드:
-        "한국 상품코드(SKU). 필수. DB 매칭·갱신의 기준 키입니다. 「한국 SKU」「어드민코드」 헤더도 동일하게 인식합니다.",
-      구분:
-        "선택. item.segment 로 저장. 값은 그대로 저장하되, 앞의 (X) / （X） 수식어만 제거합니다. 예: (X) 단종 → 단종.",
-    },
-  },
-  {
-    code: "US",
-    fileLabel: "미국",
-    headers: ["미국 SKU", "미국 상품명", "한국 상품코드"],
-    headerNotes: {
-      "미국 SKU": "필수. 한국 상품코드와 매핑할 미국 상품코드입니다.",
-      "미국 상품명": "선택. 비워도 됩니다. 매핑의 기준은 상품코드입니다.",
-      "한국 상품코드":
-        "연결할 기존 한국 상품의 상품코드입니다. DB에 이미 등록된 코드만 매핑됩니다. 없으면 해당 해외 행은 건너뛰고 안내합니다.",
-    },
-  },
-  {
-    code: "TW",
-    fileLabel: "대만",
-    headers: ["대만 SKU", "대만 상품명"],
-    headerNotes: {
-      "대만 SKU":
-        "필수. 한국 상품과 매핑할 대만 상품코드입니다. DB에 대응하는 한국 상품이 없으면 해당 행은 건너뜁니다.",
-      "대만 상품명": "선택. 비워도 됩니다. 매핑의 기준은 상품코드입니다.",
-    },
-  },
-  {
-    code: "HK",
-    fileLabel: "홍콩",
-    headers: ["홍콩 SKU", "홍콩 상품명"],
-    headerNotes: {
-      "홍콩 SKU":
-        "필수. 한국 상품과 매핑할 홍콩 상품코드입니다. DB에 대응하는 한국 상품이 없으면 해당 행은 건너뜁니다.",
-      "홍콩 상품명": "선택. 비워도 됩니다. 매핑의 기준은 상품코드입니다.",
-    },
-  },
-  {
-    code: "JP",
-    fileLabel: "일본",
-    headers: ["일본 SKU", "일본 상품명", "한국 상품코드"],
-    headerNotes: {
-      "일본 SKU":
-        "필수. DB 일본(jp_sku) 로케일에 저장됩니다. SKU 끝 `-옵션` 접미사는 매칭 시 자동으로 제거·재시도합니다.",
-      "일본 상품명": "선택. 비워도 됩니다. 매핑의 기준은 상품코드입니다.",
-      "한국 상품코드":
-        "연결할 기존 한국 상품의 상품코드입니다. DB에 이미 등록된 코드만 매핑됩니다. 없으면 해당 해외 행은 건너뛰고 안내합니다.",
-    },
-  },
-];
+const SKU_MAPPING_TEMPLATE_ZIP_SPECS = SKU_MAPPING_COUNTRIES.map((country) => {
+  if (country.code === "KR") {
+    const headers = ["브랜드", "한국 상품명", "상품코드", "대표코드", "카테고리", "구분"];
+    return {
+      code: "KR",
+      fileLabel: country.label,
+      headers,
+      columnWidthsPx: { 브랜드: 100, "한국 상품명": 220, 상품코드: 100, 대표코드: 120, 카테고리: 130, 구분: 160 },
+      exampleHintRow: [
+        "예: 풀리",
+        "예: [사쉐]풀리 레드토마토 잼 팩클렌저 샤쉐 3ml",
+        "예: 06636",
+        "예: 06636",
+        "예: 레드토마토 잼 팩클렌저",
+        "예: GWP",
+      ],
+      headerNotes: {
+        상품코드: "필수 한국 상품코드입니다.",
+        대표코드: "선택 입력입니다. 비우면 상품코드와 동일하게 저장됩니다.",
+      },
+    };
+  }
+  const isPlainCountrySkuTemplate = country.code === "TW" || country.code === "HK";
+  const codeHeaders = SKU_MAPPING_TYPE_PRESETS_BY_COUNTRY[country.code] || ["SKU"];
+  const typedHeaders = isPlainCountrySkuTemplate
+    ? [`${country.label} 상품코드`]
+    : codeHeaders.map((type) => `상품코드(${type})`);
+  const headers = ["한국 상품코드", `${country.label} 상품명`, ...typedHeaders];
+  const columnWidthsPx = {
+    "한국 상품코드": 110,
+    [`${country.label} 상품명`]: 220,
+    ...Object.fromEntries(typedHeaders.map((header) => [header, Math.max(120, header.length * 14)])),
+  };
+  const exampleHintRow = [
+    "예: 05803",
+    "공백 허용",
+    ...(isPlainCountrySkuTemplate
+      ? [`예: ${country.code}05803`]
+      : codeHeaders.map((type) => `예: ${country.code}-${type}-001`)),
+  ];
+  const headerNotes = {
+    "한국 상품코드": "DB에 등록된 한국 상품코드입니다.",
+    [`${country.label} 상품명`]: "선택 입력입니다.",
+    ...Object.fromEntries(
+      typedHeaders.map((header) => [
+        header,
+        "상품코드 타입은 괄호 안 값을 그대로 사용합니다. 새 타입이 필요하면 상품코드(새타입)처럼 열을 추가해도 됩니다.",
+      ])
+    ),
+  };
+  return {
+    code: country.code,
+    fileLabel: country.label,
+    headers,
+    columnWidthsPx,
+    exampleHintRow,
+    headerNotes,
+  };
+});
 
 async function buildSkuMappingTemplateWorkbookBuffer(spec) {
   const ExcelJS = (await import("exceljs")).default;
@@ -662,7 +675,8 @@ async function downloadSkuMappingCountryTemplatesZip() {
 
   for (const spec of SKU_MAPPING_TEMPLATE_ZIP_SPECS) {
     const buf = await buildSkuMappingTemplateWorkbookBuffer(spec);
-    zip.file(`${spec.fileLabel}_SKU_매핑_템플릿.xlsx`, buf);
+    const safeFileLabel = String(spec.fileLabel || "").replace(/[\\/]/g, "_");
+    zip.file(`${safeFileLabel}_SKU_매핑_템플릿.xlsx`, buf);
   }
 
   const blob = await zip.generateAsync({ type: "blob" });
@@ -993,7 +1007,7 @@ function normalizeOrderDateInput(rawInput) {
 }
 
 const PRODUCT_MAPPING_SEARCH_CHIPS = SKU_MAPPING_FIELDS.map(({ code }) => code);
-const SKU_MAPPING_OVERSEAS_FIELDS = SKU_MAPPING_FIELDS.filter(({ code }) => code !== "KR");
+const SKU_MAPPING_OVERSEAS_FIELDS = SKU_MAPPING_OVERSEAS_COUNTRIES;
 
 /** 발주 상품유형: 목록 ▼ ↔ 직접입력 칸 + 목록에서 선택 */
 function PurchaseProductTypeField({ preset, custom, onPresetChange, onCustomChange }) {
@@ -1144,7 +1158,15 @@ function detectCountry(name = "") {
   if (n.includes("hongkong") || n.includes("hong kong") || n.includes("香港") || n.includes("홍콩")) return "HK";
   if (n.includes("us") || n.includes("usa") || n.includes("미국")) return "US";
   if (n.includes("vn") || n.includes("vietnam") || n.includes("베트남")) return "VN";
-  if (n.includes("sg") || n.includes("singapore") || n.includes("싱가포르") || n.includes("싱가폴")) return "SG";
+  if (
+    n.includes("sg") ||
+    n.includes("singapore") ||
+    n.includes("malaysia") ||
+    /(^|[^a-z])my([^a-z]|$)/i.test(n) ||
+    n.includes("싱가포르") ||
+    n.includes("싱가폴") ||
+    n.includes("말레이시아")
+  ) return "SG";
   if (n.includes("au") || n.includes("australia") || n.includes("호주")) return "AU";
   if (n.includes("uk") || n.includes("england") || n.includes("britain") || n.includes("영국")) return "UK";
   if (n.includes("ae") || n.includes("uae") || n.includes("dubai") || n.includes("아랍에미리트")) return "AE";
@@ -1339,8 +1361,8 @@ function countryLabel(code = "KR") {
   if (code === "TW") return "대만";
   if (code === "HK") return "홍콩";
   if (code === "US") return "미국";
-  if (code === "VN") return "베트남";
-  if (code === "SG") return "싱가폴";
+  if (code === "VN") return "동남아";
+  if (code === "SG" || code === "MY") return "싱가/말레";
   if (code === "AU") return "호주";
   if (code === "UK") return "영국";
   if (code === "AE") return "UAE";
@@ -1355,6 +1377,7 @@ function getProductMappingCountries(row = {}) {
   return locales
     .map((locale) => {
       const code = String(locale?.country_code || locale?.countryCode || "").trim().toUpperCase();
+      const skuType = String(locale?.sku_type || locale?.skuType || "").trim();
       const sku = String(locale?.sku ?? "").trim();
       const name = String(locale?.name ?? "").trim();
       if (!code) return null;
@@ -1363,7 +1386,7 @@ function getProductMappingCountries(row = {}) {
       return {
         code,
         label: countryLabel(code),
-        sku: sku || "–",
+        sku: skuType ? `${skuType}: ${sku || "–"}` : sku || "–",
         description: name || "–",
       };
     })
@@ -1385,17 +1408,13 @@ const PRODUCT_SEARCH_DETAIL_EDITABLE_IDS = new Set([
   "representative_code",
   "version",
   "kr_name",
+  "category",
   "segment",
   "stock_category",
   "fcst_grade",
   "stock_grade",
   "release_month",
   "code_registered_at",
-  "kr_grade",
-  "us_grade",
-  "tw_grade",
-  "hk_grade",
-  "jp_grade",
 ]);
 
 function productSearchDetailRawValue(id, mappingRow = {}, master = {}) {
@@ -1433,17 +1452,13 @@ function buildMasterPatchPayloadFromDetail(master = {}, mappingRow = {}, extraCo
     version: productSearchDetailRawValue("version", mappingRow, master) || null,
     kr_sku: krSku,
     kr_name: krName,
+    category: productSearchDetailRawValue("category", mappingRow, master) || null,
     segment: productSearchDetailRawValue("segment", mappingRow, master) || null,
     stock_category: productSearchDetailRawValue("stock_category", mappingRow, master) || null,
     fcst_grade: productSearchDetailRawValue("fcst_grade", mappingRow, master) || null,
     stock_grade: productSearchDetailRawValue("stock_grade", mappingRow, master) || null,
     release_month: productSearchDetailRawValue("release_month", mappingRow, master) || null,
     code_registered_at: productSearchDetailRawValue("code_registered_at", mappingRow, master) || null,
-    kr_grade: productSearchDetailRawValue("kr_grade", mappingRow, master) || null,
-    us_grade: productSearchDetailRawValue("us_grade", mappingRow, master) || null,
-    tw_grade: productSearchDetailRawValue("tw_grade", mappingRow, master) || null,
-    hk_grade: productSearchDetailRawValue("hk_grade", mappingRow, master) || null,
-    jp_grade: productSearchDetailRawValue("jp_grade", mappingRow, master) || null,
     barcode: productSearchDetailRawValue("barcode", mappingRow, master) || null,
   };
   if (extraColumns.length) {
@@ -1475,17 +1490,24 @@ const PRODUCT_SEARCH_DETAIL_FIELDS = [
   { id: "representative_code", label: "대표코드" },
   { id: "version", label: "Ver." },
   { id: "kr_name", label: "상품명" },
+  { id: "category", label: "카테고리" },
   { id: "segment", label: "구분" },
   { id: "stock_category", label: "재고구분" },
   { id: "fcst_grade", label: "FCST 등급" },
   { id: "stock_grade", label: "재고 등급" },
   { id: "release_month", label: "출시월" },
   { id: "code_registered_at", label: "코드등록일자" },
-  { id: "kr_grade", label: "한국 등급" },
-  { id: "us_grade", label: "미국 등급" },
-  { id: "tw_grade", label: "대만 등급" },
-  { id: "hk_grade", label: "홍콩 등급" },
-  { id: "jp_grade", label: "일본 등급" },
+  { id: "us_codes", label: "미국 상품코드" },
+  { id: "tw_codes", label: "대만 상품코드" },
+  { id: "hk_codes", label: "홍콩 상품코드" },
+  { id: "jp_codes", label: "일본 상품코드" },
+  { id: "sg_codes", label: "싱가/말레 상품코드" },
+  { id: "de_codes", label: "독일 상품코드" },
+  { id: "uk_codes", label: "영국 상품코드" },
+  { id: "au_codes", label: "호주 상품코드" },
+  { id: "ae_codes", label: "아랍 상품코드" },
+  { id: "vn_codes", label: "동남아 상품코드" },
+  { id: "th_codes", label: "태국 상품코드" },
 ];
 
 function formatProductSearchDetailValue(value) {
@@ -1559,6 +1581,7 @@ function mappingRowAsProductSearchMaster(mappingRow = {}) {
   return {
     version: mappingRow.version,
     stock_category: mappingRow.stock_category,
+    category: mappingRow.category,
     fcst_grade: mappingRow.fcst_grade,
     stock_grade: mappingRow.stock_grade,
     release_month: mappingRow.release_month,
@@ -1597,6 +1620,7 @@ function productEditDraftFromRow(row = {}) {
   return {
     kr_sku: mappingRowKrSku(row),
     barcode: String(row.barcode ?? ""),
+    category: String(row.category ?? ""),
     kr_name: String(row.kr_name ?? ""),
     brand: String(row.brand ?? ""),
     mkt_priority: String(row.mkt_priority ?? ""),
@@ -2207,7 +2231,7 @@ export default function App() {
   });
   const [mappingError, setMappingError] = useState("");
   const mappingErrorRef = useRef(null);
-  const [manualMappingForm, setManualMappingForm] = useState({ ...EMPTY_SKU_MAPPING_FORM });
+  const [manualMappingForm, setManualMappingForm] = useState(() => createEmptySkuMappingForm());
   const [manualSkuFormKey, setManualSkuFormKey] = useState(0);
   const [mappingInputKey, setMappingInputKey] = useState(0);
   const [skuManageMode, setSkuManageMode] = useState("UPLOAD");
@@ -5963,9 +5987,21 @@ export default function App() {
     try {
       setSettingsMutating(true);
       setMappingError("");
-      const payload = Object.fromEntries(
-        Object.entries(manualMappingForm).map(([key, value]) => [key, String(value || "").trim()])
-      );
+      const payload = {
+        ...Object.fromEntries(
+          Object.entries(manualMappingForm)
+            .filter(([key]) => key !== "overseas_locales")
+            .map(([key, value]) => [key, String(value || "").trim()])
+        ),
+        overseas_locales: (manualMappingForm.overseas_locales || [])
+          .map((locale) => ({
+            country_code: String(locale.country_code || "").trim().toUpperCase(),
+            sku_type: String(locale.sku_type || "").trim(),
+            sku: String(locale.sku || "").trim(),
+            name: String(locale.name || "").trim(),
+          }))
+          .filter((locale) => locale.sku || locale.name),
+      };
       if (!payload.kr_sku) {
         window.alert("상품코드를 입력해 주세요.");
         return;
@@ -5979,7 +6015,7 @@ export default function App() {
         return;
       }
       await axios.post(`${API_BASE}/api/adaptscm/mappings/item`, payload);
-      setManualMappingForm({ ...EMPTY_SKU_MAPPING_FORM });
+      setManualMappingForm(createEmptySkuMappingForm());
       setManualSkuFormKey((k) => k + 1);
       await hydratePersistedState();
       window.alert("SKU 정보를 저장했습니다.");
@@ -6017,6 +6053,7 @@ export default function App() {
         kr_name: String(d.kr_name || "").trim(),
         brand: String(d.brand || "").trim(),
         barcode: String(d.barcode || "").trim() || null,
+        category: String(d.category || "").trim() || null,
         mkt_priority: String(d.mkt_priority || "").trim() || null,
         segment: segmentOut,
       });
@@ -6057,7 +6094,7 @@ export default function App() {
   }
 
   function resetManualSkuMappingForm() {
-    setManualMappingForm({ ...EMPTY_SKU_MAPPING_FORM });
+    setManualMappingForm(createEmptySkuMappingForm());
     setManualSkuFormKey((k) => k + 1);
   }
 
@@ -10017,8 +10054,8 @@ export default function App() {
               <div className="cautionSectionTitle">상품 관리</div>
               <ul className="cautionList">
                 <li>
-                  SKU 매핑 엑셀 템플릿(ZIP)으로 한국·미국·대만·홍콩 양식을 받을 수 있습니다. ZIP 안의 한국 파일에 구분
-                  열이 포함됩니다. 하나의 파일 안에 여러 개의 시트를 읽을 수는 없으니, 되도록 시트를 더 추가하지는 말아
+                  SKU 매핑 엑셀 템플릿(ZIP)으로 국가별 양식을 받을 수 있습니다. SKU 파일명에는 국가 이름을 꼭
+                  포함해주세요. 하나의 파일 안에 여러 개의 시트를 읽을 수는 없으니, 되도록 시트를 더 추가하지는 말아
                   주세요.
                 </li>
                 <li>
@@ -10205,6 +10242,9 @@ export default function App() {
                     <p className="poOrderFileUploadLead">
                       <strong>업로드 된 파일 내용은 새로운 상품 정보로 저장됩니다.</strong>
                     </p>
+                    <p className="poOrderFileUploadLead">
+                      <strong>SKU 파일명에는 국가 이름을 꼭 포함해주세요.</strong>
+                    </p>
                   </div>
                   <div className="poOrderFileTemplateRow">
                     <button
@@ -10257,10 +10297,10 @@ export default function App() {
                     <div className="skuManualBlock">
                       <p className="skuManualNoticeHint">
                         <span className="skuManualNoticeHintLead">
-                          한국&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;브랜드, 상품코드, 상품명 필수 · 대표코드·구분·바코드 선택
+                          한국&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;브랜드, 상품코드, 상품명 필수
                         </span>
                         <span className="skuManualNoticeHintSub skuManualNoticeHintSubWarn">
-                          *대표코드를 비우면 상품코드와 동일하게 저장됩니다. MKT 등급, FCST 등급 등 상세 정보는 상품마스터 탭 또는 상품검색 상세보기에서 수정할 수 있습니다.
+                          *대표코드를 비우면 상품코드와 동일하게 저장됩니다. MKT 등급, FCST 등급, 바코드 등 상세 정보는 상품마스터 탭 또는 상품검색 상세보기에서 수정할 수 있습니다.
                         </span>
                       </p>
                       <div className="skuManualKrGrid">
@@ -10336,6 +10376,20 @@ export default function App() {
                       </div>
                       <div className="skuManualKrSpanRow skuManualKrRow2">
                         <label className="skuManualKrField">
+                          <span className="skuManualKrFieldHead">카테고리</span>
+                          <div className="skuManualKrFieldBody">
+                            <input
+                              type="text"
+                              value={manualMappingForm.category}
+                              onChange={(e) =>
+                                setManualMappingForm((prev) => ({ ...prev, category: e.target.value }))
+                              }
+                              placeholder="예: 건강기능식품"
+                              autoComplete="off"
+                            />
+                          </div>
+                        </label>
+                        <label className="skuManualKrField">
                           <span className="skuManualKrFieldHead">구분</span>
                           <div className="skuManualKrFieldBody">
                             <input
@@ -10349,20 +10403,6 @@ export default function App() {
                             />
                           </div>
                         </label>
-                        <label className="skuManualKrField">
-                          <span className="skuManualKrFieldHead">바코드</span>
-                          <div className="skuManualKrFieldBody">
-                            <input
-                              type="text"
-                              value={manualMappingForm.barcode}
-                              onChange={(e) =>
-                                setManualMappingForm((prev) => ({ ...prev, barcode: e.target.value }))
-                              }
-                              placeholder="예: X0041I3ECT"
-                              autoComplete="off"
-                            />
-                          </div>
-                        </label>
                       </div>
                     </div>
                     </div>
@@ -10372,44 +10412,68 @@ export default function App() {
                     <div className="skuManualBlock">
                       <p className="skuManualNoticeHint">
                         <span className="skuManualNoticeHintLead">
-                          해외&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;해외 상품코드(SKU)만 있으면 매핑됩니다. 상품명은 선택(비워도 됨)
+                          해외
                         </span>
                       </p>
                       <div className="skuManualTable skuManualTableOverseas">
                       <div className="skuManualTableHead">
                         <div>국가</div>
+                        <div>상품코드 종류</div>
                         <div>해외 상품코드</div>
                         <div>해외 상품명 (선택)</div>
                       </div>
-                      {SKU_MAPPING_OVERSEAS_FIELDS.map((field) => (
-                        <div key={field.code} className="skuManualRow">
-                          <div className="skuManualCountryCell">
-                            <span className="skuManualCountryLabel">{field.label}</span>
+                      {SKU_MAPPING_OVERSEAS_COUNTRIES.map((field) => {
+                        const indexedLocales = (manualMappingForm.overseas_locales || [])
+                          .map((locale, index) => ({ locale, index }))
+                          .filter(({ locale }) => String(locale.country_code || "").trim().toUpperCase() === field.code);
+                        if (!indexedLocales.length) return null;
+                        return (
+                          <div key={field.code} className="skuManualCountryGroup">
+                            <div className="skuManualCountryCell skuManualCountryGroupLabel">
+                              <span className="skuManualCountryLabel">{field.label} ({field.code})</span>
+                            </div>
+                            <div className="skuManualCountryGroupRows">
+                              {indexedLocales.map(({ locale, index }) => (
+                                <div key={`${field.code}-${index}`} className="skuManualRow skuManualGroupedRow">
+                                  <div className="skuManualInputCell">
+                                    <input
+                                      type="text"
+                                      value={locale.sku_type}
+                                      onChange={(e) =>
+                                        setManualMappingForm((prev) => ({ ...prev, overseas_locales: prev.overseas_locales.map((item, itemIndex) => itemIndex === index ? { ...item, sku_type: e.target.value } : item) }))
+                                      }
+                                      placeholder="예: FBS1"
+                                      autoComplete="off"
+                                    />
+                                  </div>
+                                  <div className="skuManualInputCell">
+                                    <input
+                                      type="text"
+                                      value={locale.sku}
+                                      onChange={(e) =>
+                                        setManualMappingForm((prev) => ({ ...prev, overseas_locales: prev.overseas_locales.map((item, itemIndex) => itemIndex === index ? { ...item, sku: e.target.value } : item) }))
+                                      }
+                                      placeholder="선택 · 비워도 됨"
+                                      autoComplete="off"
+                                    />
+                                  </div>
+                                  <div className="skuManualInputCell">
+                                    <input
+                                      type="text"
+                                      value={locale.name}
+                                      onChange={(e) =>
+                                        setManualMappingForm((prev) => ({ ...prev, overseas_locales: prev.overseas_locales.map((item, itemIndex) => itemIndex === index ? { ...item, name: e.target.value } : item) }))
+                                      }
+                                      placeholder="선택 입력"
+                                      autoComplete="off"
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <div className="skuManualInputCell">
-                            <input
-                              type="text"
-                              value={manualMappingForm[field.skuKey]}
-                              onChange={(e) =>
-                                setManualMappingForm((prev) => ({ ...prev, [field.skuKey]: e.target.value }))
-                              }
-                              placeholder={`${field.label} 상품코드`}
-                              autoComplete="off"
-                            />
-                          </div>
-                          <div className="skuManualInputCell">
-                            <input
-                              type="text"
-                              value={manualMappingForm[field.nameKey]}
-                              onChange={(e) =>
-                                setManualMappingForm((prev) => ({ ...prev, [field.nameKey]: e.target.value }))
-                              }
-                              placeholder="선택 · 비워도 됨"
-                              autoComplete="off"
-                            />
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     </div>
                   </div>
@@ -10515,7 +10579,7 @@ export default function App() {
                         </div>
                       </div>
                       {row._countries.map((country, countryIdx) => (
-                        <Fragment key={`${row._id}-${country.code}`}>
+                        <Fragment key={`${row._id}-${country.code}-${country.sku}`}>
                           {countryIdx > 0 ? (
                             <div className="productMappingGridRowRule" aria-hidden="true" />
                           ) : null}
