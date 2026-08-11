@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { Eye, EyeOff, KeyRound, Package } from "lucide-react";
 import {
@@ -11,14 +11,6 @@ import {
 
 const SESSION_HOURS = 3;
 
-function setSessionBannerHeightCssVar(px) {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.setProperty(
-    "--auth-session-banner-height",
-    `${Math.max(0, Math.round(px) || 0)}px`
-  );
-}
-
 function parseErrorMessage(err) {
   const st = err?.response?.status;
   const d = err?.response?.data?.detail;
@@ -30,14 +22,6 @@ function parseErrorMessage(err) {
   if (typeof d === "string") return d;
   if (typeof d === "object" && d.message) return String(d.message);
   return String(d);
-}
-
-function formatSessionRemaining(expMs) {
-  const remSec = Math.max(0, Math.floor((expMs - Date.now()) / 1000));
-  const hh = String(Math.floor(remSec / 3600)).padStart(2, "0");
-  const mm = String(Math.floor((remSec % 3600) / 60)).padStart(2, "0");
-  const ss = String(remSec % 60).padStart(2, "0");
-  return `${hh}:${mm}:${ss}`;
 }
 
 function AuthGateHeroTitle() {
@@ -63,8 +47,7 @@ export default function AuthGate({ children }) {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showAccessCode, setShowAccessCode] = useState(false);
-  const [sessionTick, setSessionTick] = useState(0);
-  const sessionBannerRef = useRef(null);
+  const [sessionTokenVersion, setSessionTokenVersion] = useState(0);
 
   const expireSession = useCallback((message) => {
     setAccessToken(null);
@@ -117,6 +100,14 @@ export default function AuthGate({ children }) {
   }, [expireSession]);
 
   useEffect(() => {
+    const onTokenUpdated = () => {
+      setSessionTokenVersion((n) => n + 1);
+    };
+    window.addEventListener("adaptscm-auth-token-updated", onTokenUpdated);
+    return () => window.removeEventListener("adaptscm-auth-token-updated", onTokenUpdated);
+  }, []);
+
+  useEffect(() => {
     if (phase !== "authed") return undefined;
     const t = getAccessToken();
     const expMs = parseJwtExpiryMs(t);
@@ -131,46 +122,7 @@ export default function AuthGate({ children }) {
       window.dispatchEvent(new CustomEvent("adaptscm-auth-expired"));
     }, delay);
     return () => clearTimeout(id);
-  }, [phase, expireSession]);
-
-  useEffect(() => {
-    if (phase !== "authed") return undefined;
-    const id = setInterval(() => setSessionTick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, [phase]);
-
-  const sessionRemainingLabel = useMemo(() => {
-    if (phase !== "authed") return "";
-    void sessionTick;
-    const expMs = parseJwtExpiryMs(getAccessToken());
-    if (expMs == null) return "";
-    return formatSessionRemaining(expMs);
-  }, [phase, sessionTick]);
-
-  useEffect(() => {
-    if (!sessionRemainingLabel) {
-      setSessionBannerHeightCssVar(0);
-      return undefined;
-    }
-    const el = sessionBannerRef.current;
-    if (!el) {
-      setSessionBannerHeightCssVar(0);
-      return undefined;
-    }
-    const measure = () => setSessionBannerHeightCssVar(el.offsetHeight || 0);
-    measure();
-    let ro;
-    if (typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(measure);
-      ro.observe(el);
-    }
-    window.addEventListener("resize", measure);
-    return () => {
-      window.removeEventListener("resize", measure);
-      if (ro) ro.disconnect();
-      setSessionBannerHeightCssVar(0);
-    };
-  }, [sessionRemainingLabel]);
+  }, [phase, expireSession, sessionTokenVersion]);
 
   const onSubmitAccessCode = async (e) => {
     e.preventDefault();
@@ -286,14 +238,5 @@ export default function AuthGate({ children }) {
     );
   }
 
-  return (
-    <>
-      {sessionRemainingLabel ? (
-        <div ref={sessionBannerRef} className="authGateSessionBanner" role="status" aria-live="polite">
-          세션 남은 시간 {sessionRemainingLabel}
-        </div>
-      ) : null}
-      {children}
-    </>
-  );
+  return children;
 }

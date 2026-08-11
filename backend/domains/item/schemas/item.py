@@ -159,6 +159,7 @@ class ItemMasterRowResponse(BaseModel):
     vn_codes: str = ""
     th_codes: str = ""
     barcode: str = ""
+    locales: list[InventorySkuMappingLocaleResponse] = Field(default_factory=list)
     extra_fields: dict[str, str] = Field(default_factory=dict)
     updated_at: str | None = None
 
@@ -202,6 +203,7 @@ class ItemMasterRowPatchRequest(BaseModel):
     hk_grade: str | None = None
     jp_grade: str | None = None
     barcode: str | None = Field(None, max_length=255)
+    overseas_locales: list[InventorySkuMappingLocaleRequest] | None = None
     extra_fields: dict[str, str | None] | None = None
 
     @field_validator("brand")

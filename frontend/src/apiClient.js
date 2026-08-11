@@ -32,6 +32,9 @@ export function setAccessToken(token) {
   if (typeof localStorage === "undefined") return;
   if (token) localStorage.setItem(TOKEN_KEY, token);
   else localStorage.removeItem(TOKEN_KEY);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("adaptscm-auth-token-updated"));
+  }
 }
 
 export function clearAccessToken() {

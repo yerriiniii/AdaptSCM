@@ -143,7 +143,7 @@ html.tauri-desktop .stickyTopbar {
 .heroHeadDash .heroTitle {
   margin: 0;
   padding-top: 2px;
-  padding-right: min(10rem, 32vw);
+  padding-right: min(24rem, 52vw);
   max-width: 100%;
   box-sizing: border-box;
 }
@@ -193,7 +193,7 @@ html.tauri-desktop .stickyTopbar {
 
 @media (min-width: 700px) {
   .heroHeadDash .heroTitle {
-    padding-right: 7.75rem;
+    padding-right: 23rem;
   }
 }
 
@@ -203,10 +203,11 @@ html.tauri-desktop .stickyTopbar {
   top: 0;
   z-index: 1;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 5px;
-  width: 8.5rem;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: auto;
   max-width: 100%;
   box-sizing: border-box;
   flex: 0 0 auto;
@@ -223,8 +224,9 @@ button.ghost.heroHeadAccountBtn {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  width: 100%;
-  min-width: 0;
+  width: auto;
+  flex: 0 0 auto;
+  min-width: 7.5rem;
   box-sizing: border-box;
   height: 30px;
   min-height: 30px;
@@ -245,6 +247,74 @@ button.ghost.heroHeadAccountBtn:hover {
 
 .heroHeadAccountBtn .tabIcon {
   flex-shrink: 0;
+}
+
+.heroSessionBox {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #d9e7df;
+  border-radius: 8px;
+  background: #f7fbf8;
+  color: #334155;
+  box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.heroSessionIcon {
+  flex-shrink: 0;
+  color: #64748b;
+}
+
+.heroSessionLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  line-height: 1;
+}
+
+.heroSessionTime {
+  min-width: 4.45rem;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 700;
+  color: #116149;
+  line-height: 1;
+  text-align: center;
+}
+
+.heroSessionExtendBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 1px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #0b7a53;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.heroSessionExtendBtn:hover:not(:disabled) {
+  background: transparent;
+  color: #065f46;
+}
+
+.heroSessionExtendBtn:disabled {
+  opacity: 0.58;
+  cursor: wait;
 }
 
 .heroTitle {
@@ -3138,7 +3208,7 @@ button.ghost.heroHeadAccountBtn:hover {
 
 .itemMasterTableHead,
 .itemMasterTableRow {
-  /* 상품마스터 기본 23열 너비 — 여기(--item-master-grid-columns)만 수정 */
+  /* 상품마스터 기본 12열 너비 — 여기(--item-master-grid-columns)만 수정 */
   --item-master-extra-col-width: minmax(72px, 0.5fr);
   --item-master-grid-columns:
     120px
@@ -3152,20 +3222,9 @@ button.ghost.heroHeadAccountBtn:hover {
     90px
     90px
     96px
-    130px
-    130px
-    115px
-    115px
-    130px
-    135px
-    120px
-    130px
-    115px
-    115px
-    130px
     135px;
   grid-template-columns: var(--item-master-grid-columns);
-  min-width: 2776px;
+  min-width: 1406px;
 }
 
 .itemMasterTableWrap .itemMasterTableHead {
@@ -4457,8 +4516,8 @@ button.ghost.heroHeadAccountBtn:hover {
 }
 
 .productMappingResultsColumn {
-  width: 60%;
-  max-width: 100%;
+  width: min(100%, 1000px);
+  max-width: 1000px;
   min-width: 0;
   margin-left: auto;
   margin-right: auto;
@@ -4492,10 +4551,10 @@ button.ghost.heroHeadAccountBtn:hover {
 }
 
 .productMappingList {
-  margin-top: 18px;
+  margin-top: 16px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
 }
 
 .productMappingNoResult {
@@ -4506,12 +4565,13 @@ button.ghost.heroHeadAccountBtn:hover {
 }
 
 .productMappingItemCard {
-  border: 1px solid #e6edf5;
-  border-radius: 14px;
+  border: 1px solid #d8e5ef;
+  border-radius: 8px;
   background: #ffffff;
   overflow: hidden;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   /* 헤더 연두 밴드 상단 라운딩과 동기 */
-  --product-mapping-card-radius: 14px;
+  --product-mapping-card-radius: 8px;
 }
 
 .productMappingItemMeta {
@@ -4523,12 +4583,12 @@ button.ghost.heroHeadAccountBtn:hover {
 /* 헤더(브랜드 | 그룹명)와 국가 행을 한 그리드로 — 구분선 | 세로 정렬 */
 .productMappingAlignGrid {
   display: grid;
-  grid-template-columns: minmax(0, max-content) 0.55rem minmax(0, 1fr) max-content;
+  grid-template-columns: max-content minmax(0, max-content) 0.55rem minmax(0, 1fr) max-content;
   /* column-gap 은 헤더 연두 셀 사이에 부모(흰) 배경이 비침 → 0 + 셀 안 패딩으로 간격 */
   column-gap: 0;
   align-items: center;
   row-gap: 0;
-  padding: 0 14px 10px;
+  padding: 0 28px 28px;
   background: #ffffff;
   font-size: 15px;
   line-height: 1.45;
@@ -4539,21 +4599,22 @@ button.ghost.heroHeadAccountBtn:hover {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: subgrid;
-  column-gap: 0.35rem;
+  column-gap: 0.75rem;
   align-items: center;
-  background: #edf8f2;
-  border-bottom: 1px solid #b9e5d3;
+  background: #edf8f4;
+  border-bottom: 1px solid #b8ddce;
   /* alignGrid 좌우 패딩(14px)까지 칠해 둥근 모서리 안까지 연두 */
-  margin-left: -14px;
-  margin-right: -14px;
-  width: calc(100% + 28px);
+  margin-left: -28px;
+  margin-right: -28px;
+  width: calc(100% + 56px);
   box-sizing: border-box;
-  padding: 12px 14px 11px;
+  padding: 18px 28px;
   border-top-left-radius: calc(var(--product-mapping-card-radius) - 1px);
   border-top-right-radius: calc(var(--product-mapping-card-radius) - 1px);
 }
 
 .productMappingGridHeadBrand,
+.productMappingGridHeadSku,
 .productMappingGridHeadPipe,
 .productMappingGridHeadName,
 .productMappingGridHeadMeta {
@@ -4576,29 +4637,29 @@ button.ghost.heroHeadAccountBtn:hover {
 
 .productMappingDetailBtn {
   flex-shrink: 0;
-  border: 1px solid #0f766e;
-  border-radius: 999px;
-  background: #0f766e;
-  color: #ffffff;
-  font-size: 13px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #0f766e;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.2;
-  padding: 0.35rem 0.75rem;
+  padding: 0;
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
 }
 
 .productMappingDetailBtn:hover:not(:disabled) {
-  background: #0d9488;
-  border-color: #0d9488;
-  color: #ffffff;
+  background: transparent;
+  color: #065f46;
 }
 
 .productMappingDetailBtn.isOpen {
-  background: #065f46;
-  border-color: #065f46;
-  color: #ffffff;
+  background: transparent;
+  color: #065f46;
 }
 
 .productMappingDetailBtn:disabled {
@@ -4929,6 +4990,84 @@ button.ghost.heroHeadAccountBtn:hover {
   border-top: 1px solid #f1f5f9;
 }
 
+.productMappingGroupedCodes {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 18px;
+  padding-top: 18px;
+}
+
+.productMappingGroupedCountry {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 118px;
+  padding: 15px 18px 14px;
+  border: 1px solid #c9d9e8;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.productMappingGroupedCountry:last-child {
+  border-bottom: 1px solid #c9d9e8;
+  padding-bottom: 18px;
+}
+
+.productMappingGroupedCountryHead {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #dfe8f0;
+}
+
+.productMappingGroupedCountryCode {
+  flex-shrink: 0;
+  color: #071a36;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.productMappingGroupedCountryName {
+  min-width: 0;
+  color: #071a36;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.productMappingGroupedCodeRows {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding-top: 11px;
+  flex: 1 1 auto;
+}
+
+.productMappingGroupedCodeRow {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+}
+
+.productMappingGroupedCodeRow.noType {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.productMappingGroupedCodeRow.noType .productMappingCountrySkuType {
+  display: none;
+}
+
 .productMappingGridCountryPrefix {
   padding: 10px 0.35rem 10px 0;
   background: #ffffff;
@@ -4959,8 +5098,8 @@ button.ghost.heroHeadAccountBtn:hover {
 }
 
 .productMappingCountryLocaleName {
-  font-weight: 600;
-  color: var(--ui-text-secondary);
+  font-weight: 700;
+  color: #334155;
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -4987,6 +5126,22 @@ button.ghost.heroHeadAccountBtn:hover {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.productMappingItemSkuPart {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 31px;
+  padding: 0.35rem 0.78rem;
+  border: 1px solid #0f766e;
+  border-radius: 999px;
+  background: #0f766e;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
   white-space: nowrap;
 }
 
@@ -5019,20 +5174,24 @@ button.ghost.heroHeadAccountBtn:hover {
 }
 
 .productMappingCountryCode {
-  color: #111827;
+  color: #0f172a;
   font-weight: 700;
   font-size: 14px;
   flex-shrink: 0;
 }
 
 .productMappingCountrySkuInline {
-  font-size: 14px;
+  min-height: 1.35em;
+  font-size: 16px;
   font-weight: 500;
-  color: var(--ui-text-secondary);
-  text-align: right;
-  justify-self: end;
-  word-break: break-all;
-  line-height: 1.4;
+  color: #071a36;
+  text-align: left;
+  justify-self: start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+  line-height: 1.35;
   max-width: 100%;
 }
 
@@ -5048,6 +5207,21 @@ button.ghost.heroHeadAccountBtn:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.productMappingCountrySkuType {
+  justify-self: start;
+  min-width: 0;
+  color: #073244;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.2;
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: #e8f6f3;
+  white-space: nowrap;
+  text-align: center;
 }
 
 .productMappingSkuValue {
@@ -5207,15 +5381,25 @@ textarea:focus {
 
   .productMappingAlignGrid {
     padding: 0 12px 10px;
-    grid-template-columns: minmax(0, max-content) 0.5rem minmax(0, 1fr) minmax(0, 34vw);
+    grid-template-columns: max-content minmax(0, max-content) 0.5rem minmax(0, 1fr) minmax(0, 34vw);
   }
 
   .productMappingGridHeadBand {
-    column-gap: 0.3rem;
+    column-gap: 0.55rem;
     margin-left: -12px;
     margin-right: -12px;
     width: calc(100% + 24px);
     padding: 12px 12px 11px;
+  }
+
+  .productMappingGroupedCountry {
+    min-height: 110px;
+    padding: 14px 16px;
+  }
+
+  .productMappingGroupedCodeRow {
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 14px;
   }
 
   .productMappingDetailGrid.isTwoCol {
@@ -5246,6 +5430,23 @@ textarea:focus {
 
   .productMappingGridCountrySku {
     padding-left: 0.3rem;
+  }
+}
+
+@media (max-width: 760px) {
+  .productMappingGroupedCodes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+@media (max-width: 560px) {
+  .productMappingGroupedCodes {
+    grid-template-columns: 1fr;
+  }
+
+  .productMappingGroupedCountry {
+    min-height: auto;
   }
 }
 
@@ -6606,9 +6807,10 @@ th {
 
   .heroHeadDash .heroHeadAccount {
     position: static;
-    margin: 6px 0 0;
-    margin-left: auto;
-    width: min(8.5rem, 100%);
+    margin: 10px 0 0;
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
 
@@ -6963,6 +7165,20 @@ th {
   background: #f8fafc;
   border-color: #b8c4d3;
   color: #1f2937;
+}
+
+.poOrderFileTemplateBtn.itemMasterTemplateBtn,
+.poOrderFileTemplateBtn.itemMasterUploadBtn {
+  border-color: #86efac;
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.poOrderFileTemplateBtn.itemMasterTemplateBtn:hover:not(:disabled),
+.poOrderFileTemplateBtn.itemMasterUploadBtn:hover:not(:disabled) {
+  background: #d1fae5;
+  border-color: #4ade80;
+  color: #14532d;
 }
 
 /* 템플릿 버튼과 엑셀 첨부(점선 패널) 사이: 기본 skuUploadPanel translateY 제거 */

@@ -7,11 +7,17 @@ from jose import jwt
 from shared.config import get_runtime_settings
 
 
-def create_access_token(*, user_id: UUID, email: str, is_admin: bool) -> tuple[str, int]:
+def create_access_token(
+    *,
+    user_id: UUID,
+    email: str,
+    is_admin: bool,
+    expires_at: datetime | None = None,
+) -> tuple[str, int]:
     """Returns (token, expires_in_seconds)."""
     s = get_runtime_settings()
     now = datetime.now(timezone.utc)
-    exp = now + timedelta(minutes=s.jwt_expire_minutes)
+    exp = expires_at or now + timedelta(minutes=s.jwt_expire_minutes)
     payload: dict[str, Any] = {
         "sub": str(user_id),
         "email": email,
@@ -20,7 +26,7 @@ def create_access_token(*, user_id: UUID, email: str, is_admin: bool) -> tuple[s
         "exp": int(exp.timestamp()),
     }
     token = jwt.encode(payload, s.jwt_secret, algorithm=s.jwt_algorithm)
-    expires_in = int(s.jwt_expire_minutes * 60)
+    expires_in = max(0, int(exp.timestamp() - now.timestamp()))
     return token, expires_in
 
 

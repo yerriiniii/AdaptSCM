@@ -16,10 +16,13 @@ from sqlalchemy.orm import Session, selectinload
 
 from domains.item.models import ItemMasterExtraColumn, ProductGroup, ProductLocale
 from domains.item.services.item_mapping import (
+    COUNTRY_CODES,
+    _canonical_country_code,
     _normalize_brand_cell,
     _normalize_barcode_cell,
     _normalize_category_cell,
     _normalize_mapping_sku,
+    _normalize_mapping_sku_type,
     normalize_item_segment,
 )
 from shared.config import get_runtime_settings
@@ -370,6 +373,10 @@ def master_row_payload(group: ProductGroup, extra_field_keys: list[str] | None =
         "vn_codes": _overseas_code_summary(group, "VN"),
         "th_codes": _overseas_code_summary(group, "TH"),
         "barcode": group.barcode or "",
+        "locales": [
+            {"country_code": loc.country_code, "sku_type": loc.sku_type, "name": loc.name, "sku": loc.sku}
+            for loc in sorted(group.locales, key=lambda l: (str(l.country_code or ""), str(l.sku_type or ""), str(l.sku or "")))
+        ],
         "extra_fields": _extra_fields_payload(group, extra_field_keys or []),
         "updated_at": group.updated_at.isoformat() if group.updated_at else None,
     }
@@ -872,6 +879,70 @@ def _apply_master_fields(group: ProductGroup, kr_locale: ProductLocale, record: 
     kr_locale.updated_at = now
 
 
+def _locale_patch_key(country_code: str, sku_type: object, sku: object) -> tuple[str, str, str]:
+    cc = _canonical_country_code(country_code)
+    st = "" if cc == "KR" else _normalize_mapping_sku_type(sku_type).casefold()
+    return (cc, st, _normalize_mapping_sku(sku))
+
+
+def _apply_overseas_locales_patch(db: Session, group: ProductGroup, raw_locales: object, now: datetime) -> None:
+    if raw_locales is None:
+        return
+    if not isinstance(raw_locales, list):
+        raise HTTPException(status_code=400, detail="해외 상품코드 형식이 올바르지 않습니다.")
+
+    incoming: list[dict[str, str | None]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for idx, raw in enumerate(raw_locales, start=1):
+        if not isinstance(raw, dict):
+            raise HTTPException(status_code=400, detail=f"해외 상품코드 {idx}행 형식이 올바르지 않습니다.")
+        country_code = _canonical_country_code(raw.get("country_code"))
+        sku = _normalize_mapping_sku(raw.get("sku"))
+        sku_type = _normalize_mapping_sku_type(raw.get("sku_type")) or "SKU"
+        name = _cell_text(raw.get("name"))[:255] or None
+        if not sku:
+            continue
+        if not country_code or country_code == "KR" or country_code not in COUNTRY_CODES:
+            raise HTTPException(status_code=400, detail=f"해외 상품코드 {idx}행의 국가가 올바르지 않습니다.")
+        key = _locale_patch_key(country_code, sku_type, sku)
+        if key in seen:
+            raise HTTPException(status_code=400, detail=f"해외 상품코드가 중복되었습니다: {country_code} {sku_type} {sku}")
+        seen.add(key)
+        conflict = db.execute(
+            select(ProductLocale).where(
+                ProductLocale.country_code == country_code,
+                ProductLocale.sku_type == sku_type,
+                ProductLocale.sku == sku,
+                ProductLocale.item_id != group.id,
+            )
+        ).scalar_one_or_none()
+        if conflict is not None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"다른 상품이 이미 사용 중인 해외 상품코드입니다: {country_code} {sku_type} {sku}",
+            )
+        incoming.append({"country_code": country_code, "sku_type": sku_type, "sku": sku, "name": name})
+
+    for loc in list(group.locales):
+        if str(loc.country_code or "").strip().upper() == "KR":
+            continue
+        group.locales.remove(loc)
+        db.delete(loc)
+
+    for loc in incoming:
+        group.locales.append(
+            ProductLocale(
+                id=uuid.uuid4(),
+                item_id=group.id,
+                country_code=loc["country_code"] or "",
+                sku_type=loc["sku_type"],
+                name=loc["name"],
+                sku=loc["sku"] or "",
+                updated_at=now,
+            )
+        )
+
+
 def merge_item_master_uploads(db: Session, upload_files: list[UploadFile]) -> dict:
     settings = get_runtime_settings()
     if not settings.database_enabled:
@@ -1087,6 +1158,8 @@ def patch_item_master_row(db: Session, payload: dict[str, object]) -> dict:
     if "barcode" in payload:
         bc = _normalize_barcode_cell(payload.get("barcode"))
         group.barcode = bc if bc else None
+    if "overseas_locales" in payload:
+        _apply_overseas_locales_patch(db, group, payload.get("overseas_locales"), now)
     group.manual_updated_at = now
 
     extra_cols = list_item_master_extra_columns(db)
