@@ -75,6 +75,7 @@ _COUNTRY_KO_LABEL = {
 }
 COUNTRY_ORDER = {country_code: index for index, country_code in enumerate(COUNTRY_CODES)}
 _COUNTRY_HEADER_ALIASES = {
+    "AE": ("아랍", "아랍에미리트", "AE", "UAE", "uae", "dubai", "abudhabi"),
     "SG": (
         "싱가/말레",
         "싱가폴",
@@ -824,15 +825,14 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
             if not sku:
                 continue
             country_code = _canonical_country_code(
-                spec.get("country_code") or row_country_code or _country_code_from_mapping_filename(filename)
+                _country_code_from_mapping_filename(filename) or row_country_code or spec.get("country_code")
             )
             if not country_code:
                 raise HTTPException(
                     status_code=400,
                     detail=(
                         f"{filename}: `{spec['raw_label']}` 헤더에서 국가를 알 수 없습니다. "
-                        "`미국 상품코드(FBA)`처럼 국가를 헤더에 넣거나, 파일명에 국가 이름/국가코드(예: 미국, US)를 "
-                        "포함하거나, `mapping_country_code` 열을 추가해 주세요."
+                        "SKU 파일명에 국가 이름을 포함하거나 `mapping_country_code` 열을 추가해 주세요."
                     ),
                 )
             if country_code == "KR":
