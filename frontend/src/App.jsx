@@ -1169,7 +1169,7 @@ function detectCountry(name = "") {
   ) return "SG";
   if (n.includes("au") || n.includes("australia") || n.includes("호주")) return "AU";
   if (n.includes("uk") || n.includes("england") || n.includes("britain") || n.includes("영국")) return "UK";
-  if (n.includes("ae") || n.includes("uae") || n.includes("dubai") || n.includes("아랍에미리트")) return "AE";
+  if (n.includes("ae") || n.includes("uae") || n.includes("dubai") || n.includes("아랍") || n.includes("아랍에미리트")) return "AE";
   if (n.includes("jp") || n.includes("japan") || n.includes("일본")) return "JP";
   if (n.includes("de") || n.includes("germany") || n.includes("독일")) return "DE";
   if (n.includes("th") || n.includes("thailand") || n.includes("태국")) return "TH";
