@@ -24,6 +24,7 @@ class ProductGroup(Base):
     brand: Mapped[str | None] = mapped_column(String(255), nullable=True)
     representative_code: Mapped[str | None] = mapped_column(String(255), nullable=True)
     barcode: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(255), nullable=True)
     segment: Mapped[str | None] = mapped_column(String(255), nullable=True)
     mkt_priority: Mapped[str | None] = mapped_column(String(255), nullable=True)
     version: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -65,6 +66,7 @@ class ProductLocale(Base):
         nullable=False,
     )
     country_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    sku_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     name: Mapped[str | None] = mapped_column(String(255))
     sku: Mapped[str] = mapped_column(String(255), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -75,7 +77,9 @@ class ProductLocale(Base):
 
     __table_args__ = (
         Index("ix_item_mapping_item_country", "item_id", "country_code"),
-        Index("ix_item_mapping_country_sku", "country_code", "sku", unique=True),
+        Index("ix_item_mapping_country_type", "country_code", "sku_type"),
+        Index("ix_item_mapping_country_sku", "country_code", "sku"),
+        Index("ix_item_mapping_country_type_sku", "country_code", "sku_type", "sku", unique=True),
         Index("ix_item_mapping_country_name", "country_code", "name"),
     )
 

@@ -16,20 +16,48 @@ from shared.config import get_runtime_settings
 
 logger = logging.getLogger(__name__)
 
-COUNTRY_FIELD_SPECS = [
-    ("KR", "kr_name", "kr_sku"),
-    ("US", "us_name", "us_sku"),
-    ("TW", "tw_name", "tw_sku"),
-    ("HK", "hk_name", "hk_sku"),
-    ("JP", "jp_name", "jp_sku"),
-    ("SG", "sg_name", "sg_sku"),
-    ("DE", "de_name", "de_sku"),
-    ("UK", "uk_name", "uk_sku"),
-    ("AU", "au_name", "au_sku"),
-    ("AE", "ae_name", "ae_sku"),
-    ("VN", "vn_name", "vn_sku"),
-    ("TH", "th_name", "th_sku"),
-]
+COUNTRY_CODES = ["KR", "US", "TW", "HK", "JP", "SG", "DE", "UK", "AU", "AE", "VN", "TH"]
+COUNTRY_FIELD_SPECS = [("KR", "kr_name", "kr_sku")]
+LEGACY_DYNAMIC_SKU_COLUMNS = {
+    "us_msku": ("US", "MSKU"),
+    "us_asin": ("US", "ASIN"),
+    "us_fbm": ("US", "FBM"),
+    "us_fba": ("US", "FBA"),
+    "us_sku": ("US", "SKU"),
+    "tw_sku": ("TW", "SKU"),
+    "hk_sku": ("HK", "SKU"),
+    "jp_sku": ("JP", "SKU"),
+    "jp_fba": ("JP", "FBA"),
+    "jp_stoo1": ("JP", "STOO1"),
+    "jp_stoo2": ("JP", "STOO2"),
+    "sg_sku": ("SG", "SKU"),
+    "sg_fbs1": ("SG", "FBS1"),
+    "sg_fbs2": ("SG", "FBS2"),
+    "sg_fbs3": ("SG", "FBS3"),
+    "sg_fbs4": ("SG", "FBS4"),
+    "my_fbs1": ("SG", "FBS1"),
+    "my_fbs2": ("SG", "FBS2"),
+    "my_fbs3": ("SG", "FBS3"),
+    "my_fbs4": ("SG", "FBS4"),
+    "de_sku": ("DE", "SKU"),
+    "de_fba1": ("DE", "FBA1"),
+    "de_fba2": ("DE", "FBA2"),
+    "uk_sku": ("UK", "SKU"),
+    "uk_fba1": ("UK", "FBA1"),
+    "uk_fba2": ("UK", "FBA2"),
+    "uk_fba3": ("UK", "FBA3"),
+    "au_sku": ("AU", "SKU"),
+    "au_fba1": ("AU", "FBA1"),
+    "ae_sku": ("AE", "SKU"),
+    "ae_fba": ("AE", "FBA"),
+    "vn_sku": ("VN", "SKU"),
+    "vn_live1": ("VN", "리브1"),
+    "vn_live2": ("VN", "리브2"),
+    "th_sku": ("TH", "SKU"),
+    "th_scgjwd1": ("TH", "SCGJWD1"),
+    "th_scgjwd2": ("TH", "SCGJWD2"),
+    "th_scgjwd3": ("TH", "SCGJWD3"),
+}
 # 엑셀·UI와 동일한 국가 표기 (한글 헤더 자동 생성용)
 _COUNTRY_KO_LABEL = {
     "KR": "한국",
@@ -37,23 +65,65 @@ _COUNTRY_KO_LABEL = {
     "TW": "대만",
     "HK": "홍콩",
     "JP": "일본",
-    "SG": "싱가폴",
+    "SG": "싱가/말레",
     "DE": "독일",
     "UK": "영국",
     "AU": "호주",
     "AE": "UAE",
-    "VN": "베트남",
+    "VN": "동남아",
     "TH": "태국",
 }
-COUNTRY_ORDER = {country_code: index for index, (country_code, _, _) in enumerate(COUNTRY_FIELD_SPECS)}
-COUNTRY_CODES = [country_code for country_code, _, _ in COUNTRY_FIELD_SPECS]
-MAPPING_TEMPLATE_COLUMNS = [column for _, name_key, sku_key in COUNTRY_FIELD_SPECS for column in (name_key, sku_key)]
+COUNTRY_ORDER = {country_code: index for index, country_code in enumerate(COUNTRY_CODES)}
+_COUNTRY_HEADER_ALIASES = {
+    "SG": (
+        "싱가/말레",
+        "싱가폴",
+        "싱가포르",
+        "말레이시아",
+        "싱가폴/말레이시아",
+        "SG",
+        "MY",
+        "singapore",
+        "malaysia",
+    ),
+}
+GENERIC_MAPPING_COLUMNS = ("mapping_country_code", "mapping_sku_type", "mapping_sku", "mapping_name")
+
+
+def _canonical_country_code(raw: object) -> str:
+    text = str(raw or "").strip()
+    code = text.upper()
+    norm = _normalize_mapping_header(text)
+    if code == "MY" or norm in {_normalize_mapping_header(alias) for alias in _COUNTRY_HEADER_ALIASES.get("SG", ())}:
+        return "SG"
+    return code
+
+
+def _unique_in_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
+MAPPING_TEMPLATE_COLUMNS = _unique_in_order(
+    [column for _, name_key, sku_key in COUNTRY_FIELD_SPECS for column in (name_key, sku_key)]
+    + list(GENERIC_MAPPING_COLUMNS)
+)
+MAPPING_COUNTRY_NAME_COLUMNS = [f"{code.lower()}_name" for code in COUNTRY_CODES if code != "KR"]
+MAPPING_INTERNAL_COLUMNS = _unique_in_order(MAPPING_TEMPLATE_COLUMNS + MAPPING_COUNTRY_NAME_COLUMNS)
 OPTION_COLUMN_CANONICAL = "option"
 OPTION_HEADER_ALIASES = frozenset({"option", "options", "옵션", "상품옵션", "variant", "variants"})
 BRAND_COLUMN_CANONICAL = "brand"
 BRAND_HEADER_ALIASES = frozenset({"brand", "브랜드"})
 BARCODE_COLUMN_CANONICAL = "barcode"
 BARCODE_HEADER_ALIASES = frozenset({"barcode", "바코드", "bar_code", "ean", "gtin"})
+CATEGORY_COLUMN_CANONICAL = "category"
+CATEGORY_HEADER_ALIASES = frozenset({"category", "카테고리", "상품카테고리", "상품 카테고리"})
 REPRESENTATIVE_CODE_COLUMN_CANONICAL = "representative_code"
 REPRESENTATIVE_CODE_HEADER_ALIASES = frozenset(
     {"representative_code", "representativecode", "대표코드", "rep_code", "repcode"}
@@ -75,6 +145,7 @@ OPTIONAL_MAPPING_COLUMNS = [
     OPTION_COLUMN_CANONICAL,
     BRAND_COLUMN_CANONICAL,
     BARCODE_COLUMN_CANONICAL,
+    CATEGORY_COLUMN_CANONICAL,
     REPRESENTATIVE_CODE_COLUMN_CANONICAL,
     SEGMENT_COLUMN_CANONICAL,
     MKT_PRIORITY_COLUMN_CANONICAL,
@@ -111,6 +182,28 @@ def _mapping_country_column_alias_sets() -> dict[str, frozenset[str]]:
             f"{code} 상품명",
             f"{code.lower()} 상품명",
         }
+        if code == "SG":
+            sku_aliases |= {
+                "싱가폴 SKU",
+                "싱가포르 SKU",
+                "말레이시아 SKU",
+                "싱가폴 상품코드",
+                "싱가포르 상품코드",
+                "말레이시아 상품코드",
+                "MY SKU",
+                "my sku",
+            }
+            name_aliases |= {
+                "싱가폴 상품명",
+                "싱가포르 상품명",
+                "말레이시아 상품명",
+                "싱가폴명",
+                "싱가포르명",
+                "말레이시아명",
+                "MY 상품명",
+                "my 상품명",
+                "my_name",
+            }
         if code == "KR":
             sku_aliases |= {
                 "상품코드",
@@ -128,6 +221,37 @@ def _mapping_country_column_alias_sets() -> dict[str, frozenset[str]]:
             name_aliases |= {"상품명", "제품명", "상품 이름"}
         out[sku_key] = frozenset(sku_aliases)
         out[name_key] = frozenset(name_aliases)
+    for sku_key in LEGACY_DYNAMIC_SKU_COLUMNS:
+        aliases = {sku_key}
+        if sku_key == "tw_sku":
+            aliases |= {"대만 상품코드", "대만상품코드", "TW SKU", "tw sku"}
+        elif sku_key == "hk_sku":
+            aliases |= {"홍콩 상품코드", "홍콩상품코드", "HK SKU", "hk sku"}
+        out[sku_key] = frozenset(aliases)
+    for code in COUNTRY_CODES:
+        if code == "KR":
+            continue
+        label = _COUNTRY_KO_LABEL[code]
+        name_key = f"{code.lower()}_name"
+        out[name_key] = frozenset(
+            {
+                name_key,
+                f"{label} 상품명",
+                f"{label}상품명",
+                f"{label}명",
+                f"{label} 상품",
+                f"{code} 상품명",
+                f"{code.lower()} 상품명",
+            }
+        )
+    out.update(
+        {
+            "mapping_country_code": frozenset({"mapping_country_code", "country_code", "국가코드", "국가 코드"}),
+            "mapping_sku_type": frozenset({"mapping_sku_type", "sku_type", "상품코드 종류", "상품코드종류"}),
+            "mapping_sku": frozenset({"mapping_sku", "해외 상품코드"}),
+            "mapping_name": frozenset({"mapping_name", "name", "해외 상품명"}),
+        }
+    )
     return out
 
 
@@ -145,6 +269,11 @@ def _sku_strip_one_variant_suffix(sku: str) -> str | None:
 
 
 def _normalize_mapping_name(value: object) -> str:
+    try:
+        if pd.isna(value):
+            return ""
+    except TypeError:
+        pass
     raw = str(value or "").strip()
     return re.sub(r"\s+", " ", raw)
 
@@ -174,6 +303,11 @@ def _is_placeholder_mapping_name(value: object) -> bool:
 
 
 def _normalize_mapping_sku(value: object) -> str:
+    try:
+        if pd.isna(value):
+            return ""
+    except TypeError:
+        pass
     raw = str(value or "").strip()
     if not raw:
         return ""
@@ -186,6 +320,90 @@ def _normalize_mapping_header(value: object) -> str:
     normalized = re.sub(r"\s+", "", normalized)
     normalized = re.sub(r"[_\-()]", "", normalized)
     return normalized
+
+
+def _normalize_mapping_sku_type(value: object) -> str:
+    try:
+        if pd.isna(value):
+            return ""
+    except TypeError:
+        pass
+    return re.sub(r"\s+", " ", str(value or "").strip())
+
+
+def _country_code_from_dynamic_sku_header(raw_label: str) -> str:
+    norm = _normalize_mapping_header(raw_label)
+    matches: list[str] = []
+    for code in COUNTRY_CODES:
+        if code == "KR":
+            continue
+        label = _COUNTRY_KO_LABEL[code]
+        candidates = {
+            _normalize_mapping_header(code),
+            _normalize_mapping_header(label),
+            *(_normalize_mapping_header(alias) for alias in _COUNTRY_HEADER_ALIASES.get(code, ())),
+        }
+        if any(candidate and candidate in norm for candidate in candidates):
+            matches.append(code)
+    return matches[0] if len(matches) == 1 else ""
+
+
+def _country_code_from_mapping_filename(filename: str) -> str:
+    stem = re.sub(r"\.xlsx$", "", str(filename or "").strip(), flags=re.IGNORECASE)
+    norm = _normalize_mapping_header(stem)
+    matches: list[str] = []
+    for code in COUNTRY_CODES:
+        if code == "KR":
+            continue
+        label = _COUNTRY_KO_LABEL[code]
+        candidates = {
+            _normalize_mapping_header(code),
+            _normalize_mapping_header(label),
+            *(_normalize_mapping_header(alias) for alias in _COUNTRY_HEADER_ALIASES.get(code, ())),
+        }
+        if any(candidate and candidate in norm for candidate in candidates):
+            matches.append(code)
+    return matches[0] if len(matches) == 1 else ""
+
+
+def _sku_type_from_dynamic_sku_header(raw_label: str, country_code: str = "") -> str:
+    raw = str(raw_label or "").replace("\ufeff", "").replace("\u200b", "").strip()
+    if not raw:
+        return ""
+    paren = re.search(r"[\(（]\s*([^\)）]+?)\s*[\)）]", raw)
+    if paren:
+        return _normalize_mapping_sku_type(paren.group(1))
+    cleaned = raw
+    if country_code:
+        label = _COUNTRY_KO_LABEL.get(country_code, "")
+        cleaned = re.sub(re.escape(country_code), " ", cleaned, flags=re.IGNORECASE)
+        if label:
+            cleaned = cleaned.replace(label, " ")
+        for alias in _COUNTRY_HEADER_ALIASES.get(country_code, ()):
+            cleaned = re.sub(re.escape(alias), " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"상품\s*코드|상품코드|코드|품번|sku", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"[_\-()/（）]", " ", cleaned)
+    cleaned = _normalize_mapping_sku_type(cleaned)
+    if not cleaned or cleaned.casefold() in {"상품코드", "코드", "sku", "품번"}:
+        return ""
+    return cleaned
+
+
+def _dynamic_sku_header_info(raw_label: str) -> dict[str, str] | None:
+    raw = str(raw_label or "").strip()
+    raw_norm = _normalize_mapping_header(raw)
+    has_code_marker = bool(re.search(r"상품\s*코드|상품코드|코드|품번|sku", raw, flags=re.IGNORECASE))
+    bare_type_allowed = bool(re.fullmatch(r"[A-Za-z0-9가-힣]{2,16}", raw)) and raw_norm not in {
+        _normalize_mapping_header(v)
+        for v in ("비고", "메모", "참고", "상품명", "국가", "국가코드", "브랜드", "구분")
+    }
+    if not has_code_marker and not bare_type_allowed:
+        return None
+    country_code = _country_code_from_dynamic_sku_header(raw_label)
+    sku_type = _sku_type_from_dynamic_sku_header(raw_label, country_code)
+    if not sku_type:
+        return None
+    return {"country_code": country_code, "sku_type": sku_type}
 
 
 def _build_mapping_country_header_key_to_canonical() -> dict[str, str]:
@@ -208,21 +426,27 @@ MAPPING_COUNTRY_HEADER_KEY_TO_CANONICAL = _build_mapping_country_header_key_to_c
 
 
 def _lookup_group_by_country_sku_variants(
-    sku_index: dict[tuple[str, str], ProductGroup],
+    sku_index: dict[tuple[str, str, str], ProductGroup],
     country_code: str,
     raw_sku: object,
+    sku_type: object = "",
 ) -> ProductGroup | None:
     sku = _normalize_mapping_sku(raw_sku)
     if not sku:
         return None
     cc = str(country_code or "").strip().upper()
+    st = _normalize_mapping_sku_type(sku_type)
     cur: str | None = sku
     seen: set[str] = set()
     while cur and cur not in seen:
         seen.add(cur)
-        hit = sku_index.get(_index_key(cc, cur))
+        hit = sku_index.get(_sku_index_key(cc, st, cur))
         if hit is not None:
             return hit
+        if not st:
+            for key, group in sku_index.items():
+                if key[0] == cc and key[2] == cur:
+                    return group
         nxt = _sku_strip_one_variant_suffix(cur)
         if not nxt or nxt == cur:
             break
@@ -276,6 +500,25 @@ def _resolve_row_localized_name(source: dict[str, object], country_code: str, na
     return ""
 
 
+def _normalize_generic_mapping_locale(source: dict[str, object], row_label: str) -> dict[str, str | None] | None:
+    country_code = _canonical_country_code(source.get("mapping_country_code") or source.get("country_code"))
+    sku_type = _normalize_mapping_sku_type(source.get("mapping_sku_type") or source.get("sku_type"))
+    sku = _normalize_mapping_sku(source.get("mapping_sku") or source.get("sku"))
+    name = _normalize_mapping_name(source.get("mapping_name") or source.get("name")) or None
+    if not country_code and not sku_type and not sku and not name:
+        return None
+    if country_code == "KR":
+        raise HTTPException(status_code=400, detail=f"{row_label}: 한국 상품코드는 기존 한국 SKU 컬럼을 사용해야 합니다.")
+    if country_code not in COUNTRY_CODES:
+        raise HTTPException(status_code=400, detail=f"{row_label}: 지원하지 않는 국가코드입니다: {country_code}")
+    if not country_code or not sku_type or not sku:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{row_label}: 해외 매핑은 국가코드, 상품코드 종류, 상품코드가 모두 필요합니다.",
+        )
+    return {"country_code": country_code, "sku_type": sku_type, "name": name, "sku": sku}
+
+
 def _append_option_to_product_name(name: object, option: object) -> str:
     """엑셀 `option` 열 값을 상품명 뒤에 한 칸 띄워 붙인다. 상품명이 비어 있으면 옵션만으로 이름을 만들지 않는다."""
     base = _normalize_mapping_name(name)
@@ -323,6 +566,7 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
     option_header_keys = frozenset(_normalize_mapping_header(a) for a in OPTION_HEADER_ALIASES)
     brand_header_keys = frozenset(_normalize_mapping_header(a) for a in BRAND_HEADER_ALIASES)
     barcode_header_keys = frozenset(_normalize_mapping_header(a) for a in BARCODE_HEADER_ALIASES)
+    category_header_keys = frozenset(_normalize_mapping_header(a) for a in CATEGORY_HEADER_ALIASES)
     rep_code_header_keys = frozenset(_normalize_mapping_header(a) for a in REPRESENTATIVE_CODE_HEADER_ALIASES)
     segment_header_keys = frozenset(_normalize_mapping_header(a) for a in SEGMENT_HEADER_ALIASES)
     mkt_header_keys = frozenset(_normalize_mapping_header(a) for a in MKT_PRIORITY_HEADER_ALIASES)
@@ -335,12 +579,16 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
     brand_matched_raw = ""
     barcode_series: pd.Series | None = None
     barcode_matched_raw = ""
+    category_series: pd.Series | None = None
+    category_matched_raw = ""
     rep_code_series: pd.Series | None = None
     rep_code_matched_raw = ""
     segment_series: pd.Series | None = None
     segment_matched_raw = ""
     mkt_series: pd.Series | None = None
     mkt_matched_raw = ""
+    dynamic_sku_columns: list[dict[str, object]] = []
+    dynamic_matched_raw: dict[tuple[str, str], str] = {}
 
     for col in df.columns:
         raw_label = str(col).strip()
@@ -380,6 +628,24 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
                 )
             barcode_series = col_slice.copy()
             barcode_matched_raw = raw_label
+            continue
+        if norm in category_header_keys:
+            if category_series is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{filename}: 카테고리 열(`category` / `카테고리` 등)이 두 개 이상입니다 "
+                        f"(`{category_matched_raw}` 와 `{raw_label}`)."
+                    ),
+                )
+            col_slice = df[col]
+            if isinstance(col_slice, pd.DataFrame):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{filename}: 헤더 `{raw_label}` 열이 엑셀에서 중복되어 있습니다.",
+                )
+            category_series = col_slice.copy()
+            category_matched_raw = raw_label
             continue
         if norm in rep_code_header_keys:
             if rep_code_series is not None:
@@ -454,8 +720,65 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
             option_matched_raw = raw_label
             continue
         if norm not in header_key_to_canonical:
+            dynamic_info = _dynamic_sku_header_info(raw_label)
+            if dynamic_info is None:
+                continue
+            col_slice = df[col]
+            if isinstance(col_slice, pd.DataFrame):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{filename}: 헤더 `{raw_label}` 열이 엑셀에서 중복되어 있습니다.",
+                )
+            dyn_key = (
+                str(dynamic_info.get("country_code") or ""),
+                _normalize_mapping_sku_type(dynamic_info.get("sku_type")).casefold(),
+            )
+            if dyn_key in dynamic_matched_raw:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{filename}: 같은 상품코드 타입 헤더가 두 열 이상입니다 "
+                        f"(`{dynamic_matched_raw[dyn_key]}` 와 `{raw_label}`)."
+                    ),
+                )
+            dynamic_matched_raw[dyn_key] = raw_label
+            dynamic_sku_columns.append(
+                {
+                    "raw_label": raw_label,
+                    "series": col_slice.copy(),
+                    "country_code": dynamic_info.get("country_code") or "",
+                    "sku_type": dynamic_info.get("sku_type") or "",
+                }
+            )
             continue
         canonical = header_key_to_canonical[norm]
+        if canonical in LEGACY_DYNAMIC_SKU_COLUMNS:
+            col_slice = df[col]
+            if isinstance(col_slice, pd.DataFrame):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{filename}: 헤더 `{raw_label}` 열이 엑셀에서 중복되어 있습니다.",
+                )
+            country_code, sku_type = LEGACY_DYNAMIC_SKU_COLUMNS[canonical]
+            dyn_key = (country_code, _normalize_mapping_sku_type(sku_type).casefold())
+            if dyn_key in dynamic_matched_raw:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{filename}: 같은 상품코드 타입 헤더가 두 열 이상입니다 "
+                        f"(`{dynamic_matched_raw[dyn_key]}` 와 `{raw_label}`)."
+                    ),
+                )
+            dynamic_matched_raw[dyn_key] = raw_label
+            dynamic_sku_columns.append(
+                {
+                    "raw_label": raw_label,
+                    "series": col_slice.copy(),
+                    "country_code": country_code,
+                    "sku_type": sku_type,
+                }
+            )
+            continue
         if canonical in series_by_canonical:
             prev = matched_raw.get(canonical, "")
             raise HTTPException(
@@ -473,7 +796,7 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
         series_by_canonical[canonical] = col_slice.copy()
         matched_raw[canonical] = raw_label
 
-    if not series_by_canonical:
+    if not series_by_canonical and not dynamic_sku_columns:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -485,11 +808,51 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
         raise HTTPException(status_code=400, detail=f"{filename}: 최소 1개 이상의 매핑 행이 필요합니다.")
 
     aligned: dict[str, pd.Series] = {}
-    for canonical in MAPPING_TEMPLATE_COLUMNS:
+    for canonical in MAPPING_INTERNAL_COLUMNS:
         if canonical in series_by_canonical:
             aligned[canonical] = series_by_canonical[canonical]
         else:
             aligned[canonical] = pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
+    overseas_rows: list[list[dict[str, object]]] = []
+    for row_idx in df.index:
+        row_locales: list[dict[str, object]] = []
+        row_country_code = _canonical_country_code(_normalize_mapping_sku_type(aligned["mapping_country_code"].get(row_idx)))
+        row_name = _normalize_mapping_name(aligned["mapping_name"].get(row_idx))
+        for spec in dynamic_sku_columns:
+            raw_sku = spec["series"].get(row_idx)
+            sku = _normalize_mapping_sku(raw_sku)
+            if not sku:
+                continue
+            country_code = _canonical_country_code(
+                spec.get("country_code") or row_country_code or _country_code_from_mapping_filename(filename)
+            )
+            if not country_code:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{filename}: `{spec['raw_label']}` 헤더에서 국가를 알 수 없습니다. "
+                        "`미국 상품코드(FBA)`처럼 국가를 헤더에 넣거나, 파일명에 국가 이름/국가코드(예: 미국, US)를 "
+                        "포함하거나, `mapping_country_code` 열을 추가해 주세요."
+                    ),
+                )
+            if country_code == "KR":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{filename}: 한국 상품코드는 `kr_sku` 또는 `상품코드` 열을 사용해야 합니다.",
+                )
+            if country_code not in COUNTRY_CODES:
+                raise HTTPException(status_code=400, detail=f"{filename}: 지원하지 않는 국가코드입니다: {country_code}")
+            name = _normalize_mapping_name(aligned.get(f"{country_code.lower()}_name").get(row_idx)) or row_name
+            row_locales.append(
+                {
+                    "country_code": country_code,
+                    "sku_type": spec.get("sku_type") or "",
+                    "sku": raw_sku,
+                    "name": name or None,
+                }
+            )
+        overseas_rows.append(row_locales)
+    aligned["overseas_locales"] = pd.Series(overseas_rows, index=df.index, dtype=object)
     aligned[OPTION_COLUMN_CANONICAL] = (
         option_series if option_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
     )
@@ -498,6 +861,9 @@ def _coerce_mapping_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
     )
     aligned[BARCODE_COLUMN_CANONICAL] = (
         barcode_series if barcode_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
+    )
+    aligned[CATEGORY_COLUMN_CANONICAL] = (
+        category_series if category_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
     )
     aligned[REPRESENTATIVE_CODE_COLUMN_CANONICAL] = (
         rep_code_series if rep_code_series is not None else pd.Series([pd.NA] * len(df), index=df.index, dtype=object)
@@ -562,6 +928,18 @@ def _normalize_barcode_cell(value: object) -> str:
         return ""
     s = str(value or "").strip()
     return s[:255]
+
+
+def _normalize_category_cell(value: object) -> str | None:
+    try:
+        if pd.isna(value):
+            return None
+    except TypeError:
+        pass
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    s = re.sub(r"\s+", " ", str(value or "").strip())
+    return s[:255] if s else None
 
 
 def _normalize_segment_cell(value: object) -> str:
@@ -653,6 +1031,7 @@ def _filled_product_search_detail_count(group: ProductGroup) -> int:
     seg_norm = normalize_item_segment(group.segment) or ""
     values = {
         "barcode": str(group.barcode or "").strip(),
+        "category": str(group.category or "").strip(),
         "representative_code": rep,
         "version": str(group.version or "").strip(),
         "kr_name": str(group.kr_name or "").strip(),
@@ -683,6 +1062,7 @@ def _mapping_item_payload(group: ProductGroup) -> dict:
         "kr_name": group.kr_name,
         "brand": group.brand,
         "barcode": group.barcode,
+        "category": group.category,
         "representative_code": rep,
         "segment": seg_norm,
         "segment_display": format_item_segment_display(seg_norm),
@@ -699,7 +1079,7 @@ def _mapping_item_payload(group: ProductGroup) -> dict:
         "hk_grade": group.hk_grade or "",
         "jp_grade": group.jp_grade or "",
         "locales": [
-            {"country_code": locale.country_code, "name": locale.name, "sku": locale.sku}
+            {"country_code": locale.country_code, "sku_type": locale.sku_type, "name": locale.name, "sku": locale.sku}
             for locale in locales
         ],
     }
@@ -732,7 +1112,7 @@ def _build_mapping_group(source: dict[str, object], row_label: str) -> dict:
                     status_code=400,
                     detail=f"{row_label}: KR 상품명과 KR SKU(상품코드)는 필수입니다.",
                 )
-            locales.append({"country_code": country_code, "name": name, "sku": sku})
+            locales.append({"country_code": country_code, "sku_type": None, "name": name, "sku": sku})
             continue
         # 해외: 상품코드(SKU)만 있으면 매핑. 상품명은 선택(공백 허용).
         if not sku:
@@ -743,7 +1123,23 @@ def _build_mapping_group(source: dict[str, object], row_label: str) -> dict:
                     "해외 상품명만으로는 등록할 수 없습니다."
                 ),
             )
-        locales.append({"country_code": country_code, "name": name or None, "sku": sku})
+        locales.append({"country_code": country_code, "sku_type": None, "name": name or None, "sku": sku})
+    generic_locale = _normalize_generic_mapping_locale(source, row_label)
+    if generic_locale:
+        locales.append(generic_locale)
+    for raw_locale in source.get("overseas_locales") or []:
+        if isinstance(raw_locale, dict):
+            generic_locale = _normalize_generic_mapping_locale(
+                {
+                    "mapping_country_code": raw_locale.get("country_code"),
+                    "mapping_sku_type": raw_locale.get("sku_type"),
+                    "mapping_sku": raw_locale.get("sku"),
+                    "mapping_name": raw_locale.get("name"),
+                },
+                row_label,
+            )
+            if generic_locale:
+                locales.append(generic_locale)
     if not locales:
         raise HTTPException(status_code=400, detail=f"{row_label}: 최소 1개 이상의 국가 매핑이 필요합니다.")
     kr_locale = next((locale for locale in locales if locale["country_code"] == "KR"), None)
@@ -753,6 +1149,7 @@ def _build_mapping_group(source: dict[str, object], row_label: str) -> dict:
     if not brand:
         raise HTTPException(status_code=400, detail=f"{row_label}: brand(또는 브랜드) 값은 필수입니다.")
     barcode = _normalize_barcode_cell(source.get(BARCODE_COLUMN_CANONICAL))
+    category = _normalize_category_cell(source.get(CATEGORY_COLUMN_CANONICAL))
     segment = normalize_item_segment(source.get(SEGMENT_COLUMN_CANONICAL))
     mkt = normalize_mkt_priority_cell(source.get(MKT_PRIORITY_COLUMN_CANONICAL))
     rep = _resolve_representative_code_for_mapping(
@@ -764,6 +1161,7 @@ def _build_mapping_group(source: dict[str, object], row_label: str) -> dict:
         "locales": locales,
         "brand": brand,
         "barcode": barcode,
+        "category": category,
         "representative_code": rep,
         "segment": segment,
         "mkt_priority": mkt,
@@ -789,13 +1187,16 @@ def _find_group_by_kr_anchor(groups: list[ProductGroup], payload: dict) -> Produ
 
 
 def _validate_group_conflicts(groups: list[ProductGroup], payload: dict, exclude_group_id: uuid.UUID | None = None) -> None:
-    seen_keys: set[tuple[str, str]] = set()
+    seen_keys: set[tuple[str, str, str]] = set()
     for locale in payload["locales"]:
-        key = (locale["country_code"], locale["sku"])
+        key = _locale_tuple_key(locale["country_code"], locale.get("sku_type"), locale["sku"])
         if key in seen_keys:
             raise HTTPException(
                 status_code=400,
-                detail=f"{locale['country_code']} SKU `{locale['sku']}` 값이 중복됩니다.",
+                detail=(
+                    f"{locale['country_code']} "
+                    f"{str(locale.get('sku_type') or '').strip() or 'SKU'} `{locale['sku']}` 값이 중복됩니다."
+                ),
             )
         seen_keys.add(key)
 
@@ -804,10 +1205,16 @@ def _validate_group_conflicts(groups: list[ProductGroup], payload: dict, exclude
             continue
         for locale in group.locales:
             for incoming in payload["locales"]:
-                if locale.country_code == incoming["country_code"] and locale.sku == incoming["sku"]:
+                if _locale_tuple_key(locale.country_code, locale.sku_type, locale.sku) == _locale_tuple_key(
+                    incoming["country_code"], incoming.get("sku_type"), incoming["sku"]
+                ):
                     raise HTTPException(
                         status_code=400,
-                        detail=f"{incoming['country_code']} SKU `{incoming['sku']}` 는 이미 다른 상품 그룹에 등록되어 있습니다.",
+                        detail=(
+                            f"{incoming['country_code']} "
+                            f"{str(incoming.get('sku_type') or '').strip() or 'SKU'} `{incoming['sku']}` "
+                            "는 이미 다른 상품 그룹에 등록되어 있습니다."
+                        ),
                     )
 
 
@@ -817,6 +1224,7 @@ def _merge_manual_mapping_locales(target: ProductGroup, payload: dict, now: date
     target.brand = _normalize_brand_cell(payload.get("brand"))
     bc = _normalize_barcode_cell(payload.get(BARCODE_COLUMN_CANONICAL))
     target.barcode = bc if bc else None
+    target.category = _normalize_category_cell(payload.get(CATEGORY_COLUMN_CANONICAL))
     seg_raw = payload.get(SEGMENT_COLUMN_CANONICAL)
     target.segment = normalize_item_segment(seg_raw) if str(seg_raw or "").strip() else None
     mkt_raw = payload.get(MKT_PRIORITY_COLUMN_CANONICAL)
@@ -831,13 +1239,15 @@ def _merge_manual_mapping_locales(target: ProductGroup, payload: dict, now: date
     locales_map = _locales_map_by_country_sku(target)
     for inc in payload["locales"]:
         country_code = str(inc["country_code"])
+        sku_type = inc.get("sku_type")
         sku = str(inc["sku"] or "")
-        lk = _locale_tuple_key(country_code, sku)
+        lk = _locale_tuple_key(country_code, sku_type, sku)
         name = str(inc.get("name") or "").strip() or None
         existing = locales_map.get(lk)
         if existing is None:
             pl = ProductLocale(
                 country_code=country_code,
+                sku_type=None if country_code.strip().upper() == "KR" else sku_type,
                 name=name,
                 sku=sku,
                 updated_at=now,
@@ -847,6 +1257,8 @@ def _merge_manual_mapping_locales(target: ProductGroup, payload: dict, now: date
             continue
         if name:
             existing.name = name
+        if inc.get("sku_type") and not existing.sku_type:
+            existing.sku_type = inc.get("sku_type")
         existing.updated_at = now
 
 
@@ -855,27 +1267,7 @@ _SKU_MAPPING_EXAMPLE_HINT = re.compile(r"^\s*예\s*:", re.IGNORECASE)
 
 def _is_sku_mapping_template_hint_row(source: dict[str, object]) -> bool:
     """다운로드 템플릿 2행처럼 '예: …' 안내가 들어간 행은 병합하지 않는다."""
-    for key in (
-        "kr_sku",
-        "kr_name",
-        "brand",
-        "representative_code",
-        "us_sku",
-        "us_name",
-        "tw_sku",
-        "tw_name",
-        "hk_sku",
-        "hk_name",
-        "jp_sku",
-        "jp_name",
-        "sg_sku",
-        "de_sku",
-        "uk_sku",
-        "au_sku",
-        "ae_sku",
-        "vn_sku",
-        "th_sku",
-    ):
+    for key in [*MAPPING_TEMPLATE_COLUMNS, "brand", "representative_code"]:
         s = str(source.get(key) or "").strip()
         if s and _SKU_MAPPING_EXAMPLE_HINT.match(s):
             return True
@@ -901,9 +1293,26 @@ def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | Non
             clean_name = None
             if name and not _is_placeholder_mapping_name(name):
                 clean_name = name
-            sku_locales.append({"country_code": country_code, "name": clean_name, "sku": sku})
+            sku_locales.append({"country_code": country_code, "sku_type": None, "name": clean_name, "sku": sku})
         elif name and not _is_placeholder_mapping_name(name):
             named_locales.append({"country_code": country_code, "name": name})
+
+    generic_locale = _normalize_generic_mapping_locale(source, row_label)
+    if generic_locale:
+        sku_locales.append(generic_locale)
+    for raw_locale in source.get("overseas_locales") or []:
+        if isinstance(raw_locale, dict):
+            generic_locale = _normalize_generic_mapping_locale(
+                {
+                    "mapping_country_code": raw_locale.get("country_code"),
+                    "mapping_sku_type": raw_locale.get("sku_type"),
+                    "mapping_sku": raw_locale.get("sku"),
+                    "mapping_name": raw_locale.get("name"),
+                },
+                row_label,
+            )
+            if generic_locale:
+                sku_locales.append(generic_locale)
 
     if not sku_locales and not named_locales:
         return None
@@ -933,6 +1342,7 @@ def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | Non
 
     brand = _normalize_brand_cell(source.get(BRAND_COLUMN_CANONICAL))
     barcode = _normalize_barcode_cell(source.get(BARCODE_COLUMN_CANONICAL))
+    category = _normalize_category_cell(source.get(CATEGORY_COLUMN_CANONICAL))
     segment = _normalize_segment_cell(source.get(SEGMENT_COLUMN_CANONICAL))
     mkt_priority = _normalize_segment_cell(source.get(MKT_PRIORITY_COLUMN_CANONICAL))
     kr_sku_val = next(
@@ -955,6 +1365,7 @@ def _parse_merge_record(source: dict[str, object], row_label: str) -> dict | Non
         "match_us_name": match_us_name,
         "brand": brand,
         "barcode": barcode,
+        "category": category,
         "representative_code": representative_code,
         "segment": segment,
         "mkt_priority": mkt_priority,
@@ -981,22 +1392,28 @@ def _index_key(country_code: str, value: str) -> tuple[str, str]:
     return (str(country_code or "").strip().upper(), str(value or "").strip())
 
 
-def _locale_tuple_key(country_code: str, sku: str) -> tuple[str, str]:
-    return (str(country_code or "").strip().upper(), str(sku or "").strip())
+def _sku_index_key(country_code: str, sku_type: object, sku: str) -> tuple[str, str, str]:
+    cc = str(country_code or "").strip().upper()
+    st = "" if cc == "KR" else _normalize_mapping_sku_type(sku_type).casefold()
+    return (cc, st, str(sku or "").strip())
 
 
-def _locales_map_by_country_sku(group: ProductGroup) -> dict[tuple[str, str], ProductLocale]:
-    return {_locale_tuple_key(loc.country_code, loc.sku): loc for loc in group.locales}
+def _locale_tuple_key(country_code: str, sku_type: object, sku: str) -> tuple[str, str, str]:
+    return _sku_index_key(country_code, sku_type, sku)
+
+
+def _locales_map_by_country_sku(group: ProductGroup) -> dict[tuple[str, str, str], ProductLocale]:
+    return {_locale_tuple_key(loc.country_code, loc.sku_type, loc.sku): loc for loc in group.locales}
 
 
 def _remove_group_from_indexes(
     group: ProductGroup,
-    sku_index: dict[tuple[str, str], ProductGroup],
+    sku_index: dict[tuple[str, str, str], ProductGroup],
     name_index: dict[tuple[str, str], set[uuid.UUID]],
     group_index: dict[uuid.UUID, ProductGroup],
 ) -> None:
     for locale in group.locales:
-        sku_key = _index_key(locale.country_code, locale.sku)
+        sku_key = _sku_index_key(locale.country_code, locale.sku_type, locale.sku)
         if sku_index.get(sku_key) is group:
             sku_index.pop(sku_key, None)
         if locale.name:
@@ -1011,13 +1428,13 @@ def _remove_group_from_indexes(
 
 def _index_group(
     group: ProductGroup,
-    sku_index: dict[tuple[str, str], ProductGroup],
+    sku_index: dict[tuple[str, str, str], ProductGroup],
     name_index: dict[tuple[str, str], set[uuid.UUID]],
     group_index: dict[uuid.UUID, ProductGroup],
 ) -> None:
     group_index[group.id] = group
     for locale in group.locales:
-        sku_index[_index_key(locale.country_code, locale.sku)] = group
+        sku_index[_sku_index_key(locale.country_code, locale.sku_type, locale.sku)] = group
         if locale.name:
             name_key = _index_key(locale.country_code, _normalize_mapping_name_key(locale.name))
             name_index.setdefault(name_key, set()).add(group.id)
@@ -1152,7 +1569,7 @@ def _add_matched_group_id(
 
 def _find_matching_groups(
     record: dict,
-    sku_index: dict[tuple[str, str], ProductGroup],
+    sku_index: dict[tuple[str, str, str], ProductGroup],
     name_index: dict[tuple[str, str], set[uuid.UUID]],
     group_index: dict[uuid.UUID, ProductGroup],
     kr_tw_core_index: dict[str, set[uuid.UUID]],
@@ -1310,8 +1727,9 @@ def _find_matching_groups(
     if not skip_direct_sku_lookup:
         for locale in record["sku_locales"]:
             cc = str(locale["country_code"] or "").strip().upper()
+            sku_type = locale.get("sku_type")
             sku = str(locale["sku"] or "")
-            matched = _lookup_group_by_country_sku_variants(sku_index, cc, sku)
+            matched = _lookup_group_by_country_sku_variants(sku_index, cc, sku, sku_type)
             if matched is not None:
                 sku_resolved_cc.add(cc)
                 _add_matched_group_id(
@@ -1363,7 +1781,7 @@ def _merge_groups(
     db: Session,
     groups: list[ProductGroup],
     preferred_kr_name: str,
-    sku_index: dict[tuple[str, str], ProductGroup],
+    sku_index: dict[tuple[str, str, str], ProductGroup],
     name_index: dict[tuple[str, str], set[uuid.UUID]],
     group_index: dict[uuid.UUID, ProductGroup],
     row_label: str,
@@ -1381,7 +1799,7 @@ def _merge_groups(
 
     for secondary in secondary_groups:
         for loc in list(secondary.locales):
-            lk = _locale_tuple_key(loc.country_code, loc.sku)
+            lk = _locale_tuple_key(loc.country_code, loc.sku_type, loc.sku)
             existing = primary_keys.get(lk)
             if existing is not None:
                 if loc.name and (not existing.name or len(str(loc.name)) > len(str(existing.name or ""))):
@@ -1402,7 +1820,7 @@ def _apply_merge_record(
     target: ProductGroup,
     record: dict,
     uploaded_at: datetime,
-    sku_index: dict[tuple[str, str], ProductGroup],
+    sku_index: dict[tuple[str, str, str], ProductGroup],
     name_index: dict[tuple[str, str], set[uuid.UUID]],
     group_index: dict[uuid.UUID, ProductGroup],
 ) -> ProductGroup:
@@ -1411,15 +1829,17 @@ def _apply_merge_record(
     locales_map = _locales_map_by_country_sku(target)
     for locale in record["sku_locales"]:
         country_code = str(locale["country_code"])
+        sku_type = locale.get("sku_type")
         sku = str(locale["sku"] or "")
         name = _normalize_mapping_name(locale.get("name"))
-        lk = _locale_tuple_key(country_code, sku)
-        conflict_group = sku_index.get(_index_key(country_code, sku))
+        lk = _locale_tuple_key(country_code, sku_type, sku)
+        conflict_group = sku_index.get(_sku_index_key(country_code, sku_type, sku))
         if conflict_group is not None and conflict_group.id != target.id:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"{record['row_label']}: {country_code} SKU `{sku}` 는 이미 다른 상품에 연결되어 있습니다. "
+                    f"{record['row_label']}: {country_code} "
+                    f"{str(sku_type or '').strip() or 'SKU'} `{sku}` 는 이미 다른 상품에 연결되어 있습니다. "
                     "충돌이 있어 전체 업로드를 중단합니다."
                 ),
             )
@@ -1427,6 +1847,7 @@ def _apply_merge_record(
         if existing is None:
             new_locale = ProductLocale(
                 country_code=country_code,
+                sku_type=None if country_code.strip().upper() == "KR" else sku_type,
                 name=name or None,
                 sku=sku,
                 updated_at=uploaded_at,
@@ -1434,6 +1855,11 @@ def _apply_merge_record(
             target.locales.append(new_locale)
             locales_map[lk] = new_locale
             continue
+        if country_code.strip().upper() != "KR" and locale.get("sku_type") and not existing.sku_type:
+            existing.sku_type = locale.get("sku_type")
+        if name:
+            existing.name = name
+        existing.updated_at = uploaded_at
         # 이미 그룹에 (국가, SKU)가 있으면 업로드 행의 이름·시간은 반영하지 않음(신규 조합만 반영).
 
     for locale in record["named_locales"]:
@@ -1455,6 +1881,9 @@ def _apply_merge_record(
     barcode_val = _normalize_barcode_cell(record.get(BARCODE_COLUMN_CANONICAL))
     if barcode_val:
         target.barcode = barcode_val
+    category_val = _normalize_category_cell(record.get(CATEGORY_COLUMN_CANONICAL))
+    if category_val:
+        target.category = category_val
     seg_in = record.get("segment")
     if isinstance(seg_in, str) and seg_in.strip():
         target.segment = normalize_item_segment(seg_in)
@@ -1550,7 +1979,7 @@ def merge_item_sku_mappings(db: Session, upload_files: list[UploadFile]) -> dict
     uploaded_at = datetime.now(timezone.utc)
     groups = _load_product_groups(db)
     group_index: dict[uuid.UUID, ProductGroup] = {group.id: group for group in groups}
-    sku_index: dict[tuple[str, str], ProductGroup] = {}
+    sku_index: dict[tuple[str, str, str], ProductGroup] = {}
     name_index: dict[tuple[str, str], set[uuid.UUID]] = {}
     for group in groups:
         _index_group(group, sku_index, name_index, group_index)
@@ -1615,6 +2044,7 @@ def merge_item_sku_mappings(db: Session, upload_files: list[UploadFile]) -> dict
                         ),
                     )
                 new_barcode = _normalize_barcode_cell(record.get(BARCODE_COLUMN_CANONICAL))
+                new_category = _normalize_category_cell(record.get(CATEGORY_COLUMN_CANONICAL))
                 new_segment = normalize_item_segment(record.get("segment"))
                 new_mkt = normalize_mkt_priority_cell(record.get("mkt_priority"))
                 target = ProductGroup(
@@ -1634,6 +2064,7 @@ def merge_item_sku_mappings(db: Session, upload_files: list[UploadFile]) -> dict
                         ),
                     ),
                     barcode=new_barcode if new_barcode else None,
+                    category=new_category,
                     segment=new_segment,
                     mkt_priority=new_mkt,
                     upload_updated_at=uploaded_at,
@@ -1701,6 +2132,7 @@ def upsert_item_sku_mapping(db: Session, payload: dict[str, object]) -> dict:
     try:
         if target is None:
             bc0 = _normalize_barcode_cell(record.get(BARCODE_COLUMN_CANONICAL))
+            cat0 = _normalize_category_cell(record.get(CATEGORY_COLUMN_CANONICAL))
             seg0 = normalize_item_segment(record.get("segment"))
             mkt0 = normalize_mkt_priority_cell(record.get("mkt_priority"))
             target = ProductGroup(
@@ -1712,6 +2144,7 @@ def upsert_item_sku_mapping(db: Session, payload: dict[str, object]) -> dict:
                     None,
                 ),
                 barcode=bc0 if bc0 else None,
+                category=cat0,
                 segment=seg0,
                 mkt_priority=mkt0,
                 upload_updated_at=None,
@@ -1721,6 +2154,7 @@ def upsert_item_sku_mapping(db: Session, payload: dict[str, object]) -> dict:
             target.locales = [
                 ProductLocale(
                     country_code=locale["country_code"],
+                    sku_type=locale.get("sku_type"),
                     name=locale["name"],
                     sku=locale["sku"],
                     updated_at=manual_updated_at,
@@ -1839,6 +2273,9 @@ def patch_item_sku_mapping_item(db: Session, payload: dict[str, object]) -> dict
         bc = _normalize_barcode_cell(payload.get("barcode"))
         group.barcode = bc if bc else None
 
+    if "category" in payload:
+        group.category = _normalize_category_cell(payload.get("category"))
+
     if "mkt_priority" in payload:
         mkt_s = str(payload.get("mkt_priority") or "").strip()
         group.mkt_priority = normalize_mkt_priority_cell(mkt_s) if mkt_s else None
@@ -1887,6 +2324,7 @@ def list_item_sku_mappings(db: Session, query: str | None = None, limit: int = 1
         haystack_parts = [
             group.kr_name,
             str(group.barcode or ""),
+            str(group.category or ""),
             format_item_segment_display(normalize_item_segment(group.segment)),
             str(group.segment or ""),
             str(group.mkt_priority or ""),
