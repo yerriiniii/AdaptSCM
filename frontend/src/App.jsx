@@ -1365,7 +1365,7 @@ function countryLabel(code = "KR") {
   if (code === "SG" || code === "MY") return "싱가/말레";
   if (code === "AU") return "호주";
   if (code === "UK") return "영국";
-  if (code === "AE") return "UAE";
+  if (code === "AE") return "아랍";
   if (code === "JP") return "일본";
   if (code === "DE") return "독일";
   if (code === "TH") return "태국";
@@ -1379,18 +1379,39 @@ function getProductMappingCountries(row = {}) {
       const code = String(locale?.country_code || locale?.countryCode || "").trim().toUpperCase();
       const skuType = String(locale?.sku_type || locale?.skuType || "").trim();
       const sku = String(locale?.sku ?? "").trim();
-      const name = String(locale?.name ?? "").trim();
       if (!code) return null;
-      // SKU 없이 이름만 있는 로케일도 표시(백엔드·데이터에 따라 빈 SKU가 올 수 있음)
-      if (!sku && !name) return null;
+      if (!sku) return null;
+      if (code === "KR") return null;
       return {
         code,
         label: countryLabel(code),
-        sku: skuType ? `${skuType}: ${sku || "–"}` : sku || "–",
-        description: name || "–",
+        skuType: ["KR", "TW", "HK"].includes(code) && (!skuType || skuType === "SKU") ? "" : skuType || "SKU",
+        sku,
       };
     })
     .filter(Boolean);
+}
+
+function groupProductMappingCountries(countries = []) {
+  const order = [];
+  const byCode = new Map();
+  countries.forEach((country) => {
+    const code = String(country?.code || "").trim().toUpperCase();
+    if (!code) return;
+    if (!byCode.has(code)) {
+      byCode.set(code, {
+        code,
+        label: country.label || countryLabel(code),
+        codes: [],
+      });
+      order.push(code);
+    }
+    byCode.get(code).codes.push({
+      skuType: String(country.skuType || "").trim(),
+      sku: String(country.sku || "").trim(),
+    });
+  });
+  return order.map((code) => byCode.get(code)).filter(Boolean);
 }
 
 /** SKU 매핑 행에서 한국 SKU 추출 */
@@ -1497,17 +1518,6 @@ const PRODUCT_SEARCH_DETAIL_FIELDS = [
   { id: "stock_grade", label: "재고 등급" },
   { id: "release_month", label: "출시월" },
   { id: "code_registered_at", label: "코드등록일자" },
-  { id: "us_codes", label: "미국 상품코드" },
-  { id: "tw_codes", label: "대만 상품코드" },
-  { id: "hk_codes", label: "홍콩 상품코드" },
-  { id: "jp_codes", label: "일본 상품코드" },
-  { id: "sg_codes", label: "싱가/말레 상품코드" },
-  { id: "de_codes", label: "독일 상품코드" },
-  { id: "uk_codes", label: "영국 상품코드" },
-  { id: "au_codes", label: "호주 상품코드" },
-  { id: "ae_codes", label: "아랍 상품코드" },
-  { id: "vn_codes", label: "동남아 상품코드" },
-  { id: "th_codes", label: "태국 상품코드" },
 ];
 
 function formatProductSearchDetailValue(value) {
@@ -10511,7 +10521,7 @@ export default function App() {
               </div>
               <div className="productMappingHeroTitle">어느 국가든 상품명이나 SKU를 검색하세요</div>
               <div className="productMappingHeroSubtitle">
-                상품명·SKU로 검색하면 조건에 맞는 매핑 카드가 아래에 표시됩니다.
+                검색 결과에서 한국 상품코드와 국가별 상품코드 매핑을 확인할 수 있습니다.
               </div>
               <div className="productMappingSearchRow">
                 <div className="searchWrap productMappingSearchWrap">
@@ -10538,6 +10548,8 @@ export default function App() {
                   const mappingItemDiscontinued = mappingRowDiscontinued(row);
                   const detailGroupId = String(row.group_id || row._id || "").trim();
                   const detailOpen = productSearchDetailOpenId === detailGroupId;
+                  const countryGroups = groupProductMappingCountries(row._countries);
+                  const krSku = mappingRowKrSku(row);
                   return (
                   <article key={row._id} className="productMappingItemCard">
                     <div
@@ -10545,6 +10557,11 @@ export default function App() {
                       title={`${row.brand || "–"} | ${row.kr_name || "상품명 없음"}${row.barcode ? ` | 바코드 ${row.barcode}` : ""}`}
                     >
                       <div className="productMappingGridHeadBand">
+                        {krSku ? (
+                          <span className="productMappingItemSkuPart productMappingGridHeadSku" title={`한국 상품코드 ${krSku}`}>
+                            {krSku}
+                          </span>
+                        ) : null}
                         <div className="productMappingItemBrandPart productMappingGridHeadBrand">
                           {row.brand || "–"}
                         </div>
@@ -10578,28 +10595,36 @@ export default function App() {
                           </button>
                         </div>
                       </div>
-                      {row._countries.map((country, countryIdx) => (
-                        <Fragment key={`${row._id}-${country.code}-${country.sku}`}>
-                          {countryIdx > 0 ? (
-                            <div className="productMappingGridRowRule" aria-hidden="true" />
-                          ) : null}
-                          <div className="productMappingCountryPrefix productMappingGridCountryPrefix">
-                            <span className="productMappingCountryCode">{country.code}</span>
-                            <span className="productMappingCountryLocaleName" title={country.label}>
-                              {country.label}
-                            </span>
+                      <div className="productMappingGroupedCodes">
+                        {countryGroups.map((group) => (
+                          <div key={`${row._id}-${group.code}`} className="productMappingGroupedCountry">
+                            <div className="productMappingGroupedCountryHead">
+                              <span className="productMappingGroupedCountryName" title={group.label}>
+                                {group.label}
+                              </span>
+                            </div>
+                            <div className="productMappingGroupedCodeRows">
+                              {group.codes.map((codeRow, codeIdx) => (
+                                <div
+                                  key={`${group.code}-${codeIdx}-${codeRow.skuType}-${codeRow.sku}`}
+                                  className={`productMappingGroupedCodeRow${codeRow.skuType ? "" : " noType"}`}
+                                >
+                                  {codeRow.skuType ? (
+                                    <span className="productMappingCountrySkuType" title={codeRow.skuType}>
+                                      {codeRow.skuType}
+                                    </span>
+                                  ) : (
+                                    <span className="productMappingCountrySkuType" aria-hidden="true" />
+                                  )}
+                                  <span className="productMappingCountrySkuInline" title={codeRow.sku}>
+                                    {codeRow.sku}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <span className="productMappingPipe productMappingGridCountryPipe" aria-hidden="true">
-                            |
-                          </span>
-                          <span className="productMappingCountryName productMappingGridCountryName" title={country.description}>
-                            {country.description}
-                          </span>
-                          <span className="productMappingCountrySkuInline productMappingGridCountrySku" title={country.sku}>
-                            {country.sku}
-                          </span>
-                        </Fragment>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </article>
                   );
@@ -10669,8 +10694,9 @@ export default function App() {
                       {loading ? (
                         <p className="productSearchDetailMemoLoading">DB에서 상품 정보를 불러오는 중…</p>
                       ) : detailItems.length ? (
-                        <dl className="productSearchDetailMemoList">
-                          {detailItems.map((item) => {
+                        <>
+                          <dl className="productSearchDetailMemoList">
+                            {detailItems.map((item) => {
                             const isEditing = productSearchDetailEditingFieldId === item.id;
                             const isSaving = productSearchDetailFieldSavingId === item.id;
                             return (
@@ -10732,8 +10758,9 @@ export default function App() {
                               </dd>
                             </div>
                             );
-                          })}
-                        </dl>
+                            })}
+                          </dl>
+                        </>
                       ) : (
                         <p className="productSearchDetailMemoLoading">상세 정보를 불러오지 못했습니다.</p>
                       )}
