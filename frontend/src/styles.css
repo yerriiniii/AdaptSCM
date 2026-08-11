@@ -4495,7 +4495,7 @@ button.ghost.heroHeadAccountBtn:hover {
   margin-top: 16px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 16px;
 }
 
 .productMappingNoResult {
