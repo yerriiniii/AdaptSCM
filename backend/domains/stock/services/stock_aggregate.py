@@ -88,7 +88,7 @@ COUNTRY_PATTERNS = {
     "SG": ["sg", "singapore", "싱가포르", "싱가폴", "my", "malaysia", "말레이시아"],
     "AU": ["au", "australia", "호주", "sydney", "melbourne"],
     "UK": ["uk", "unitedkingdom", "britain", "england", "영국", "london"],
-    "AE": ["ae", "uae", "dubai", "abudhabi", "아랍에미리트"],
+    "AE": ["ae", "uae", "dubai", "abudhabi", "아랍", "아랍에미리트"],
     "HK": ["hk", "hongkong", "hong kong", "香港", "홍콩"],
     "JP": ["jp", "japan", "일본", "tokyo", "osaka"],
     "DE": ["de", "germany", "german", "독일", "berlin"],
