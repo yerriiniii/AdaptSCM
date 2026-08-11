@@ -18,6 +18,7 @@ from domains.item.models import ItemMasterExtraColumn, ProductGroup, ProductLoca
 from domains.item.services.item_mapping import (
     _normalize_brand_cell,
     _normalize_barcode_cell,
+    _normalize_category_cell,
     _normalize_mapping_sku,
     normalize_item_segment,
 )
@@ -25,40 +26,54 @@ from shared.config import get_runtime_settings
 
 MASTER_COLUMN_ORDER = [
     "brand",
-    "representative_code",
-    "kr_sku",
-    "version",
     "kr_name",
+    "kr_sku",
+    "representative_code",
+    "category",
     "segment",
+    "version",
     "stock_category",
     "fcst_grade",
     "stock_grade",
     "release_month",
     "code_registered_at",
-    "kr_grade",
-    "us_grade",
-    "tw_grade",
-    "hk_grade",
-    "jp_grade",
+    "us_codes",
+    "tw_codes",
+    "hk_codes",
+    "jp_codes",
+    "sg_codes",
+    "de_codes",
+    "uk_codes",
+    "au_codes",
+    "ae_codes",
+    "vn_codes",
+    "th_codes",
 ]
 
 MASTER_COLUMN_LABELS = {
     "brand": "브랜드",
-    "representative_code": "대표코드",
-    "kr_sku": "상품코드",
-    "version": "Ver.",
     "kr_name": "상품명",
+    "kr_sku": "상품코드",
+    "representative_code": "대표코드",
+    "category": "카테고리",
     "segment": "구분",
+    "version": "Ver.",
     "stock_category": "재고구분",
     "fcst_grade": "FCST등급",
     "stock_grade": "재고등급",
     "release_month": "출시월",
     "code_registered_at": "코드 등록 일자",
-    "kr_grade": "한국 등급",
-    "us_grade": "미국 등급",
-    "tw_grade": "대만 등급",
-    "hk_grade": "홍콩 등급",
-    "jp_grade": "일본 등급",
+    "us_codes": "미국 상품코드",
+    "tw_codes": "대만 상품코드",
+    "hk_codes": "홍콩 상품코드",
+    "jp_codes": "일본 상품코드",
+    "sg_codes": "싱가/말레 상품코드",
+    "de_codes": "독일 상품코드",
+    "uk_codes": "영국 상품코드",
+    "au_codes": "호주 상품코드",
+    "ae_codes": "아랍 상품코드",
+    "vn_codes": "동남아 상품코드",
+    "th_codes": "태국 상품코드",
 }
 
 MASTER_HEADER_ALIASES: dict[str, frozenset[str]] = {
@@ -66,6 +81,7 @@ MASTER_HEADER_ALIASES: dict[str, frozenset[str]] = {
     "representative_code": frozenset(
         {"representativecode", "representative_code", "대표코드", "repcode", "rep_code"}
     ),
+    "category": frozenset({"category", "카테고리", "상품카테고리", "상품 카테고리"}),
     "segment": frozenset({"segment", "구분", "상품구분", "분류", "상품분류"}),
     "version": frozenset({"ver", "ver.", "version", "버전", "옵션", "option", "options"}),
     "kr_name": frozenset({"krname", "kr_name", "상품명", "품명", "description", "name"}),
@@ -300,6 +316,24 @@ def _resolve_representative_code(explicit: object, kr_sku: str) -> str:
     return kr_sku
 
 
+def _overseas_code_summary(group: ProductGroup, country_code: str | tuple[str, ...]) -> str:
+    parts: list[str] = []
+    country_codes = (
+        {str(code or "").strip().upper() for code in country_code}
+        if isinstance(country_code, tuple)
+        else {str(country_code or "").strip().upper()}
+    )
+    for loc in sorted(group.locales, key=lambda l: (str(l.sku_type or ""), str(l.sku or ""))):
+        if str(loc.country_code or "").strip().upper() not in country_codes:
+            continue
+        sku = _cell_text(loc.sku)
+        if not sku:
+            continue
+        sku_type = _cell_text(loc.sku_type)
+        parts.append(f"{sku_type}: {sku}" if sku_type else sku)
+    return " / ".join(parts)
+
+
 def master_row_payload(group: ProductGroup, extra_field_keys: list[str] | None = None) -> dict:
     kr = _kr_locale(group)
     seg_norm = normalize_item_segment(group.segment)
@@ -309,6 +343,7 @@ def master_row_payload(group: ProductGroup, extra_field_keys: list[str] | None =
         "group_id": str(group.id),
         "brand": group.brand or "",
         "representative_code": rep,
+        "category": group.category or "",
         "segment": seg_norm or "",
         "version": group.version or "",
         "kr_sku": kr_sku,
@@ -323,6 +358,17 @@ def master_row_payload(group: ProductGroup, extra_field_keys: list[str] | None =
         "tw_grade": group.tw_grade or "",
         "hk_grade": group.hk_grade or "",
         "jp_grade": group.jp_grade or "",
+        "us_codes": _overseas_code_summary(group, "US"),
+        "tw_codes": _overseas_code_summary(group, "TW"),
+        "hk_codes": _overseas_code_summary(group, "HK"),
+        "jp_codes": _overseas_code_summary(group, "JP"),
+        "sg_codes": _overseas_code_summary(group, ("SG", "MY")),
+        "de_codes": _overseas_code_summary(group, "DE"),
+        "uk_codes": _overseas_code_summary(group, "UK"),
+        "au_codes": _overseas_code_summary(group, "AU"),
+        "ae_codes": _overseas_code_summary(group, "AE"),
+        "vn_codes": _overseas_code_summary(group, "VN"),
+        "th_codes": _overseas_code_summary(group, "TH"),
         "barcode": group.barcode or "",
         "extra_fields": _extra_fields_payload(group, extra_field_keys or []),
         "updated_at": group.updated_at.isoformat() if group.updated_at else None,
@@ -363,7 +409,10 @@ def list_item_master_rows(
     groups = (
         db.execute(
             select(ProductGroup)
+            .join(ProductLocale, ProductLocale.item_id == ProductGroup.id)
+            .where(ProductLocale.country_code == "KR")
             .options(selectinload(ProductGroup.locales))
+            .distinct()
             .order_by(ProductGroup.kr_name.asc())
         )
         .scalars()
@@ -572,6 +621,7 @@ def _read_master_records(upload_files: list[UploadFile]) -> list[dict]:
                         kr_sku,
                     ),
                     "segment": normalize_item_segment(row.get("segment")) if "segment" in df.columns else None,
+                    "category": _normalize_category_cell(row.get("category")) if "category" in df.columns else None,
                     "version": _cell_text(row.get("version"))[:64] if "version" in df.columns else "",
                     "kr_sku": kr_sku,
                     "kr_name": kr_name,
@@ -802,6 +852,7 @@ def _apply_master_fields(group: ProductGroup, kr_locale: ProductLocale, record: 
     group.kr_name = record["kr_name"]
     group.brand = record["brand"]
     group.representative_code = record.get("representative_code") or record["kr_sku"]
+    group.category = record.get("category") or None
     group.segment = record.get("segment")
     group.version = record.get("version") or None
     group.stock_category = record.get("stock_category") or None
@@ -866,6 +917,7 @@ def merge_item_master_uploads(db: Session, upload_files: list[UploadFile]) -> di
                         id=uuid.uuid4(),
                         item_id=existing.id,
                         country_code="KR",
+                        sku_type=None,
                         name=record["kr_name"],
                         sku=kr_sku,
                         updated_at=now,
@@ -891,6 +943,7 @@ def merge_item_master_uploads(db: Session, upload_files: list[UploadFile]) -> di
                 kr_name=record["kr_name"],
                 brand=record["brand"],
                 representative_code=record.get("representative_code") or record["kr_sku"],
+                category=record.get("category") or None,
                 segment=record.get("segment"),
                 version=record.get("version") or None,
                 stock_category=record.get("stock_category") or None,
@@ -910,6 +963,7 @@ def merge_item_master_uploads(db: Session, upload_files: list[UploadFile]) -> di
                 id=uuid.uuid4(),
                 item_id=group.id,
                 country_code="KR",
+                sku_type=None,
                 name=record["kr_name"],
                 sku=record["kr_sku"],
                 updated_at=now,
@@ -976,6 +1030,7 @@ def patch_item_master_row(db: Session, payload: dict[str, object]) -> dict:
             id=uuid.uuid4(),
             item_id=group.id,
             country_code="KR",
+                sku_type=None,
             name=str(payload.get("kr_name") or group.kr_name or ""),
             sku=str(payload.get("kr_sku") or ""),
             updated_at=datetime.now(timezone.utc),
@@ -1007,6 +1062,7 @@ def patch_item_master_row(db: Session, payload: dict[str, object]) -> dict:
             payload.get("representative_code"),
             kr_sku_in,
         ),
+        "category": _normalize_category_cell(payload.get("category")),
         "segment": normalize_item_segment(payload.get("segment"))
         if str(payload.get("segment") or "").strip()
         else None,

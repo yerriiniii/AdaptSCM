@@ -21,8 +21,16 @@ class InventorySkuMappingUploadResponse(InventorySkuMappingSummaryResponse):
 
 class InventorySkuMappingLocaleResponse(BaseModel):
     country_code: str
+    sku_type: str | None = None
     name: str | None = None
     sku: str
+
+
+class InventorySkuMappingLocaleRequest(BaseModel):
+    country_code: str
+    sku_type: str | None = None
+    sku: str | None = None
+    name: str | None = None
 
 
 class InventorySkuMappingUpsertRequest(BaseModel):
@@ -31,6 +39,7 @@ class InventorySkuMappingUpsertRequest(BaseModel):
     brand: str = Field(..., max_length=255)
     representative_code: str | None = Field(None, max_length=255)
     barcode: str | None = Field(None, max_length=255)
+    category: str | None = Field(None, max_length=255)
     option: str | None = None
     us_name: str | None = None
     us_sku: str | None = None
@@ -54,6 +63,7 @@ class InventorySkuMappingUpsertRequest(BaseModel):
     vn_sku: str | None = None
     th_name: str | None = None
     th_sku: str | None = None
+    overseas_locales: list[InventorySkuMappingLocaleRequest] = Field(default_factory=list)
     segment: str | None = Field(None, max_length=255)
     mkt_priority: str | None = Field(None, max_length=255)
 
@@ -77,6 +87,7 @@ class InventorySkuMappingItemPatchRequest(BaseModel):
     kr_name: str = Field(..., min_length=1)
     brand: str = Field(..., min_length=1)
     barcode: str | None = Field(None, max_length=255)
+    category: str | None = Field(None, max_length=255)
     mkt_priority: str | None = None
     segment: str | None = None
 
@@ -87,6 +98,7 @@ class InventorySkuMappingItemResponse(BaseModel):
     brand: str | None = None
     representative_code: str | None = None
     barcode: str | None = None
+    category: str | None = None
     segment: str | None = None
     segment_display: str | None = None
     mkt_priority: str | None = None
@@ -124,6 +136,7 @@ class ItemMasterRowResponse(BaseModel):
     kr_sku: str = ""
     kr_name: str = ""
     stock_category: str = ""
+    category: str = ""
     fcst_grade: str = ""
     stock_grade: str = ""
     release_month: str = ""
@@ -133,6 +146,18 @@ class ItemMasterRowResponse(BaseModel):
     tw_grade: str = ""
     hk_grade: str = ""
     jp_grade: str = ""
+    us_codes: str = ""
+    tw_codes: str = ""
+    hk_codes: str = ""
+    jp_codes: str = ""
+    sg_codes: str = ""
+    my_codes: str = ""
+    de_codes: str = ""
+    uk_codes: str = ""
+    au_codes: str = ""
+    ae_codes: str = ""
+    vn_codes: str = ""
+    th_codes: str = ""
     barcode: str = ""
     extra_fields: dict[str, str] = Field(default_factory=dict)
     updated_at: str | None = None
@@ -166,6 +191,7 @@ class ItemMasterRowPatchRequest(BaseModel):
     kr_sku: str = Field(..., min_length=1)
     kr_name: str = Field(..., min_length=1)
     stock_category: str | None = None
+    category: str | None = None
     fcst_grade: str | None = None
     stock_grade: str | None = None
     release_month: str | None = None
@@ -190,6 +216,7 @@ __all__ = [
     "InventorySkuMappingSummaryResponse",
     "InventorySkuMappingUploadResponse",
     "InventorySkuMappingLocaleResponse",
+    "InventorySkuMappingLocaleRequest",
     "InventorySkuMappingUpsertRequest",
     "InventorySkuMappingSegmentPatchRequest",
     "InventorySkuMappingItemPatchRequest",

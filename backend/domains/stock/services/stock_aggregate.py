@@ -85,7 +85,7 @@ COUNTRY_PATTERNS = {
     "TW": ["tw", "taiwan", "대만", "taipei"],
     "US": ["us", "usa", "america", "미국"],
     "VN": ["vn", "vietnam", "베트남", "hanoi", "ho chi minh"],
-    "SG": ["sg", "singapore", "싱가포르", "싱가폴"],
+    "SG": ["sg", "singapore", "싱가포르", "싱가폴", "my", "malaysia", "말레이시아"],
     "AU": ["au", "australia", "호주", "sydney", "melbourne"],
     "UK": ["uk", "unitedkingdom", "britain", "england", "영국", "london"],
     "AE": ["ae", "uae", "dubai", "abudhabi", "아랍에미리트"],
@@ -146,7 +146,12 @@ def _parse_date_from_filename(filename: str) -> date | None:
 def _detect_country(warehouse_value: str, filename: str) -> str:
     base = f"{warehouse_value} {filename}".lower()
     for code, patterns in COUNTRY_PATTERNS.items():
-        if any(pattern in base for pattern in patterns):
+        if any(
+            re.search(rf"(^|[^a-z]){re.escape(pattern)}([^a-z]|$)", base)
+            if re.fullmatch(r"[a-z]{2}", pattern)
+            else pattern in base
+            for pattern in patterns
+        ):
             return code
     return "KR"
 
@@ -157,6 +162,8 @@ def _normalize_country_code(raw: str) -> str | None:
         return None
     if code == "SHIPMENT":
         return "SHIPMENT"
+    if code == "MY":
+        return "SG"
     if not re.match(r"^[A-Z]{2,4}$", code):
         return None
     return code

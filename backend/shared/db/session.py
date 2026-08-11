@@ -17,6 +17,8 @@ from shared.db.base import Base
 _log = logging.getLogger(__name__)
 
 _ITEM_MAPPING_COUNTRY_INDEX = "ix_item_mapping_item_country"
+_ITEM_MAPPING_COUNTRY_SKU_INDEX = "ix_item_mapping_country_sku"
+_ITEM_MAPPING_COUNTRY_TYPE_SKU_INDEX = "ix_item_mapping_country_type_sku"
 
 
 def _utc_now() -> datetime:
@@ -136,6 +138,7 @@ def _ensure_inventory_columns(engine: Engine) -> None:
             "brand": "VARCHAR(255)",
             "representative_code": "VARCHAR(255)",
             "barcode": "VARCHAR(255)",
+            "category": "VARCHAR(255)",
             "segment": "VARCHAR(255)",
             "mkt_priority": "VARCHAR(255)",
             "version": "VARCHAR(64)",
@@ -150,6 +153,9 @@ def _ensure_inventory_columns(engine: Engine) -> None:
             "tw_grade": "VARCHAR(32)",
             "hk_grade": "VARCHAR(32)",
             "jp_grade": "VARCHAR(32)",
+        },
+        "item_mapping": {
+            "sku_type": "VARCHAR(32)",
         },
         "purchase_inbound_lines": {
             "actual_inbound_note": "VARCHAR(128)",
@@ -171,6 +177,19 @@ def _ensure_inventory_columns(engine: Engine) -> None:
                 if column_name in existing_columns:
                     continue
                 connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"))
+
+        if "item_mapping" in existing_tables:
+            mapping_columns = {column["name"] for column in inspector.get_columns("item_mapping")}
+            if "sku_type" in column_specs["item_mapping"] and "country_code" in mapping_columns:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE item_mapping
+                        SET sku_type = NULL
+                        WHERE country_code = 'KR'
+                        """
+                    )
+                )
 
         if "inventory_rows" in existing_tables:
             row_columns = {column["name"] for column in inspector.get_columns("inventory_rows")}
@@ -498,6 +517,94 @@ def _ensure_item_mapping_allows_multiple_locales_per_country(engine: Engine) -> 
                 )
 
 
+def _ensure_item_mapping_allows_same_sku_across_types(engine: Engine) -> None:
+    """(country_code, sku) unique 제거 → 해외는 (country_code, sku_type, sku) 기준으로만 중복 제한."""
+    inspector = inspect(engine)
+    if "item_mapping" not in inspector.get_table_names():
+        return
+    dialect = engine.dialect.name
+
+    if dialect == "postgresql":
+        try:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                try:
+                    lock_s = max(5, min(300, int(os.getenv("PG_INDEX_MIGRATION_LOCK_TIMEOUT_SEC", "60"))))
+                except ValueError:
+                    lock_s = 60
+                try:
+                    stmt_s = max(30, min(3600, int(os.getenv("PG_INDEX_MIGRATION_STATEMENT_TIMEOUT_SEC", "600"))))
+                except ValueError:
+                    stmt_s = 600
+                conn.execute(text(f"SET lock_timeout TO '{lock_s}s'"))
+                conn.execute(text(f"SET statement_timeout TO '{stmt_s}s'"))
+                conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_ITEM_MAPPING_COUNTRY_SKU_INDEX}"))
+                conn.execute(
+                    text(
+                        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {_ITEM_MAPPING_COUNTRY_SKU_INDEX} "
+                        "ON item_mapping (country_code, sku)"
+                    )
+                )
+                conn.execute(
+                    text(
+                        f"CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS {_ITEM_MAPPING_COUNTRY_TYPE_SKU_INDEX} "
+                        "ON item_mapping (country_code, sku_type, sku)"
+                    )
+                )
+        except OperationalError as exc:
+            _log.error(
+                "item_mapping SKU 타입 인덱스 조정 실패(앱은 계속 기동됨): %s. "
+                "필요 시 수동 실행: DROP INDEX CONCURRENTLY IF EXISTS %s; "
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS %s ON item_mapping (country_code, sku); "
+                "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS %s ON item_mapping (country_code, sku_type, sku);",
+                exc,
+                _ITEM_MAPPING_COUNTRY_SKU_INDEX,
+                _ITEM_MAPPING_COUNTRY_SKU_INDEX,
+                _ITEM_MAPPING_COUNTRY_TYPE_SKU_INDEX,
+            )
+        return
+
+    with engine.begin() as conn:
+        if dialect == "sqlite":
+            conn.execute(text(f"DROP INDEX IF EXISTS {_ITEM_MAPPING_COUNTRY_SKU_INDEX}"))
+            conn.execute(text(f"DROP INDEX IF EXISTS {_ITEM_MAPPING_COUNTRY_TYPE_SKU_INDEX}"))
+            conn.execute(
+                text(
+                    f"CREATE INDEX IF NOT EXISTS {_ITEM_MAPPING_COUNTRY_SKU_INDEX} "
+                    "ON item_mapping (country_code, sku)"
+                )
+            )
+            conn.execute(
+                text(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {_ITEM_MAPPING_COUNTRY_TYPE_SKU_INDEX} "
+                    "ON item_mapping (country_code, sku_type, sku)"
+                )
+            )
+        elif dialect == "mysql":
+            for index_name in (_ITEM_MAPPING_COUNTRY_SKU_INDEX, _ITEM_MAPPING_COUNTRY_TYPE_SKU_INDEX):
+                try:
+                    conn.execute(text(f"ALTER TABLE item_mapping DROP INDEX {index_name}"))
+                except Exception:
+                    pass
+            try:
+                conn.execute(
+                    text(
+                        f"CREATE INDEX {_ITEM_MAPPING_COUNTRY_SKU_INDEX} "
+                        "ON item_mapping (country_code, sku)"
+                    )
+                )
+            except Exception:
+                pass
+            try:
+                conn.execute(
+                    text(
+                        f"CREATE UNIQUE INDEX {_ITEM_MAPPING_COUNTRY_TYPE_SKU_INDEX} "
+                        "ON item_mapping (country_code, sku_type, sku)"
+                    )
+                )
+            except Exception:
+                pass
+
+
 def _ensure_item_master_text_columns(engine: Engine) -> None:
     """상품마스터: 출시월·코드 등록 일자를 자유 텍스트(VARCHAR 64)로."""
     inspector = inspect(engine)
@@ -698,6 +805,7 @@ def _run_schema_init_if_needed(engine: Engine) -> None:
         _log.info("inventory 컬럼 보정 완료 (%.2fs)", time.perf_counter() - t1)
         t2 = time.perf_counter()
         _ensure_item_mapping_allows_multiple_locales_per_country(engine)
+        _ensure_item_mapping_allows_same_sku_across_types(engine)
         _log.info("item_mapping 인덱스 보정 완료 (%.2fs)", time.perf_counter() - t2)
         t3 = time.perf_counter()
         _ensure_purchase_orders_schema(engine)

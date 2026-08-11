@@ -972,7 +972,7 @@ button.ghost.heroHeadAccountBtn:hover {
 }
 
 .shipmentChartMonthOnlyLead .shipmentChartMonthOnlyHint {
-  margin: 0 0 12px;
+  margin: 0 0 22px;
   font-size: 13px;
   line-height: 1.45;
   color: var(--ui-text-secondary);
@@ -3138,27 +3138,34 @@ button.ghost.heroHeadAccountBtn:hover {
 
 .itemMasterTableHead,
 .itemMasterTableRow {
-  /* 상품마스터 기본 16열 너비 — 여기(--item-master-grid-columns)만 수정 */
+  /* 상품마스터 기본 23열 너비 — 여기(--item-master-grid-columns)만 수정 */
   --item-master-extra-col-width: minmax(72px, 0.5fr);
   --item-master-grid-columns:
-    minmax(60px, 0.6fr)
-    minmax(72px, 0.55fr)
-    minmax(72px, 0.55fr)
-    minmax(25px, 0.3fr)
-    minmax(200px, 2.5fr)
-    minmax(46px, 0.48fr)
-    minmax(46px, 0.48fr)
-    minmax(46px, 0.48fr)
-    minmax(46px, 0.48fr)
-    minmax(62px, 0.62fr)
-    minmax(80px, 0.7fr)
-    minmax(46px, 0.48fr)
-    minmax(46px, 0.48fr)
-    minmax(46px, 0.48fr)
-    minmax(46px, 0.48fr)
-    minmax(46px, 0.48fr);
+    120px
+    300px
+    90px
+    90px
+    160px
+    80px
+    64px
+    96px
+    90px
+    90px
+    96px
+    130px
+    130px
+    115px
+    115px
+    130px
+    135px
+    120px
+    130px
+    115px
+    115px
+    130px
+    135px;
   grid-template-columns: var(--item-master-grid-columns);
-  min-width: 1320px;
+  min-width: 2776px;
 }
 
 .itemMasterTableWrap .itemMasterTableHead {
@@ -3190,6 +3197,9 @@ button.ghost.heroHeadAccountBtn:hover {
   background: var(--ui-spreadsheet-head-bg);
   color: var(--ui-text-secondary);
   font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .itemMasterCell {
@@ -4125,11 +4135,40 @@ button.ghost.heroHeadAccountBtn:hover {
 }
 
 .skuManualTableOverseas > .skuManualTableHead,
-.skuManualTableOverseas > .skuManualRow {
-  grid-template-columns: 108px minmax(0, 1fr) minmax(0, 1.25fr);
+.skuManualCountryGroup {
+  grid-template-columns: 140px minmax(140px, 1fr) minmax(140px, 1fr) minmax(160px, 1.25fr);
 }
 
-.skuManualTableOverseas input[type="text"] {
+.skuManualCountryGroup {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+  padding: 14px;
+  border-top: 1px solid #f1f5f9;
+  background: #fff;
+}
+
+.skuManualCountryGroup:first-of-type {
+  border-top: 0;
+}
+
+.skuManualCountryGroupRows {
+  grid-column: 2 / 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skuManualGroupedRow {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) minmax(160px, 1.25fr);
+  gap: 16px;
+  padding: 0;
+  border-top: 0;
+}
+
+.skuManualTableOverseas input[type="text"],
+.skuManualCountryLabel {
   box-sizing: border-box;
   width: 100%;
   min-height: 48px;
@@ -4143,6 +4182,14 @@ button.ghost.heroHeadAccountBtn:hover {
   color: #0f172a;
 }
 
+.skuManualCountryLabel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  background: #f8fafc;
+}
+
 .skuManualTableOverseas input[type="text"]:focus {
   outline: none;
   border-color: #7f8fa3;
@@ -4154,8 +4201,19 @@ button.ghost.heroHeadAccountBtn:hover {
 }
 
 .skuManualTableOverseas > .skuManualTableHead > div:nth-child(2),
-.skuManualTableOverseas > .skuManualTableHead > div:nth-child(3) {
+.skuManualTableOverseas > .skuManualTableHead > div:nth-child(3),
+.skuManualTableOverseas > .skuManualTableHead > div:nth-child(4) {
   text-align: center;
+}
+
+.skuManualAddRowButton {
+  margin: 10px 14px 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--ui-outline-inner);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
 }
 
 .skuManualTableHead {
@@ -4179,6 +4237,18 @@ button.ghost.heroHeadAccountBtn:hover {
   align-items: center;
   gap: 8px;
   color: var(--ui-text-secondary);
+}
+
+.skuManualCountryGroupLabel {
+  align-self: start;
+  position: sticky;
+  top: 0;
+}
+
+.skuManualCountryGroupLabel .skuManualCountryLabel {
+  min-height: 40px;
+  border-color: #cbd5e1;
+  background: #f1f5f9;
 }
 
 .skuManualCountryCode {
@@ -4718,7 +4788,7 @@ button.ghost.heroHeadAccountBtn:hover {
 
 .productSearchDetailMemoRow {
   display: grid;
-  grid-template-columns: 108px minmax(0, 1fr);
+  grid-template-columns: 118px minmax(0, 1fr);
   gap: 10px 14px;
   align-items: center;
   padding: 8px 0;
@@ -6598,8 +6668,12 @@ th {
   }
 
   .skuManualTableOverseas > .skuManualTableHead,
-  .skuManualTableOverseas > .skuManualRow {
-    grid-template-columns: 100px minmax(0, 1fr) minmax(0, 1.2fr);
+  .skuManualCountryGroup {
+    grid-template-columns: 100px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+
+  .skuManualGroupedRow {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
   }
 
   .trendSummaryGrid {

@@ -2,13 +2,12 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
 import { API_BASE } from "./apiClient";
-import { ArrowUpRight, Download, Filter, Minus, Plus, Upload } from "lucide-react";
+import { ArrowUpRight, Download, Filter, Minus, Upload } from "lucide-react";
 
 /** 백엔드 `domains/item/routers/item.py` master-rows 엔드포인트와 동기화 */
 const ITEM_MASTER_API = {
   rows: `${API_BASE}/api/adaptscm/mappings/master-rows`,
   upload: `${API_BASE}/api/adaptscm/mappings/master-rows/upload`,
-  extraColumns: `${API_BASE}/api/adaptscm/mappings/master-rows/extra-columns`,
   extraColumn: (fieldKey) =>
     `${API_BASE}/api/adaptscm/mappings/master-rows/extra-columns/${encodeURIComponent(fieldKey)}`,
 };
@@ -17,25 +16,56 @@ const ITEM_MASTER_FILTER_POPOVER_WIDTH_PX = 320;
 
 const ITEM_MASTER_FIELDS = [
   { key: "brand", label: "브랜드" },
-  { key: "representative_code", label: "대표코드" },
-  { key: "kr_sku", label: "상품코드" },
-  { key: "version", label: "Ver." },
   { key: "kr_name", label: "상품명" },
+  { key: "kr_sku", label: "상품코드" },
+  { key: "representative_code", label: "대표코드" },
+  { key: "category", label: "카테고리" },
   { key: "segment", label: "구분" },
+  { key: "version", label: "Ver." },
   { key: "stock_category", label: "재고구분" },
   { key: "fcst_grade", label: "FCST등급" },
   { key: "stock_grade", label: "재고등급" },
   { key: "release_month", label: "출시월" },
   { key: "code_registered_at", label: "코드 등록 일자" },
-  { key: "kr_grade", label: "한국 등급" },
-  { key: "us_grade", label: "미국 등급" },
-  { key: "tw_grade", label: "대만 등급" },
-  { key: "hk_grade", label: "홍콩 등급" },
-  { key: "jp_grade", label: "일본 등급" },
+  { key: "us_codes", label: "미국 상품코드" },
+  { key: "tw_codes", label: "대만 상품코드" },
+  { key: "hk_codes", label: "홍콩 상품코드" },
+  { key: "jp_codes", label: "일본 상품코드" },
+  { key: "sg_codes", label: "싱가/말레 상품코드" },
+  { key: "de_codes", label: "독일 상품코드" },
+  { key: "uk_codes", label: "영국 상품코드" },
+  { key: "au_codes", label: "호주 상품코드" },
+  { key: "ae_codes", label: "아랍 상품코드" },
+  { key: "vn_codes", label: "동남아 상품코드" },
+  { key: "th_codes", label: "태국 상품코드" },
 ];
+
+const ITEM_MASTER_UPLOAD_TEMPLATE_FIELDS = [
+  { key: "brand", label: "브랜드" },
+  { key: "kr_name", label: "상품명" },
+  { key: "kr_sku", label: "상품코드" },
+  { key: "representative_code", label: "대표코드" },
+  { key: "category", label: "카테고리" },
+  { key: "segment", label: "구분" },
+];
+
+const ITEM_MASTER_READONLY_FIELD_KEYS = new Set([
+  "us_codes",
+  "tw_codes",
+  "hk_codes",
+  "jp_codes",
+  "sg_codes",
+  "de_codes",
+  "uk_codes",
+  "au_codes",
+  "ae_codes",
+  "vn_codes",
+  "th_codes",
+]);
 
 const ITEM_MASTER_FILTER_SPECS = [
   { key: "brand", label: "브랜드" },
+  { key: "category", label: "카테고리" },
   { key: "segment", label: "구분" },
   { key: "version", label: "Ver." },
   { key: "stock_category", label: "재고구분" },
@@ -48,7 +78,7 @@ const EMPTY_ITEM_MASTER_FILTERS = Object.fromEntries(
 );
 
 const EMPTY_ITEM_MASTER_DRAFT = Object.fromEntries(ITEM_MASTER_FIELDS.map(({ key }) => [key, ""]));
-const ITEM_MASTER_TABLE_MIN_WIDTH_PX = 1320;
+const ITEM_MASTER_TABLE_MIN_WIDTH_PX = 2776;
 /** CSS `--item-master-extra-col-width` 와 동기화 (사용자 정의 열만 JS에서 추가) */
 const ITEM_MASTER_EXTRA_COL_GRID = "var(--item-master-extra-col-width)";
 const ITEM_MASTER_EXTRA_COL_MIN_WIDTH_PX = 72;
@@ -158,6 +188,7 @@ function buildItemMasterSavePayload(groupId, draft, extraColumns = []) {
       })();
   const payload = { group_id: groupId };
   ITEM_MASTER_FIELDS.forEach(({ key }) => {
+    if (ITEM_MASTER_READONLY_FIELD_KEYS.has(key)) return;
     if (key === "segment") {
       payload.segment = segmentOut;
       return;
@@ -185,46 +216,43 @@ function excelColumnWidthFromPxApprox(px) {
 }
 
 const ITEM_MASTER_COLUMN_WIDTHS_PX = {
-  브랜드: 100,
-  대표코드: 88,
-  상품코드: 88,
+  브랜드: 120,
+  상품명: 360,
+  상품코드: 90,
+  대표코드: 90,
+  카테고리: 160,
+  구분: 80,
   "Ver.": 56,
-  상품명: 240,
-  구분: 120,
   재고구분: 80,
   FCST등급: 72,
   재고등급: 72,
   출시월: 72,
   "코드 등록 일자": 100,
-  "한국 등급": 72,
-  "미국 등급": 72,
-  "대만 등급": 72,
-  "홍콩 등급": 72,
-  "일본 등급": 72,
+  "미국 상품코드": 130,
+  "대만 상품코드": 115,
+  "홍콩 상품코드": 115,
+  "일본 상품코드": 130,
+  "싱가/말레 상품코드": 135,
+  "독일 상품코드": 120,
+  "영국 상품코드": 130,
+  "호주 상품코드": 115,
+  "아랍 상품코드": 115,
+  "동남아 상품코드": 130,
+  "태국 상품코드": 135,
 };
 
 async function buildItemMasterTemplateWorkbookBuffer() {
   const ExcelJS = (await import("exceljs")).default;
   const FONT_9 = { name: "맑은 고딕", size: 9 };
-  const headers = ITEM_MASTER_FIELDS.map(({ label }) => label);
+  const headers = ITEM_MASTER_UPLOAD_TEMPLATE_FIELDS.map(({ label }) => label);
   const columnWidthsPx = ITEM_MASTER_COLUMN_WIDTHS_PX;
   const exampleHintRow = [
     "예: 95PROBLEM",
-    "예: 06231",
-    "예: 06231",
-    "예: V0",
     "예: 95PROBLEM 알패치(R) (4매입 - 파우치)",
+    "예: 06231",
+    "예: 06231",
+    "예: 건강기능식품",
     "예: (X) 단종",
-    "예: 일반",
-    "예: 정기발주",
-    "예: C",
-    "예: 2026년 1월",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
   ];
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Sheet1", { views: [{ showGridLines: true }] });
@@ -239,6 +267,7 @@ async function buildItemMasterTemplateWorkbookBuffer() {
   ws.eachRow((row, rowNumber) => {
     row.eachCell((cell) => {
       cell.font = { ...FONT_9, bold: rowNumber === 1 };
+      cell.alignment = { vertical: "middle", horizontal: "left", wrapText: false };
       cell.border = {
         top: { style: "thin" },
         left: { style: "thin" },
@@ -309,6 +338,7 @@ async function buildItemMasterExportWorkbookBuffer(rows, extraColumns = []) {
   ws.eachRow((row, rowNumber) => {
     row.eachCell((cell) => {
       cell.font = { ...FONT_9, bold: rowNumber === 1 };
+      cell.alignment = { vertical: "middle", horizontal: "left", wrapText: false };
       cell.border = {
         top: { style: "thin" },
         left: { style: "thin" },
@@ -371,7 +401,6 @@ export default function ItemMasterTab({
 }) {
   const [masterRows, setMasterRows] = useState([]);
   const [masterExtraColumns, setMasterExtraColumns] = useState([]);
-  const [masterAddingColumn, setMasterAddingColumn] = useState(false);
   const [masterDeletingColumnKey, setMasterDeletingColumnKey] = useState("");
   const [masterLoading, setMasterLoading] = useState(false);
   const [masterError, setMasterError] = useState("");
@@ -663,38 +692,6 @@ export default function ItemMasterTab({
       Object.fromEntries(masterRows.map((r) => [r.group_id, masterDraftFromRow(r, masterExtraColumns)]))
     );
     setMasterEditMode(true);
-  }
-
-  async function addMasterExtraColumn() {
-    const label = window.prompt("추가할 열 이름을 입력하세요.", "");
-    if (label == null) return;
-    const trimmed = String(label).trim();
-    if (!trimmed) return;
-    try {
-      setMasterAddingColumn(true);
-      setMasterError("");
-      const res = await axios.post(ITEM_MASTER_API.extraColumns, { label: trimmed });
-      const col = res?.data;
-      if (!col?.field_key) throw new Error("invalid column");
-      setMasterExtraColumns((prev) => [...prev, col]);
-      setMasterDraftById((prev) => {
-        const next = { ...prev };
-        Object.keys(next).forEach((gid) => {
-          next[gid] = {
-            ...next[gid],
-            extra_fields: { ...(next[gid]?.extra_fields || {}), [col.field_key]: "" },
-          };
-        });
-        return next;
-      });
-    } catch (err) {
-      const detail = err?.response?.data?.detail;
-      const msg = Array.isArray(detail) ? detail.join("\n") : detail || "열 추가 중 오류";
-      setMasterError(msg);
-      window.alert(msg);
-    } finally {
-      setMasterAddingColumn(false);
-    }
   }
 
   async function deleteMasterExtraColumn(fieldKey, label) {
@@ -1000,17 +997,6 @@ export default function ItemMasterTab({
           >
             {masterSavingAll ? "DB 저장 중…" : masterEditMode ? "저장" : "수정"}
           </button>
-          {masterEditMode ? (
-            <button
-              type="button"
-              className="itemMasterAddColumnBtn"
-              disabled={settingsMutating || masterSavingAll || masterAddingColumn}
-              onClick={() => void addMasterExtraColumn()}
-            >
-              <Plus size={16} strokeWidth={2} aria-hidden="true" />
-              {masterAddingColumn ? "열 추가 중…" : "열 추가"}
-            </button>
-          ) : null}
         </div>
         <div
           className="itemMasterStickySectionGap itemMasterStickySectionGapBelowToolbar"
@@ -1067,7 +1053,7 @@ export default function ItemMasterTab({
                       style={masterGridStyle}
                     >
                       {ITEM_MASTER_FIELDS.map(({ key, label }) => (
-                        <div key={key} className="skuProductEditHeadCell itemMasterHeadCell">
+                        <div key={key} className="skuProductEditHeadCell itemMasterHeadCell" title={label}>
                           {label}
                         </div>
                       ))}
@@ -1120,12 +1106,13 @@ export default function ItemMasterTab({
                         style={masterGridStyle}
                       >
                         {ITEM_MASTER_FIELDS.map(({ key, label }) => {
+                          const isReadonlyField = ITEM_MASTER_READONLY_FIELD_KEYS.has(key);
                           const cellRaw = masterCellRawValue(key, d);
                           const cellDisplay = masterCellDisplayValue(key, d);
                           const cellTitle = masterCellTooltip(key, d, row);
                           return (
                           <div key={key} className="skuProductEditCell itemMasterCell">
-                            {isEditing ? (
+                            {isEditing && !isReadonlyField ? (
                               key === "segment" ? (
                                 <input
                                   type="text"
