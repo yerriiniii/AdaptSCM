@@ -1,7 +1,7 @@
 import { Fragment, startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
-import { API_BASE, clearAccessToken } from "./apiClient";
+import { API_BASE, clearAccessToken, getAccessToken, parseJwtExpiryMs, setAccessToken } from "./apiClient";
 import {
   Ban,
   Barcode,
@@ -14,8 +14,10 @@ import {
   LogOut,
   Package,
   Pencil,
+  Clock3,
   Search,
   Truck,
+  Upload,
   X,
 } from "lucide-react";
 import ItemMasterTab from "./ItemMasterTab.jsx";
@@ -1376,7 +1378,8 @@ function getProductMappingCountries(row = {}) {
   const locales = Array.isArray(row?.locales) ? row.locales : [];
   return locales
     .map((locale) => {
-      const code = String(locale?.country_code || locale?.countryCode || "").trim().toUpperCase();
+      const rawCode = String(locale?.country_code || locale?.countryCode || "").trim().toUpperCase();
+      const code = rawCode === "MY" ? "SG" : rawCode;
       const skuType = String(locale?.sku_type || locale?.skuType || "").trim();
       const sku = String(locale?.sku ?? "").trim();
       if (!code) return null;
@@ -1798,6 +1801,15 @@ function formatPersistedLoadError(err, apiBase) {
   if (status) parts.push(`HTTP ${status}`);
   if (message) parts.push(message);
   return parts.filter(Boolean).join(" · ") || "저장된 데이터를 불러오는 중 오류";
+}
+
+function formatHeaderSessionRemaining(expMs) {
+  if (expMs == null) return "";
+  const remSec = Math.max(0, Math.floor((expMs - Date.now()) / 1000));
+  const hh = String(Math.floor(remSec / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((remSec % 3600) / 60)).padStart(2, "0");
+  const ss = String(remSec % 60).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
 }
 
 /** 출고·재고 API detail 에서 파일/시트 위치 한 줄 (없으면 빈 문자열) */
@@ -2412,8 +2424,8 @@ export default function App() {
     compareFilter: 0,
     topScroll: 0,
   });
-  /** 세션 배너도 sticky top:0 — 메인 탭 sticky top 은 배너 높이만큼 내려야 가려지지 않음 */
-  const [sessionBannerHeight, setSessionBannerHeight] = useState(0);
+  const [sessionTick, setSessionTick] = useState(0);
+  const [sessionExtending, setSessionExtending] = useState(false);
   const productMappingCards = useMemo(() => {
     const cards = mappingRows
       .map((row, idx) => ({
@@ -2592,46 +2604,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    let ro;
-    const detachRo = () => {
-      if (ro) {
-        ro.disconnect();
-        ro = null;
-      }
-    };
-    const readBannerHeight = () => {
-      const el = document.querySelector(".authGateSessionBanner");
-      if (el) {
-        setSessionBannerHeight(el.offsetHeight || 0);
-        if (!ro && typeof ResizeObserver !== "undefined") {
-          ro = new ResizeObserver(readBannerHeight);
-          ro.observe(el);
-        }
-        return;
-      }
-      detachRo();
-      const raw = getComputedStyle(document.documentElement)
-        .getPropertyValue("--auth-session-banner-height")
-        .trim();
-      const n = Number.parseFloat(raw);
-      setSessionBannerHeight(Number.isFinite(n) ? n : 0);
-    };
-    readBannerHeight();
-    const root = document.getElementById("root");
-    const mo =
-      root && typeof MutationObserver !== "undefined"
-        ? new MutationObserver(readBannerHeight)
-        : null;
-    if (root && mo) mo.observe(root, { childList: true });
-    window.addEventListener("resize", readBannerHeight);
-    return () => {
-      window.removeEventListener("resize", readBannerHeight);
-      detachRo();
-      if (mo) mo.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
     if (!isPurchaseOrderScope) return;
     const measure = () => {
       setPoOrderStickyHeights({
@@ -2662,6 +2634,39 @@ export default function App() {
   ]);
 
   useEffect(() => {
+    const tick = () => setSessionTick((n) => n + 1);
+    const id = window.setInterval(tick, 1000);
+    window.addEventListener("adaptscm-auth-token-updated", tick);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("adaptscm-auth-token-updated", tick);
+    };
+  }, []);
+
+  const sessionRemainingLabel = useMemo(() => {
+    void sessionTick;
+    return formatHeaderSessionRemaining(parseJwtExpiryMs(getAccessToken()));
+  }, [sessionTick]);
+
+  async function handleExtendSession() {
+    if (sessionExtending) return;
+    setSessionExtending(true);
+    try {
+      const { data } = await axios.post(`${API_BASE}/api/auth/extend`);
+      if (!data?.access_token) {
+        throw new Error("새 세션 토큰을 받지 못했습니다.");
+      }
+      setAccessToken(data.access_token);
+      setSessionTick((n) => n + 1);
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      window.alert(Array.isArray(detail) ? detail.join("\n") : detail || err?.message || "세션 연장 중 오류");
+    } finally {
+      setSessionExtending(false);
+    }
+  }
+
+  useEffect(() => {
     if (!isPurchaseOrderScope || purchaseOrderSubTab !== "saved" || !poSavedShowTopScroll) {
       setPoSavedTopStripHeight(0);
       return;
@@ -2686,8 +2691,8 @@ export default function App() {
     purchaseOrdersLoading,
   ]);
 
-  const mainTabsStickyTop = sessionBannerHeight;
-  const stickyBelowMainTabs = sessionBannerHeight + stickyHeights.topbar;
+  const mainTabsStickyTop = 0;
+  const stickyBelowMainTabs = stickyHeights.topbar;
   const itemMasterStickyBaseTop = stickyBelowMainTabs;
 
   const inventoryStickyWidth = useMemo(() => {
@@ -6349,6 +6354,20 @@ export default function App() {
               </span>
             </h1>
             <div className="heroHeadAccount">
+              <div className="heroSessionBox" role="status" aria-live="polite">
+                <Clock3 className="heroSessionIcon" size={15} strokeWidth={2} aria-hidden />
+                <span className="heroSessionLabel">세션</span>
+                <span className="heroSessionTime">{sessionRemainingLabel || "--:--:--"}</span>
+                <button
+                  type="button"
+                  className="heroSessionExtendBtn"
+                  onClick={handleExtendSession}
+                  disabled={sessionExtending}
+                  title="세션을 3시간 연장합니다."
+                >
+                  {sessionExtending ? "연장 중" : "연장"}
+                </button>
+              </div>
               <button
                 type="button"
                 className="ghost heroHeadAccountBtn"
@@ -6733,10 +6752,11 @@ export default function App() {
               />
               <button
                 type="button"
-                className="primary inventoryFilterActionBtn"
+                className="poOrderFileTemplateBtn itemMasterTemplateBtn itemMasterUploadBtn inventoryFilterActionBtn"
                 onClick={onClickUpload}
                 disabled={inventoryLoading}
               >
+                <Upload size={16} strokeWidth={2} aria-hidden="true" />
                 {inventoryLoading ? "재고 통합 진행 중…" : "파일 업로드"}
               </button>
             </div>
@@ -10617,7 +10637,7 @@ export default function App() {
                                     <span className="productMappingCountrySkuType" aria-hidden="true" />
                                   )}
                                   <span className="productMappingCountrySkuInline" title={codeRow.sku}>
-                                    {codeRow.sku}
+                                    {codeRow.sku || ""}
                                   </span>
                                 </div>
                               ))}

@@ -143,7 +143,7 @@ html.tauri-desktop .stickyTopbar {
 .heroHeadDash .heroTitle {
   margin: 0;
   padding-top: 2px;
-  padding-right: min(10rem, 32vw);
+  padding-right: min(24rem, 52vw);
   max-width: 100%;
   box-sizing: border-box;
 }
@@ -193,7 +193,7 @@ html.tauri-desktop .stickyTopbar {
 
 @media (min-width: 700px) {
   .heroHeadDash .heroTitle {
-    padding-right: 7.75rem;
+    padding-right: 23rem;
   }
 }
 
@@ -203,10 +203,11 @@ html.tauri-desktop .stickyTopbar {
   top: 0;
   z-index: 1;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 5px;
-  width: 8.5rem;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: auto;
   max-width: 100%;
   box-sizing: border-box;
   flex: 0 0 auto;
@@ -223,8 +224,9 @@ button.ghost.heroHeadAccountBtn {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  width: 100%;
-  min-width: 0;
+  width: auto;
+  flex: 0 0 auto;
+  min-width: 7.5rem;
   box-sizing: border-box;
   height: 30px;
   min-height: 30px;
@@ -245,6 +247,74 @@ button.ghost.heroHeadAccountBtn:hover {
 
 .heroHeadAccountBtn .tabIcon {
   flex-shrink: 0;
+}
+
+.heroSessionBox {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #d9e7df;
+  border-radius: 8px;
+  background: #f7fbf8;
+  color: #334155;
+  box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.heroSessionIcon {
+  flex-shrink: 0;
+  color: #64748b;
+}
+
+.heroSessionLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  line-height: 1;
+}
+
+.heroSessionTime {
+  min-width: 4.45rem;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 700;
+  color: #116149;
+  line-height: 1;
+  text-align: center;
+}
+
+.heroSessionExtendBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 1px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #0b7a53;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.heroSessionExtendBtn:hover:not(:disabled) {
+  background: transparent;
+  color: #065f46;
+}
+
+.heroSessionExtendBtn:disabled {
+  opacity: 0.58;
+  cursor: wait;
 }
 
 .heroTitle {
@@ -3138,7 +3208,7 @@ button.ghost.heroHeadAccountBtn:hover {
 
 .itemMasterTableHead,
 .itemMasterTableRow {
-  /* 상품마스터 기본 23열 너비 — 여기(--item-master-grid-columns)만 수정 */
+  /* 상품마스터 기본 12열 너비 — 여기(--item-master-grid-columns)만 수정 */
   --item-master-extra-col-width: minmax(72px, 0.5fr);
   --item-master-grid-columns:
     120px
@@ -3152,20 +3222,9 @@ button.ghost.heroHeadAccountBtn:hover {
     90px
     90px
     96px
-    130px
-    130px
-    115px
-    115px
-    130px
-    135px
-    120px
-    130px
-    115px
-    115px
-    130px
     135px;
   grid-template-columns: var(--item-master-grid-columns);
-  min-width: 2776px;
+  min-width: 1406px;
 }
 
 .itemMasterTableWrap .itemMasterTableHead {
@@ -4457,8 +4516,8 @@ button.ghost.heroHeadAccountBtn:hover {
 }
 
 .productMappingResultsColumn {
-  width: min(100%, 980px);
-  max-width: 980px;
+  width: min(100%, 1000px);
+  max-width: 1000px;
   min-width: 0;
   margin-left: auto;
   margin-right: auto;
@@ -4990,6 +5049,7 @@ button.ghost.heroHeadAccountBtn:hover {
   gap: 7px;
   min-width: 0;
   padding-top: 11px;
+  flex: 1 1 auto;
 }
 
 .productMappingGroupedCodeRow {
@@ -5121,6 +5181,7 @@ button.ghost.heroHeadAccountBtn:hover {
 }
 
 .productMappingCountrySkuInline {
+  min-height: 1.35em;
   font-size: 16px;
   font-weight: 500;
   color: #071a36;
@@ -6746,9 +6807,10 @@ th {
 
   .heroHeadDash .heroHeadAccount {
     position: static;
-    margin: 6px 0 0;
-    margin-left: auto;
-    width: min(8.5rem, 100%);
+    margin: 10px 0 0;
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
 
@@ -7103,6 +7165,20 @@ th {
   background: #f8fafc;
   border-color: #b8c4d3;
   color: #1f2937;
+}
+
+.poOrderFileTemplateBtn.itemMasterTemplateBtn,
+.poOrderFileTemplateBtn.itemMasterUploadBtn {
+  border-color: #86efac;
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.poOrderFileTemplateBtn.itemMasterTemplateBtn:hover:not(:disabled),
+.poOrderFileTemplateBtn.itemMasterUploadBtn:hover:not(:disabled) {
+  background: #d1fae5;
+  border-color: #4ade80;
+  color: #14532d;
 }
 
 /* 템플릿 버튼과 엑셀 첨부(점선 패널) 사이: 기본 skuUploadPanel translateY 제거 */

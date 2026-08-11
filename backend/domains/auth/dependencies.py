@@ -13,7 +13,7 @@ from shared.db import get_db_session
 _bearer = HTTPBearer(auto_error=True)
 
 
-def _get_token_payload(credentials: HTTPAuthorizationCredentials = Depends(_bearer)) -> dict:
+def get_token_payload(credentials: HTTPAuthorizationCredentials = Depends(_bearer)) -> dict:
     if credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="잘못된 인증 방식입니다.")
     try:
@@ -23,7 +23,7 @@ def _get_token_payload(credentials: HTTPAuthorizationCredentials = Depends(_bear
 
 
 def get_current_user(
-    payload: dict = Depends(_get_token_payload),
+    payload: dict = Depends(get_token_payload),
     db: Session = Depends(get_db_session),
 ) -> UserAccount:
     sub = payload.get("sub")
@@ -48,4 +48,4 @@ def require_active_user(user: UserAccount = Depends(get_current_user)) -> UserAc
     return user
 
 
-__all__ = ["get_current_user", "require_active_user"]
+__all__ = ["get_current_user", "get_token_payload", "require_active_user"]

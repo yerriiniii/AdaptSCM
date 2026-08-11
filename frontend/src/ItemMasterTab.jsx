@@ -27,17 +27,6 @@ const ITEM_MASTER_FIELDS = [
   { key: "stock_grade", label: "재고등급" },
   { key: "release_month", label: "출시월" },
   { key: "code_registered_at", label: "코드 등록 일자" },
-  { key: "us_codes", label: "미국 상품코드" },
-  { key: "tw_codes", label: "대만 상품코드" },
-  { key: "hk_codes", label: "홍콩 상품코드" },
-  { key: "jp_codes", label: "일본 상품코드" },
-  { key: "sg_codes", label: "싱가/말레 상품코드" },
-  { key: "de_codes", label: "독일 상품코드" },
-  { key: "uk_codes", label: "영국 상품코드" },
-  { key: "au_codes", label: "호주 상품코드" },
-  { key: "ae_codes", label: "아랍 상품코드" },
-  { key: "vn_codes", label: "동남아 상품코드" },
-  { key: "th_codes", label: "태국 상품코드" },
 ];
 
 const ITEM_MASTER_UPLOAD_TEMPLATE_FIELDS = [
@@ -49,19 +38,7 @@ const ITEM_MASTER_UPLOAD_TEMPLATE_FIELDS = [
   { key: "segment", label: "구분" },
 ];
 
-const ITEM_MASTER_READONLY_FIELD_KEYS = new Set([
-  "us_codes",
-  "tw_codes",
-  "hk_codes",
-  "jp_codes",
-  "sg_codes",
-  "de_codes",
-  "uk_codes",
-  "au_codes",
-  "ae_codes",
-  "vn_codes",
-  "th_codes",
-]);
+const ITEM_MASTER_READONLY_FIELD_KEYS = new Set();
 
 const ITEM_MASTER_FILTER_SPECS = [
   { key: "brand", label: "브랜드" },
@@ -78,7 +55,7 @@ const EMPTY_ITEM_MASTER_FILTERS = Object.fromEntries(
 );
 
 const EMPTY_ITEM_MASTER_DRAFT = Object.fromEntries(ITEM_MASTER_FIELDS.map(({ key }) => [key, ""]));
-const ITEM_MASTER_TABLE_MIN_WIDTH_PX = 2776;
+const ITEM_MASTER_TABLE_MIN_WIDTH_PX = 1406;
 /** CSS `--item-master-extra-col-width` 와 동기화 (사용자 정의 열만 JS에서 추가) */
 const ITEM_MASTER_EXTRA_COL_GRID = "var(--item-master-extra-col-width)";
 const ITEM_MASTER_EXTRA_COL_MIN_WIDTH_PX = 72;
