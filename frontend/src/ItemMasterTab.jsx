@@ -14,31 +14,53 @@ const ITEM_MASTER_API = {
 
 const ITEM_MASTER_FILTER_POPOVER_WIDTH_PX = 320;
 
-const ITEM_MASTER_FIELDS = [
+const ITEM_MASTER_EDITABLE_FIELDS = [
   { key: "brand", label: "브랜드" },
-  { key: "kr_name", label: "상품명" },
   { key: "kr_sku", label: "상품코드" },
   { key: "representative_code", label: "대표코드" },
-  { key: "category", label: "카테고리" },
+  { key: "kr_name", label: "상품명" },
   { key: "segment", label: "구분" },
-  { key: "version", label: "Ver." },
-  { key: "stock_category", label: "재고구분" },
-  { key: "fcst_grade", label: "FCST등급" },
-  { key: "stock_grade", label: "재고등급" },
-  { key: "release_month", label: "출시월" },
-  { key: "code_registered_at", label: "코드 등록 일자" },
+  { key: "category", label: "카테고리" },
+];
+
+const ITEM_MASTER_COUNTRY_GROUPS = [
+  { label: "대만", code: "TW", types: [""] },
+  { label: "홍콩", code: "HK", types: [""] },
+  { label: "싱가/말레", code: "SG", countryCodes: ["SG", "MY"], types: ["FBS1", "FBS2", "FBS3", "FBS4"] },
+  { label: "태국", code: "TH", types: ["SCGJWD1", "SCGJWD2", "SCGJWD3"] },
+  { label: "동남아", code: "VN", types: ["리브1", "리브2"] },
+  { label: "일본", code: "JP", types: ["FBA", "STOO1", "STOO2"] },
+  { label: "미국", code: "US", types: ["MSKU", "ASIN", "FBM", "FBA"] },
+  { label: "호주", code: "AU", types: ["FBA1"] },
+  { label: "독일", code: "DE", types: ["FBA1", "FBA2"] },
+  { label: "아랍", code: "AE", types: ["FBA"] },
+  { label: "영국", code: "UK", types: ["FBA1", "FBA2", "FBA3"] },
+];
+
+const ITEM_MASTER_DISPLAY_COLUMNS = [
+  ...ITEM_MASTER_EDITABLE_FIELDS,
+  { key: "overseas_target", label: "해외 대상", readonly: true },
+  ...ITEM_MASTER_COUNTRY_GROUPS.flatMap((group) =>
+    group.types.map((type) => ({
+      key: `country:${group.code}:${type || "SKU"}`,
+      label: type || group.label,
+      countryLabel: group.label,
+      countryCode: group.code,
+      countryCodes: group.countryCodes || [group.code],
+      skuType: type,
+      readonly: true,
+    }))
+  ),
 ];
 
 const ITEM_MASTER_UPLOAD_TEMPLATE_FIELDS = [
   { key: "brand", label: "브랜드" },
-  { key: "kr_name", label: "상품명" },
   { key: "kr_sku", label: "상품코드" },
   { key: "representative_code", label: "대표코드" },
-  { key: "category", label: "카테고리" },
+  { key: "kr_name", label: "상품명" },
   { key: "segment", label: "구분" },
+  { key: "category", label: "카테고리" },
 ];
-
-const ITEM_MASTER_READONLY_FIELD_KEYS = new Set();
 
 const ITEM_MASTER_FILTER_SPECS = [
   { key: "brand", label: "브랜드" },
@@ -54,8 +76,8 @@ const EMPTY_ITEM_MASTER_FILTERS = Object.fromEntries(
   ITEM_MASTER_FILTER_SPECS.map(({ key }) => [key, ""])
 );
 
-const EMPTY_ITEM_MASTER_DRAFT = Object.fromEntries(ITEM_MASTER_FIELDS.map(({ key }) => [key, ""]));
-const ITEM_MASTER_TABLE_MIN_WIDTH_PX = 1406;
+const EMPTY_ITEM_MASTER_DRAFT = Object.fromEntries(ITEM_MASTER_EDITABLE_FIELDS.map(({ key }) => [key, ""]));
+const ITEM_MASTER_TABLE_MIN_WIDTH_PX = 4368;
 /** CSS `--item-master-extra-col-width` 와 동기화 (사용자 정의 열만 JS에서 추가) */
 const ITEM_MASTER_EXTRA_COL_GRID = "var(--item-master-extra-col-width)";
 const ITEM_MASTER_EXTRA_COL_MIN_WIDTH_PX = 72;
@@ -96,7 +118,7 @@ function productEditSegmentImpliesDiscontinued(raw) {
 
 function masterDraftFromRow(row, extraColumns = []) {
   const draft = { ...EMPTY_ITEM_MASTER_DRAFT, discontinued: false, extra_fields: {} };
-  ITEM_MASTER_FIELDS.forEach(({ key }) => {
+  ITEM_MASTER_EDITABLE_FIELDS.forEach(({ key }) => {
     let val = row?.[key] == null ? "" : String(row[key]);
     if (key === "code_registered_at") {
       val = formatCodeRegisteredAtDisplay(val);
@@ -136,6 +158,63 @@ function masterCellTooltip(key, draft, row = null) {
   return itemMasterTooltipText(raw);
 }
 
+function normalizeItemMasterCountryCode(code) {
+  const raw = String(code || "").trim().toUpperCase();
+  return raw === "MY" ? "SG" : raw;
+}
+
+function itemMasterLocaleSkuValues(row, column) {
+  if (!column?.countryCode) return "";
+  const allowed = new Set((column.countryCodes || [column.countryCode]).map(normalizeItemMasterCountryCode));
+  const targetType = String(column.skuType || "").trim().toLocaleLowerCase("ko-KR");
+  const values = (Array.isArray(row?.locales) ? row.locales : [])
+    .filter((loc) => {
+      const code = normalizeItemMasterCountryCode(loc?.country_code || loc?.countryCode);
+      if (!allowed.has(code)) return false;
+      const sku = String(loc?.sku || "").trim();
+      if (!sku) return false;
+      if (!targetType) return true;
+      return String(loc?.sku_type || loc?.skuType || "").trim().toLocaleLowerCase("ko-KR") === targetType;
+    })
+    .map((loc) => String(loc?.sku || "").trim())
+    .filter(Boolean);
+  return [...new Set(values)].join(" / ");
+}
+
+function itemMasterHasOverseasLocale(row) {
+  return (Array.isArray(row?.locales) ? row.locales : []).some((loc) => {
+    const code = normalizeItemMasterCountryCode(loc?.country_code || loc?.countryCode);
+    return code && code !== "KR" && String(loc?.sku || "").trim();
+  });
+}
+
+function itemMasterOverseasSkuCount(row) {
+  const keys = new Set();
+  (Array.isArray(row?.locales) ? row.locales : []).forEach((loc) => {
+    const code = normalizeItemMasterCountryCode(loc?.country_code || loc?.countryCode);
+    const sku = String(loc?.sku || "").trim();
+    if (!code || code === "KR" || !sku) return;
+    const skuType = String(loc?.sku_type || loc?.skuType || "").trim().toLocaleLowerCase("ko-KR");
+    keys.add(`${code}::${skuType}::${sku}`);
+  });
+  return keys.size;
+}
+
+function itemMasterDisplayColumnValue(column, draft, row) {
+  if (column.key === "overseas_target") {
+    return itemMasterHasOverseasLocale(row) ? "O" : "X";
+  }
+  if (column.countryCode) {
+    return itemMasterLocaleSkuValues(row, column);
+  }
+  return masterCellDisplayValue(column.key, draft);
+}
+
+function itemMasterDisplayColumnTooltip(column, draft, row) {
+  const raw = itemMasterDisplayColumnValue(column, draft, row);
+  return itemMasterTooltipText(raw);
+}
+
 function masterCellRawValue(key, draft) {
   if (key === "segment" && draft.discontinued) {
     return PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY;
@@ -164,8 +243,7 @@ function buildItemMasterSavePayload(groupId, draft, extraColumns = []) {
         return segRaw;
       })();
   const payload = { group_id: groupId };
-  ITEM_MASTER_FIELDS.forEach(({ key }) => {
-    if (ITEM_MASTER_READONLY_FIELD_KEYS.has(key)) return;
+  ITEM_MASTER_EDITABLE_FIELDS.forEach(({ key }) => {
     if (key === "segment") {
       payload.segment = segmentOut;
       return;
@@ -193,29 +271,30 @@ function excelColumnWidthFromPxApprox(px) {
 }
 
 const ITEM_MASTER_COLUMN_WIDTHS_PX = {
-  브랜드: 120,
-  상품명: 360,
-  상품코드: 90,
-  대표코드: 90,
-  카테고리: 160,
-  구분: 80,
+  브랜드: 108,
+  상품명: 370,
+  상품코드: 82,
+  대표코드: 82,
+  카테고리: 176,
+  구분: 74,
+  "해외 대상": 80,
   "Ver.": 56,
   재고구분: 80,
   FCST등급: 72,
   재고등급: 72,
   출시월: 72,
   "코드 등록 일자": 100,
-  "미국 상품코드": 130,
-  "대만 상품코드": 115,
-  "홍콩 상품코드": 115,
-  "일본 상품코드": 130,
-  "싱가/말레 상품코드": 135,
-  "독일 상품코드": 120,
-  "영국 상품코드": 130,
-  "호주 상품코드": 115,
-  "아랍 상품코드": 115,
-  "동남아 상품코드": 130,
-  "태국 상품코드": 135,
+  대만: 95,
+  홍콩: 95,
+  "싱가/말레": 190,
+  태국: 122,
+  동남아: 122,
+  일본: 118,
+  미국: 158,
+  호주: 156,
+  독일: 118,
+  아랍: 156,
+  영국: 118,
 };
 
 async function buildItemMasterTemplateWorkbookBuffer() {
@@ -225,11 +304,11 @@ async function buildItemMasterTemplateWorkbookBuffer() {
   const columnWidthsPx = ITEM_MASTER_COLUMN_WIDTHS_PX;
   const exampleHintRow = [
     "예: 95PROBLEM",
+    "예: 06231",
+    "예: 06231",
     "예: 95PROBLEM 알패치(R) (4매입 - 파우치)",
-    "예: 06231",
-    "예: 06231",
-    "예: 건강기능식품",
     "예: (X) 단종",
+    "예: 건강기능식품",
   ];
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Sheet1", { views: [{ showGridLines: true }] });
@@ -272,19 +351,8 @@ async function downloadItemMasterTemplateWorkbook() {
 }
 
 function itemMasterRowToExportValues(row, extraColumns = []) {
-  const values = ITEM_MASTER_FIELDS.map(({ key }) => {
-    if (key === "code_registered_at") {
-      return formatCodeRegisteredAtDisplay(row?.[key]);
-    }
-    if (key === "segment") {
-      const seg = String(row?.[key] ?? "").trim();
-      if (productEditSegmentImpliesDiscontinued(seg)) {
-        return PRODUCT_EDIT_DISCONTINUED_SEGMENT_DISPLAY;
-      }
-      return seg;
-    }
-    return row?.[key] == null ? "" : String(row[key]);
-  });
+  const draft = masterDraftFromRow(row, extraColumns);
+  const values = ITEM_MASTER_DISPLAY_COLUMNS.map((column) => itemMasterDisplayColumnValue(column, draft, row));
   const ef = row?.extra_fields && typeof row.extra_fields === "object" ? row.extra_fields : {};
   extraColumns.forEach(({ field_key }) => {
     values.push(ef[field_key] == null ? "" : String(ef[field_key]));
@@ -295,26 +363,49 @@ function itemMasterRowToExportValues(row, extraColumns = []) {
 async function buildItemMasterExportWorkbookBuffer(rows, extraColumns = []) {
   const ExcelJS = (await import("exceljs")).default;
   const FONT_9 = { name: "맑은 고딕", size: 9 };
-  const headers = [
-    ...ITEM_MASTER_FIELDS.map(({ label }) => label),
+  const headersTop = [
+    ...ITEM_MASTER_DISPLAY_COLUMNS.map((column) => column.countryLabel || column.label),
     ...extraColumns.map(({ label }) => String(label || "").trim()).filter(Boolean),
+  ];
+  const headersBottom = [
+    ...ITEM_MASTER_DISPLAY_COLUMNS.map((column) => column.countryLabel ? column.label : ""),
+    ...extraColumns.map(() => ""),
   ];
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("상품마스터", { views: [{ showGridLines: true }] });
-  const hr = ws.addRow(headers);
-  hr.height = 18;
+  const hrTop = ws.addRow(headersTop);
+  const hrBottom = ws.addRow(headersBottom);
+  hrTop.height = 18;
+  hrBottom.height = 18;
   (rows || []).forEach((row) => {
     const dataRow = ws.addRow(itemMasterRowToExportValues(row, extraColumns));
     dataRow.height = 16;
   });
-  headers.forEach((h, i) => {
+  headersTop.forEach((h, i) => {
     const px = ITEM_MASTER_COLUMN_WIDTHS_PX[h];
     ws.getColumn(i + 1).width =
       px != null ? excelColumnWidthFromPxApprox(px) : String(h).length > 12 ? 22 : 15;
   });
+  let colIdx = 1;
+  for (const column of ITEM_MASTER_DISPLAY_COLUMNS) {
+    if (!column.countryLabel) {
+      ws.mergeCells(1, colIdx, 2, colIdx);
+      colIdx += 1;
+      continue;
+    }
+    const sameCountrySpan = ITEM_MASTER_DISPLAY_COLUMNS
+      .filter((c) => c.countryLabel === column.countryLabel).length;
+    const firstIdx = ITEM_MASTER_DISPLAY_COLUMNS.findIndex((c) => c.countryLabel === column.countryLabel) + 1;
+    if (colIdx === firstIdx && sameCountrySpan > 1) {
+      ws.mergeCells(1, colIdx, 1, colIdx + sameCountrySpan - 1);
+    } else if (colIdx === firstIdx && sameCountrySpan === 1 && !column.skuType) {
+      ws.mergeCells(1, colIdx, 2, colIdx);
+    }
+    colIdx += 1;
+  }
   ws.eachRow((row, rowNumber) => {
-    row.eachCell((cell) => {
-      cell.font = { ...FONT_9, bold: rowNumber === 1 };
+    row.eachCell((cell, colNumber) => {
+      cell.font = { ...FONT_9, bold: rowNumber <= 2 };
       cell.alignment = { vertical: "middle", horizontal: "left", wrapText: false };
       cell.border = {
         top: { style: "thin" },
@@ -322,8 +413,14 @@ async function buildItemMasterExportWorkbookBuffer(rows, extraColumns = []) {
         bottom: { style: "thin" },
         right: { style: "thin" },
       };
-      if (rowNumber === 1) {
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
+      if (rowNumber <= 2) {
+        const column = ITEM_MASTER_DISPLAY_COLUMNS[colNumber - 1];
+        let argb = "FFE6B8B7";
+        if (column?.countryLabel) {
+          const isSingleCountryColumn = !column.skuType;
+          argb = rowNumber === 1 || isSingleCountryColumn ? "FFC5D9F1" : "FFE7EFF9";
+        }
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb } };
       }
     });
   });
@@ -355,7 +452,7 @@ function rowNeedsSave(row, draft, extraColumns = []) {
   return JSON.stringify(nextPayload) !== JSON.stringify(prevPayload);
 }
 
-/** 사용자 정의 열이 있을 때만 CSS 기본 14열 뒤에 열 정의를 붙임 */
+/** 사용자 정의 열이 있을 때만 CSS 기본 표시 열 뒤에 열 정의를 붙임 */
 function buildItemMasterGridStyle(extraColumns) {
   const extras = (extraColumns || [])
     .map(() => ITEM_MASTER_EXTRA_COL_GRID)
@@ -538,14 +635,20 @@ export default function ItemMasterTab({
   }, [masterRows]);
 
   const displayedMasterRows = useMemo(() => {
-    return masterRows.filter((row) => {
-      for (const { key } of ITEM_MASTER_FILTER_SPECS) {
-        const selected = String(masterFilters[key] || "").trim();
-        if (!selected) continue;
-        if (String(row[key] ?? "").trim() !== selected) return false;
-      }
-      return true;
-    });
+    return masterRows
+      .filter((row) => {
+        for (const { key } of ITEM_MASTER_FILTER_SPECS) {
+          const selected = String(masterFilters[key] || "").trim();
+          if (!selected) continue;
+          if (String(row[key] ?? "").trim() !== selected) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const byOverseas = itemMasterOverseasSkuCount(b) - itemMasterOverseasSkuCount(a);
+        if (byOverseas !== 0) return byOverseas;
+        return String(a.kr_sku || "").localeCompare(String(b.kr_sku || ""), "ko");
+      });
   }, [masterRows, masterFilters]);
 
   const masterFiltersActive = Object.values(masterFilters).some((v) => String(v || "").trim());
@@ -1029,15 +1132,58 @@ export default function ItemMasterTab({
                       className="skuProductEditTableHead itemMasterTableHead"
                       style={masterGridStyle}
                     >
-                      {ITEM_MASTER_FIELDS.map(({ key, label }) => (
-                        <div key={key} className="skuProductEditHeadCell itemMasterHeadCell" title={label}>
-                          {label}
-                        </div>
-                      ))}
+                      {ITEM_MASTER_DISPLAY_COLUMNS.map((column, columnIdx) =>
+                        column.countryLabel ? null : (
+                          <div
+                            key={column.key}
+                            className="skuProductEditHeadCell itemMasterHeadCell itemMasterHeadCellTall"
+                            title={column.label}
+                            style={{ gridColumn: columnIdx + 1, gridRow: "1 / 3" }}
+                          >
+                            {column.label}
+                          </div>
+                        )
+                      )}
+                      {ITEM_MASTER_COUNTRY_GROUPS.map((group) => {
+                        const startIdx = ITEM_MASTER_DISPLAY_COLUMNS.findIndex(
+                          (column) => column.countryCode === group.code
+                        );
+                        if (startIdx < 0) return null;
+                        const span = group.types.length;
+                        const isPlainCountry = span === 1 && !group.types[0];
+                        return (
+                          <div
+                            key={`country-head-${group.code}`}
+                            className={`skuProductEditHeadCell itemMasterHeadCell itemMasterCountryHeadCell${
+                              isPlainCountry ? " itemMasterHeadCellTall" : ""
+                            }`}
+                            title={group.label}
+                            style={{
+                              gridColumn: `${startIdx + 1} / span ${span}`,
+                              gridRow: isPlainCountry ? "1 / 3" : "1",
+                            }}
+                          >
+                            {group.label}
+                          </div>
+                        );
+                      })}
+                      {ITEM_MASTER_DISPLAY_COLUMNS.map((column, columnIdx) =>
+                        column.countryLabel && column.skuType ? (
+                          <div
+                            key={`country-sub-${column.key}`}
+                            className="skuProductEditHeadCell itemMasterHeadCell itemMasterCountrySubHeadCell"
+                            title={`${column.countryLabel} ${column.label}`}
+                            style={{ gridColumn: columnIdx + 1, gridRow: "2" }}
+                          >
+                            {column.label}
+                          </div>
+                        ) : null
+                      )}
                       {masterExtraColumns.map(({ field_key, label }) => (
                         <div
                           key={field_key}
                           className="skuProductEditHeadCell itemMasterHeadCell itemMasterExtraHeadCell"
+                          style={{ gridRow: "1 / 3" }}
                         >
                           {masterEditMode ? (
                             <div className="itemMasterExtraHeadInner">
@@ -1082,13 +1228,18 @@ export default function ItemMasterTab({
                         className="skuProductEditRow itemMasterTableRow"
                         style={masterGridStyle}
                       >
-                        {ITEM_MASTER_FIELDS.map(({ key, label }) => {
-                          const isReadonlyField = ITEM_MASTER_READONLY_FIELD_KEYS.has(key);
-                          const cellRaw = masterCellRawValue(key, d);
-                          const cellDisplay = masterCellDisplayValue(key, d);
-                          const cellTitle = masterCellTooltip(key, d, row);
+                        {ITEM_MASTER_DISPLAY_COLUMNS.map((column) => {
+                          const { key, label } = column;
+                          const isReadonlyField = Boolean(column.readonly);
+                          const cellDisplay = itemMasterDisplayColumnValue(column, d, row);
+                          const cellTitle = itemMasterDisplayColumnTooltip(column, d, row);
                           return (
-                          <div key={key} className="skuProductEditCell itemMasterCell">
+                          <div
+                            key={key}
+                            className={`skuProductEditCell itemMasterCell${
+                              key === "brand" ? " itemMasterBrandCell" : ""
+                            }${key === "kr_sku" || key === "representative_code" || column.countryCode ? " itemMasterCodeCell" : ""}`}
+                          >
                             {isEditing && !isReadonlyField ? (
                               key === "segment" ? (
                                 <input
@@ -1119,7 +1270,7 @@ export default function ItemMasterTab({
                                 <input
                                   type="text"
                                   className="skuProductEditInput"
-                                  value={key === "code_registered_at" ? cellDisplay : (d[key] ?? "")}
+                                  value={d[key] ?? ""}
                                   disabled={settingsMutating || masterSavingAll || !gid}
                                   title={cellTitle}
                                   onChange={(e) =>
