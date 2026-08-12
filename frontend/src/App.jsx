@@ -2643,6 +2643,51 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const spreadsheetCellSelector = [
+      ".inventoryTable th",
+      ".inventoryTable td",
+      ".compareTable th",
+      ".compareTable td",
+      ".poSavedSpreadsheet th",
+      ".poSavedSpreadsheet td",
+      ".skuProductEditTableHead .skuProductEditHeadCell",
+      ".skuProductEditRow .skuProductEditCell",
+      ".shipmentChannelDayMatrix th",
+      ".shipmentChannelDayMatrix td",
+      ".shipmentChartInsightTable th",
+      ".shipmentChartInsightTable td",
+    ].join(",");
+
+    const readCellText = (cell) => {
+      const activeInput = cell.querySelector("input, textarea, select");
+      if (activeInput) {
+        if (activeInput.tagName === "SELECT") {
+          return activeInput.selectedOptions?.[0]?.textContent || activeInput.value || "";
+        }
+        return activeInput.value || "";
+      }
+      return cell.innerText || cell.textContent || "";
+    };
+
+    const onMouseOver = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const cell = target.closest(spreadsheetCellSelector);
+      if (!(cell instanceof HTMLElement)) return;
+      if (target.closest("button")) return;
+      const text = readCellText(cell).replace(/\s+/g, " ").trim();
+      if (text) {
+        cell.title = text;
+      } else {
+        cell.removeAttribute("title");
+      }
+    };
+
+    document.addEventListener("mouseover", onMouseOver);
+    return () => document.removeEventListener("mouseover", onMouseOver);
+  }, []);
+
   const sessionRemainingLabel = useMemo(() => {
     void sessionTick;
     return formatHeaderSessionRemaining(parseJwtExpiryMs(getAccessToken()));

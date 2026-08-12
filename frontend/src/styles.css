@@ -3208,23 +3208,47 @@ button.ghost.heroHeadAccountBtn:hover {
 
 .itemMasterTableHead,
 .itemMasterTableRow {
-  /* 상품마스터 기본 12열 너비 — 여기(--item-master-grid-columns)만 수정 */
+  /* 상품마스터 기본 32열 너비 — 여기(--item-master-grid-columns)만 수정 */
   --item-master-extra-col-width: minmax(72px, 0.5fr);
   --item-master-grid-columns:
-    120px
-    300px
-    90px
-    90px
-    160px
+    108px
+    82px
+    82px
+    370px
+    74px
+    176px
     80px
-    64px
-    96px
-    90px
-    90px
-    96px
-    135px;
+    95px
+    95px
+    190px
+    190px
+    190px
+    190px
+    122px
+    122px
+    122px
+    122px
+    122px
+    118px
+    118px
+    118px
+    158px
+    158px
+    158px
+    158px
+    156px
+    156px
+    156px
+    156px
+    118px
+    118px
+    118px;
   grid-template-columns: var(--item-master-grid-columns);
-  min-width: 1406px;
+  min-width: 4368px;
+}
+
+.itemMasterTableHead {
+  grid-template-rows: 32px 32px;
 }
 
 .itemMasterTableWrap .itemMasterTableHead {
@@ -3251,6 +3275,7 @@ button.ghost.heroHeadAccountBtn:hover {
 .itemMasterHeadCell {
   display: flex;
   align-items: center;
+  justify-content: center;
   padding: 6px 8px;
   min-height: 32px;
   background: var(--ui-spreadsheet-head-bg);
@@ -3259,6 +3284,21 @@ button.ghost.heroHeadAccountBtn:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.itemMasterHeadCellTall {
+  min-height: 64px;
+}
+
+.itemMasterCountryHeadCell {
+  background: #edf8f4;
+  color: #0f5138;
+}
+
+.itemMasterCountrySubHeadCell {
+  font-size: 12px;
+  background: #f7fbf8;
+  color: #166534;
 }
 
 .itemMasterCell {
@@ -4196,6 +4236,20 @@ button.ghost.heroHeadAccountBtn:hover {
 .skuManualTableOverseas > .skuManualTableHead,
 .skuManualCountryGroup {
   grid-template-columns: 140px minmax(140px, 1fr) minmax(140px, 1fr) minmax(160px, 1.25fr);
+}
+
+.itemMasterBrandCell .itemMasterCellReadonly,
+.itemMasterBrandCell .skuProductEditInput {
+  font-weight: 560;
+  letter-spacing: 0;
+  color: #1f2937;
+}
+
+.itemMasterCodeCell .itemMasterCellReadonly,
+.itemMasterCodeCell .skuProductEditInput {
+  font-weight: 500;
+  letter-spacing: 0;
+  color: #1f2937;
 }
 
 .skuManualCountryGroup {
@@ -9726,5 +9780,21 @@ th {
 .mypagePageShell .authGatePasswordToggle svg {
   width: 18px;
   height: 18px;
+}
+
+/* 스프레드시트 본문 타이포 통일: 상품마스터와 비슷한 중간 굵기로 맞춤 */
+.inventoryTable tbody td,
+.compareTable tbody td,
+.inventoryTable.krTable.shipmentMatrixTable tbody tr:not(.shipmentMatrixSubHeaderRow) td,
+.tableCard .shipmentChannelDayMatrix td,
+.tableCard .shipmentChartInsightTable td {
+  font-weight: 500;
+}
+
+.inventoryTable tbody td input,
+.inventoryTable tbody td select,
+.compareTable tbody td input,
+.compareTable tbody td select {
+  font-weight: inherit;
 }
 
